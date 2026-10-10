@@ -1,14 +1,17 @@
 import { segmentsPath, slicedDisc } from '../geometry'
 import { DocBuilder } from '../kit'
-import { RED } from '../palette'
+import { PALETTES } from '../palette'
 import type { TemplateDesign } from '../registry'
+
+/** This design's own palette (see ../palette.ts). */
+const ACCENT = PALETTES.synth
 
 const W = 1728
 const H = 2304
 const PAGE = { x: 0, y: 0, w: W, h: H }
-const CREAM = RED[50]
-const NIGHT = RED[950]
-const DEEP = '#1c0510'
+const CREAM = ACCENT[50]
+const NIGHT = ACCENT[950]
+const DEEP = '#0d0617'
 const SUN = { cx: 864, cy: 1130, r: 450 }
 const HORIZON = 1440
 
@@ -41,30 +44,30 @@ export const concertPoster: TemplateDesign = {
     p.path({
       name: 'Sun',
       d: slicedDisc(SUN.cx, SUN.cy, SUN.r, [[1215, 1225], [1262, 1276], [1312, 1330], [1366, 1388], [1420, 1446]], HORIZON, PAGE),
-      fill: { angle: 90, stops: [[0, '#ffd23f'], [0.5, '#ff8a5b'], [1, RED[600]]] },
+      fill: { angle: 90, stops: [[0, '#ffd23f'], [0.5, '#ff8a5b'], [1, ACCENT[600]]] },
       locked: true,
     })
     const floor: [[number, number], [number, number]][] = []
     for (const y of [1460, 1488, 1522, 1566, 1626, 1704]) floor.push([[0, y], [W, y]])
     for (let k = -9; k <= 9; k++) floor.push([[864 + k * 40, HORIZON], [864 + k * 300, 1730]])
-    p.path({ name: 'Floor grid', d: segmentsPath(floor, { x: 0, y: HORIZON, w: W, h: 290 }), stroke: RED[400], strokeWidth: 3, opacity: 0.75, locked: true })
-    p.line({ name: 'Horizon', x1: 0, y1: HORIZON, x2: W, y2: HORIZON, color: RED[300], width: 4, locked: true })
+    p.path({ name: 'Floor grid', d: segmentsPath(floor, { x: 0, y: HORIZON, w: W, h: 290 }), stroke: ACCENT[400], strokeWidth: 3, opacity: 0.75, locked: true })
+    p.line({ name: 'Horizon', x1: 0, y1: HORIZON, x2: W, y2: HORIZON, color: ACCENT[300], width: 4, locked: true })
 
     // Header.
-    p.text({ name: 'Dates', x: 120, y: 118, w: 760, text: 'Fri 13 – Sun 15 June', font: 'josefin', bold: true, size: 38, color: RED[200], on: NIGHT, spacing: 200, upper: true, lines: 1 })
-    p.text({ name: 'Ages', x: W - 120 - 760, y: 118, w: 760, text: 'All ages  ·  Rain or shine', font: 'josefin', bold: true, size: 38, color: RED[200], on: NIGHT, align: 'right', spacing: 200, upper: true, lines: 1 })
-    p.line({ name: 'Header rule', x1: 120, y1: 200, x2: W - 120, y2: 200, color: RED[400], width: 3 })
+    p.text({ name: 'Dates', x: 120, y: 118, w: 760, text: 'Fri 13 – Sun 15 June', font: 'josefin', bold: true, size: 38, color: ACCENT[200], on: NIGHT, spacing: 200, upper: true, lines: 1 })
+    p.text({ name: 'Ages', x: W - 120 - 760, y: 118, w: 760, text: 'All ages  ·  Rain or shine', font: 'josefin', bold: true, size: 38, color: ACCENT[200], on: NIGHT, align: 'right', spacing: 200, upper: true, lines: 1 })
+    p.line({ name: 'Header rule', x1: 120, y1: 200, x2: W - 120, y2: 200, color: ACCENT[400], width: 3 })
     p.text({ name: 'Title', x: 60, y: 232, w: W - 120, text: 'Night Bloom', font: 'bebas', size: 340, color: CREAM, on: NIGHT, align: 'center', lh: 1, upper: true, lines: 1 })
-    p.text({ name: 'Subtitle', x: 120, y: 585, w: W - 240, text: 'Three nights of live music under the open sky', font: 'josefin', bold: true, size: 36, color: RED[200], on: NIGHT, align: 'center', spacing: 240, upper: true, lines: 1 })
+    p.text({ name: 'Subtitle', x: 120, y: 585, w: W - 240, text: 'Three nights of live music under the open sky', font: 'josefin', bold: true, size: 36, color: ACCENT[200], on: NIGHT, align: 'center', spacing: 240, upper: true, lines: 1 })
 
     // Line-up.
-    p.text({ name: 'Lineup label', x: 120, y: 1775, w: W - 240, text: 'Line-up', font: 'josefin', bold: true, size: 32, color: RED[300], on: DEEP, align: 'center', spacing: 500, upper: true, lines: 1 })
+    p.text({ name: 'Lineup label', x: 120, y: 1775, w: W - 240, text: 'Line-up', font: 'josefin', bold: true, size: 32, color: ACCENT[300], on: DEEP, align: 'center', spacing: 500, upper: true, lines: 1 })
     p.text({ name: 'Headliner', x: 120, y: 1822, w: W - 240, text: 'Marlow & The Echoes', font: 'bebas', size: 150, color: CREAM, on: DEEP, align: 'center', lh: 1, upper: true, lines: 1 })
-    p.text({ name: 'Main acts', x: 120, y: 1974, w: W - 240, text: 'Paper Tigers  ·  Neon Orchard  ·  Velvet Static', font: 'bebas', size: 82, color: RED[200], on: DEEP, align: 'center', spacing: 60, lh: 1, upper: true, lines: 1 })
-    p.text({ name: 'More acts', x: 120, y: 2068, w: W - 240, text: 'Ruby Lane  ·  Hollow Pines  ·  The Late Flowers  ·  and more to be announced', font: 'josefin', size: 30, color: RED[200], on: DEEP, align: 'center', spacing: 80, lines: 1 })
+    p.text({ name: 'Main acts', x: 120, y: 1974, w: W - 240, text: 'Paper Tigers  ·  Neon Orchard  ·  Velvet Static', font: 'bebas', size: 82, color: ACCENT[200], on: DEEP, align: 'center', spacing: 60, lh: 1, upper: true, lines: 1 })
+    p.text({ name: 'More acts', x: 120, y: 2068, w: W - 240, text: 'Ruby Lane  ·  Hollow Pines  ·  The Late Flowers  ·  and more to be announced', font: 'josefin', size: 30, color: ACCENT[200], on: DEEP, align: 'center', spacing: 80, lines: 1 })
 
     // Footer.
-    p.line({ name: 'Footer rule', x1: 120, y1: 2142, x2: W - 120, y2: 2142, color: RED[400], width: 3 })
+    p.line({ name: 'Footer rule', x1: 120, y1: 2142, x2: W - 120, y2: 2142, color: ACCENT[400], width: 3 })
     const columns = [
       { label: 'Where', value: 'Riverside Park, Main Lawn', align: 'left' as const },
       { label: 'Gates', value: 'Open daily from 4 PM', align: 'center' as const },
@@ -72,7 +75,7 @@ export const concertPoster: TemplateDesign = {
     ]
     columns.forEach((col, i) => {
       const x = 120 + i * 496
-      p.text({ name: `${col.label} label`, x, y: 2160, w: 496, text: col.label, font: 'josefin', bold: true, size: 22, color: RED[400], on: DEEP, align: col.align, spacing: 300, upper: true, lines: 1 })
+      p.text({ name: `${col.label} label`, x, y: 2160, w: 496, text: col.label, font: 'josefin', bold: true, size: 22, color: ACCENT[400], on: DEEP, align: col.align, spacing: 300, upper: true, lines: 1 })
       p.text({ name: `${col.label} value`, x, y: 2196, w: 496, text: col.value, font: 'josefin', bold: true, size: 28, color: CREAM, on: DEEP, align: col.align, lines: 1 })
     })
     return doc

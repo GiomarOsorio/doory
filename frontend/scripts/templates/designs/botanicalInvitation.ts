@@ -1,15 +1,18 @@
 import { sprig } from '../decor'
 import { DocBuilder } from '../kit'
-import { INK, RED } from '../palette'
+import { INK, PALETTES } from '../palette'
 import type { TemplateDesign } from '../registry'
+
+/** This design's own palette (see ../palette.ts). */
+const ACCENT = PALETTES.forest
 
 const W = 480
 const H = 672
 const IVORY = '#fff9f3'
 const SAGE = '#5f8a6b'
-const BERRY = RED[600]
+const BERRY = ACCENT[600]
 const GOLD = '#9a6b2f'
-const PLUM = RED[900]
+const PLUM = ACCENT[900]
 
 export const botanicalInvitation: TemplateDesign = {
   slug: 'botanical-celebration-invitation',
