@@ -10,14 +10,15 @@
         "instagram",
         "promo",
         "discount",
-        "shop"
+        "shop",
+        "minimal"
       ],
-      "description": "A loud, high-contrast sale post: giant headline, starburst discount badge and a clear call to action.",
+      "description": "An editorial sale post: one giant word, a round discount sticker in a single loud accent and a clear button.",
       "preset": "instagram-post",
       "is_featured": true,
       "fonts": [
         "Anton",
-        "DM Sans"
+        "Archivo"
       ]
     },
     {
@@ -27,16 +28,16 @@
       "tags": [
         "quote",
         "instagram",
-        "testimonial",
-        "typography",
-        "minimal"
+        "minimal",
+        "neutral",
+        "typography"
       ],
-      "description": "An elegant centred quote with a round author photo, drawn in classic serif italics.",
+      "description": "A calm, neutral quote post: an oversized quotation mark, a serif quote with plenty of space and a small author line.",
       "preset": "instagram-post",
       "is_featured": false,
       "fonts": [
-        "DM Sans",
-        "Playfair Display"
+        "Archivo",
+        "Lora"
       ]
     },
     {
@@ -49,13 +50,13 @@
         "instagram",
         "party",
         "music",
-        "invitation"
+        "sunset"
       ],
-      "description": "A vertical story for a sunset event: an arched photo slot in front of a glowing sun, the date and a call to action.",
+      "description": "A photo-led event story at dusk: a big rounded photo, a serif title, the date, time and place, and an RSVP button inside the safe zone.",
       "preset": "instagram-story",
-      "is_featured": false,
+      "is_featured": true,
       "fonts": [
-        "DM Sans",
+        "Archivo",
         "Playfair Display"
       ]
     },
@@ -64,19 +65,19 @@
       "title": "Modern pitch deck",
       "category": "presentations",
       "tags": [
+        "presentation",
         "pitch",
         "startup",
-        "slides",
-        "presentation",
-        "investor",
-        "business"
+        "deck",
+        "business",
+        "investor"
       ],
-      "description": "Three clean 16:9 slides: a cover with a photo slot, a three-column \"why now\" slide and a closing slide with contact details.",
+      "description": "A calm, editorial 16:9 pitch deck in cream, ink and deep green: a cover with a photo, a slide of big numbers and a closing slide.",
       "preset": "presentation",
       "is_featured": true,
       "fonts": [
-        "Inter",
-        "Manrope"
+        "Archivo",
+        "Lora"
       ]
     },
     {
@@ -88,16 +89,17 @@
         "concert",
         "festival",
         "music",
-        "retro",
+        "gig",
         "event",
         "print"
       ],
-      "description": "A retro sunset festival poster for 18 x 24 in print: striped sun, perspective floor and a clear line-up.",
+      "description": "A type-led gig poster for 18 x 24 in print: the headliner huge, the support acts and details in a clear hierarchy, and a halftone sun.",
       "preset": "",
       "is_featured": true,
       "fonts": [
-        "Bebas Neue",
-        "Josefin Sans"
+        "Anton",
+        "Archivo",
+        "Lora"
       ]
     },
     {
@@ -106,18 +108,19 @@
       "category": "flyers",
       "tags": [
         "flyer",
-        "grand opening",
+        "opening",
         "cafe",
+        "coffee",
         "shop",
-        "local business",
-        "print"
+        "print",
+        "minimal"
       ],
-      "description": "A US Letter flyer for a new shop or cafe: striped awning, big serif headline, photo slot, details and a coupon bar.",
+      "description": "A warm, minimal café opening flyer for US Letter: an arched photo, a serif headline, an opening-day offer and the details in one row.",
       "preset": "letter",
       "is_featured": false,
       "fonts": [
-        "Playfair Display",
-        "Poppins"
+        "Archivo",
+        "Playfair Display"
       ]
     },
     {
@@ -125,22 +128,19 @@
       "title": "Botanical celebration invitation",
       "category": "invitations",
       "tags": [
-        "invitation",
         "wedding",
-        "birthday",
-        "party",
-        "elegant",
+        "invitation",
         "botanical",
-        "print",
-        "save the date"
+        "elegant",
+        "minimal",
+        "rsvp"
       ],
-      "description": "A 5 x 7 in invitation with a double frame, hand-drawn leaf sprigs and script names. Works for a wedding, an engagement or a birthday.",
+      "description": "A quiet, elegant 5 x 7 in wedding invitation: linen paper, a soft arch with greenery, script names and an RSVP QR code.",
       "preset": "",
       "is_featured": false,
       "fonts": [
-        "Crimson Text",
-        "Great Vibes",
-        "Playfair Display"
+        "Lora",
+        "Pinyon Script"
       ]
     },
     {
@@ -150,18 +150,17 @@
       "tags": [
         "resume",
         "cv",
-        "a4",
         "job",
         "career",
-        "professional",
-        "print"
+        "a4",
+        "ats",
+        "minimal"
       ],
-      "description": "A two-column A4 resume: a dark sidebar with photo, contact, skills and languages, and a timeline of experience.",
+      "description": "A clean single-column A4 resume with one accent colour, easy for people and resume parsers to read: profile, experience, education and skills.",
       "preset": "a4",
       "is_featured": false,
       "fonts": [
-        "Inter",
-        "Montserrat"
+        "Archivo"
       ]
     },
     {
@@ -172,16 +171,15 @@
         "youtube",
         "thumbnail",
         "video",
-        "challenge",
-        "vlog",
-        "creator"
+        "before-after",
+        "challenge"
       ],
-      "description": "A punchy 1280 x 720 thumbnail: giant outlined number, a tilted caption and a framed photo slot for your face.",
+      "description": "A high-contrast before-and-after thumbnail: a huge number, three words, two photos and an arrow, all clear of the edges.",
       "preset": "youtube-thumbnail",
       "is_featured": false,
       "fonts": [
         "Anton",
-        "Montserrat"
+        "Archivo"
       ]
     },
     {
@@ -190,18 +188,17 @@
       "category": "business",
       "tags": [
         "business card",
-        "print",
         "contact",
-        "networking",
+        "print",
         "minimal",
-        "qr code"
+        "personal brand"
       ],
-      "description": "A 3.5 x 2 in business card, front and back: name, role and contact rows on the front, logo and a QR code on the back.",
+      "description": "A type-first two-sided business card: your name large on the front with the contact details, and a giant initial with a QR code on the back.",
       "preset": "business-card",
       "is_featured": false,
       "fonts": [
-        "Inter",
-        "Manrope"
+        "Archivo",
+        "Oswald"
       ]
     }
   ]

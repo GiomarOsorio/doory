@@ -1,77 +1,54 @@
-import { photoBackdrop } from '../decor'
 import { DocBuilder } from '../kit'
-import { INK, MUTED, PALETTES, WHITE } from '../palette'
+import { archMask } from '../geometry'
+import { photoBackdrop } from '../decor'
 import type { TemplateDesign } from '../registry'
 
-/** This design's own palette (see ../palette.ts). */
-const ACCENT = PALETTES.teal
-
+// Warm, modern and minimal: cream paper, coffee brown, an arched photo and one caramel sticker.
 const W = 816
 const H = 1056
-const GOLD = '#ffd23f'
-const PEACH = '#ffd9a0'
+const CREAM = '#f4ece1'
+const BROWN = '#3b2418'
+const MUTED = '#6f5546'
+const CARAMEL = '#dc9459'
 
 export const grandOpeningFlyer: TemplateDesign = {
   slug: 'grand-opening-flyer',
   title: 'Grand opening flyer',
   category: 'flyers',
-  tags: ['flyer', 'grand opening', 'cafe', 'shop', 'local business', 'print'],
-  description: 'A US Letter flyer for a new shop or cafe: striped awning, big serif headline, photo slot, details and a coupon bar.',
+  tags: ['flyer', 'opening', 'cafe', 'coffee', 'shop', 'print', 'minimal'],
+  description: 'A warm, minimal café opening flyer for US Letter: an arched photo, a serif headline, an opening-day offer and the details in one row.',
   preset: 'letter',
   build() {
     const doc = new DocBuilder(this.slug, { width: W, height: H, unit: 'in', presetId: 'letter' })
-    const p = doc.page('Flyer', { type: 'solid', color: ACCENT[50] })
+    const p = doc.page('Flyer', { type: 'solid', color: CREAM })
 
-    // Awning: eight stripes, each with a scalloped lower edge.
-    const stripe = W / 8
-    const awning = Array.from({ length: 8 }, (_, i) => {
-      const x0 = i * stripe
-      const x1 = x0 + stripe
-      const r = stripe / 2
-      return p.path({ name: `Awning stripe ${i + 1}`, d: `M ${x0} 0 H ${x1} V 112 A ${r} ${r} 0 0 1 ${x0} 112 Z`, fill: i % 2 === 0 ? ACCENT[600] : WHITE })
-    })
-    p.group('Awning', awning, { locked: true })
+    p.text({ name: 'Name', x: 0, y: 54, w: W, text: 'Corner Bloom Café', font: 'archivo', bold: true, size: 18, color: BROWN, on: CREAM, spacing: 420, upper: true, align: 'center', lines: 1 })
 
-    // Headline.
-    p.text({ name: 'Eyebrow', x: 70, y: 196, w: 480, text: 'You are invited to our', font: 'poppins', bold: true, size: 16, color: ACCENT[700], on: ACCENT[50], spacing: 240, upper: true, lines: 1 })
-    p.text({ name: 'Headline', x: 70, y: 222, w: 520, text: 'Grand', font: 'playfair', bold: true, size: 112, color: INK, on: ACCENT[50], lh: 1, lines: 1 })
-    p.text({ name: 'Headline italic', x: 70, y: 330, w: 520, text: 'Opening', font: 'playfair', bold: true, italic: true, size: 112, color: ACCENT[600], on: ACCENT[50], lh: 1, lines: 1 })
-    p.text({ name: 'Tagline', x: 70, y: 474, w: 430, text: 'Fresh coffee, warm pastries and a seat by the window. Come and say hello.', font: 'poppins', size: 19, color: MUTED, on: ACCENT[50], lh: 1.5, lines: 2 })
+    // Arched photo with the offer sticker on its shoulder.
+    photoBackdrop(p, { name: 'Photo stand-in', box: { x: 178, y: 104, w: 460, h: 470 }, shape: { kind: 'arch' }, tones: { sky: ['#f6dcc0', '#efc59c'], sun: '#fff6ea', hillFar: '#c9945f', hillNear: '#8c5a36' } })
+    p.placeholder({ name: 'Photo', x: 178, y: 104, w: 460, h: 470, mask: archMask(460, 470) })
+    p.circle({ name: 'Offer sticker', cx: 640, cy: 196, r: 84, fill: CARAMEL, angle: 10 })
+    p.text({ name: 'Offer value', x: 566, y: 152, w: 148, text: 'Free', font: 'playfair', bold: true, size: 40, color: BROWN, on: CARAMEL, align: 'center', angle: 10, lines: 1 })
+    p.text({ name: 'Offer terms', x: 566, y: 200, w: 148, text: 'coffee for our first 100 guests', font: 'archivo', bold: true, size: 13, color: BROWN, on: CARAMEL, align: 'center', lh: 1.2, angle: 10, lines: 2 })
 
-    // Photo slot with its stand-in picture.
-    photoBackdrop(p, {
-      name: 'Photo backdrop',
-      box: { x: 70, y: 556, w: 676, h: 224 },
-      shape: { kind: 'rect', radius: 28 },
-      tones: { sky: ['#ffeedd', PEACH], sun: ACCENT[50], hillFar: '#ffb199', hillNear: ACCENT[400] },
-    })
-    p.placeholder({ name: 'Shop photo', x: 70, y: 556, w: 676, h: 224, mask: 'rounded', maskRadius: 28 / 224 })
+    // Headline and copy.
+    p.text({ name: 'Headline', x: 0, y: 604, w: W, text: 'Grand', font: 'playfair', size: 108, color: BROWN, on: CREAM, align: 'center', lh: 1, lines: 1 })
+    p.text({ name: 'Headline second line', x: 0, y: 706, w: W, text: 'Opening', font: 'playfair', italic: true, size: 108, color: BROWN, on: CREAM, align: 'center', lh: 1, lines: 1 })
+    p.text({ name: 'Tagline', x: 148, y: 834, w: 520, text: 'Fresh coffee, warm pastries and a seat by the window. Come and say hello.', font: 'archivo', size: 17, color: MUTED, on: CREAM, align: 'center', lh: 1.5, lines: 2 })
 
-    // Offer burst, overlapping the corner of the headline area.
-    p.star({ name: 'Offer burst', cx: 650, cy: 330, size: 210, points: 20, innerRatio: 0.9, fill: GOLD, angle: 10 })
-    p.text({ name: 'Offer value', x: 550, y: 278, w: 200, text: 'Free', font: 'playfair', bold: true, size: 50, color: INK, on: GOLD, align: 'center', lh: 1, lines: 1 })
-    p.text({ name: 'Offer item', x: 550, y: 332, w: 200, text: 'coffee', font: 'poppins', bold: true, size: 22, color: INK, on: GOLD, align: 'center', spacing: 200, upper: true, lines: 1 })
-    p.text({ name: 'Offer terms', x: 575, y: 364, w: 150, text: 'for our first 100 guests', font: 'poppins', size: 13, color: INK, on: GOLD, align: 'center', lines: 1 })
-
-    // Details.
-    const cols = [
-      { icon: 'calendar' as const, label: 'When', value: 'Saturday 12 July', sub: 'Doors open at 9 AM' },
-      { icon: 'clock' as const, label: 'Opening day', value: '9 AM – 6 PM', sub: 'Live music at noon' },
-      { icon: 'pin' as const, label: 'Where', value: '24 Orchard Lane', sub: 'Corner Bloom Café' },
+    // Details in one row.
+    p.line({ name: 'Details rule', x1: 70, y1: 912, x2: 746, y2: 912, color: BROWN, width: 1.2 })
+    const columns = [
+      { icon: 'calendar' as const, text: 'Saturday 12 July' },
+      { icon: 'clock' as const, text: '8 AM – 6 PM' },
+      { icon: 'pin' as const, text: '24 Orchard Lane' },
     ]
-    cols.forEach((col, i) => {
-      const x = 70 + i * 232
-      p.icon({ name: `${col.label} icon`, icon: col.icon, x, y: 818, size: 30, color: ACCENT[600], width: 2.2 })
-      p.text({ name: `${col.label} label`, x: x + 42, y: 816, w: 180, text: col.label, font: 'poppins', bold: true, size: 12, color: ACCENT[700], on: ACCENT[50], spacing: 200, upper: true, lines: 1 })
-      p.text({ name: `${col.label} value`, x: x + 42, y: 834, w: 180, text: col.value, font: 'poppins', bold: true, size: 16, color: INK, on: ACCENT[50], lines: 1 })
-      p.text({ name: `${col.label} note`, x: x + 42, y: 858, w: 180, text: col.sub, font: 'poppins', size: 13, color: MUTED, on: ACCENT[50], lines: 1 })
-      if (i > 0) p.line({ name: `Divider ${i}`, x1: x - 18, y1: 818, x2: x - 18, y2: 884, color: ACCENT[200], width: 2 })
+    columns.forEach((col, i) => {
+      const x = 70 + i * 228
+      p.icon({ name: `${col.text} icon`, icon: col.icon, x, y: 942, size: 20, color: CARAMEL, width: 2 })
+      p.text({ name: col.text, x: x + 30, y: 943, w: 190, text: col.text, font: 'archivo', bold: true, size: 15, color: BROWN, on: CREAM, lines: 1 })
     })
-
-    // Coupon bar and footer.
-    p.rect({ name: 'Coupon bar', x: 70, y: 920, w: 676, h: 72, fill: ACCENT[600], radius: 36 })
-    p.text({ name: 'Coupon', x: 70, y: 920 + 21, w: 676, text: 'Bring this flyer for a free pastry with any drink', font: 'poppins', bold: true, size: 20, color: WHITE, on: ACCENT[600], align: 'center', lines: 1 })
-    p.text({ name: 'Website', x: 70, y: 1008, w: 676, text: 'cornerbloom.example  ·  @cornerbloomcafe', font: 'poppins', size: 14, color: MUTED, on: ACCENT[50], align: 'center', spacing: 40, lines: 1 })
+    p.text({ name: 'Website', x: 0, y: 1000, w: W, text: 'cornerbloom.example  ·  @cornerbloomcafe', font: 'archivo', size: 13, color: MUTED, on: CREAM, align: 'center', spacing: 60, lines: 1 })
     return doc
   },
 }

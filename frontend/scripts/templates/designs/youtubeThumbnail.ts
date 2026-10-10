@@ -1,52 +1,41 @@
-import { portraitBackdrop } from '../decor'
-import { bandInPage, circleInPage, rotatedOrigin } from '../geometry'
 import { DocBuilder } from '../kit'
-import { INK, PALETTES, WHITE } from '../palette'
+import { portraitBackdrop } from '../decor'
 import type { TemplateDesign } from '../registry'
 
-/** This design's own palette (see ../palette.ts). */
-const ACCENT = PALETTES.violet
-
+// Big number, three words, before and after: orange against deep blue, nothing near the edges.
 const W = 1280
 const H = 720
-const PAGE = { x: 0, y: 0, w: W, h: H }
-const GOLD = '#ffd23f'
+const NAVY = '#0c1a3a'
+const ORANGE = '#ff7a1a'
+const WHITE = '#ffffff'
 
 export const youtubeThumbnail: TemplateDesign = {
   slug: 'bold-youtube-thumbnail',
   title: 'Bold YouTube thumbnail',
   category: 'youtube',
-  tags: ['youtube', 'thumbnail', 'video', 'challenge', 'vlog', 'creator'],
-  description: 'A punchy 1280 x 720 thumbnail: giant outlined number, a tilted caption and a framed photo slot for your face.',
+  tags: ['youtube', 'thumbnail', 'video', 'before-after', 'challenge'],
+  description: 'A high-contrast before-and-after thumbnail: a huge number, three words, two photos and an arrow, all clear of the edges.',
   preset: 'youtube-thumbnail',
   build() {
     const doc = new DocBuilder(this.slug, { width: W, height: H, unit: 'px', presetId: 'youtube-thumbnail' })
-    const p = doc.page('Thumbnail', { type: 'solid', color: ACCENT[600] })
+    const p = doc.page('Thumbnail', { type: 'gradient', kind: 'linear', angle: 0, stops: [{ offset: 0, color: NAVY }, { offset: 1, color: '#16306a' }] })
 
-    // Background: a dark diagonal band and a halo behind the photo.
-    p.path({ name: 'Diagonal band', d: bandInPage(560, 380, 1900, 240, -24, PAGE), fill: ACCENT[700], locked: true })
-    p.path({ name: 'Halo', d: circleInPage(1010, 370, 330, PAGE), fill: GOLD, locked: true })
+    // Before and after.
+    portraitBackdrop(p, { name: 'Before stand-in', box: { x: 610, y: 150, w: 290, h: 410 }, radius: 23, bg: ['#5b6b8c', '#3a4a6c'], figure: '#9fb0d0' })
+    p.placeholder({ name: 'Before photo', x: 610, y: 150, w: 290, h: 410, mask: 'rounded', maskRadius: 0.08 })
+    portraitBackdrop(p, { name: 'After stand-in', box: { x: 930, y: 110, w: 300, h: 450 }, radius: 24, bg: ['#ffc27a', '#ff7a1a'], figure: '#fff1e2' })
+    p.placeholder({ name: 'After photo', x: 930, y: 110, w: 300, h: 450, mask: 'rounded', maskRadius: 0.08 })
+    p.rect({ name: 'Before tag', x: 670, y: 530, w: 170, h: 56, fill: WHITE, radius: 28 })
+    p.text({ name: 'Before', x: 670, y: 530 + 13, w: 170, text: 'Before', font: 'archivo', bold: true, size: 26, color: NAVY, on: WHITE, align: 'center', upper: true, spacing: 120, lines: 1 })
+    p.rect({ name: 'After tag', x: 995, y: 530, w: 170, h: 56, fill: ORANGE, radius: 28 })
+    p.text({ name: 'After', x: 995, y: 530 + 13, w: 170, text: 'After', font: 'archivo', bold: true, size: 26, color: NAVY, on: ORANGE, align: 'center', upper: true, spacing: 120, lines: 1 })
+    p.circle({ name: 'Arrow disc', cx: 915, cy: 340, r: 54, fill: ORANGE, stroke: NAVY, strokeWidth: 8 })
+    p.icon({ name: 'Arrow', icon: 'arrowRight', x: 881, y: 306, size: 68, color: NAVY, width: 3.2 })
 
-    // Photo with a white border and a shadow, so it reads as a sticker.
-    p.rect({ name: 'Photo border', x: 758, y: 52, w: 456, h: 616, fill: WHITE, radius: 40, shadow: { color: INK, blur: 0, offsetX: 12, offsetY: 14 } })
-    portraitBackdrop(p, { name: 'Photo backdrop', box: { x: 768, y: 62, w: 436, h: 596 }, radius: 32, bg: [ACCENT[200], ACCENT[300]], figure: ACCENT[50] })
-    p.placeholder({ name: 'Your photo', x: 768, y: 62, w: 436, h: 596, mask: 'rounded', maskRadius: 32 / 436 })
-
-    // Headline.
-    p.rect({ name: 'Intro pill', x: 56, y: 34, w: 392, h: 62, fill: INK, radius: 31 })
-    p.text({ name: 'Intro', x: 56, y: 34 + 14, w: 392, text: 'I tried it for', font: 'montserrat', bold: true, size: 30, color: WHITE, on: INK, align: 'center', spacing: 120, upper: true, lines: 1 })
-    p.text({ name: 'Number', x: 40, y: 106, w: 700, text: '30', font: 'anton', size: 330, color: WHITE, on: ACCENT[700], lh: 1, outline: { color: INK, width: 14 }, shadow: { color: INK, blur: 0, offsetX: 12, offsetY: 14 }, lines: 1 })
-    p.text({ name: 'Unit', x: 50, y: 392, w: 700, text: 'days', font: 'anton', size: 180, color: GOLD, on: ACCENT[700], lh: 1, upper: true, outline: { color: INK, width: 12 }, shadow: { color: INK, blur: 0, offsetX: 10, offsetY: 12 }, lines: 1 })
-    p.rect({ name: 'Caption box', x: 48, y: 574, w: 640, h: 84, fill: GOLD, radius: 10, angle: -3, shadow: { color: INK, blur: 0, offsetX: 8, offsetY: 8 } })
-    const caption = { name: 'Caption', w: 640, text: 'And it changed everything', font: 'montserrat', bold: true, size: 38, color: INK, on: GOLD, align: 'center', upper: true, angle: -3, lines: 1 } as const
-    const at = rotatedOrigin(48 + 320, 574 + 42, caption.w, p.measure({ ...caption, x: 0, y: 0 }).height, -3)
-    p.text({ ...caption, x: at.x, y: at.y })
-
-    p.line({ name: 'Arrow', x1: 470, y1: 330, x2: 690, y2: 330, color: WHITE, width: 20, arrowEnd: 'triangle' })
-
-    // Badge.
-    p.star({ name: 'Badge burst', cx: 1170, cy: 96, size: 150, points: 16, innerRatio: 0.86, fill: GOLD, angle: 12, shadow: { color: INK, blur: 0, offsetX: 6, offsetY: 6 } })
-    p.text({ name: 'Badge text', x: 1095, y: 72, w: 150, text: 'Part 1', font: 'anton', size: 30, color: INK, on: GOLD, align: 'center', upper: true, angle: 12, lines: 1 })
+    // The words.
+    p.text({ name: 'Kicker', x: 72, y: 110, w: 520, text: 'I tried it for', font: 'archivo', bold: true, size: 44, color: WHITE, on: [NAVY, '#16306a'], upper: true, spacing: 80, lines: 1 })
+    p.text({ name: 'Number', x: 64, y: 160, w: 560, text: '30', font: 'anton', size: 330, color: ORANGE, on: [NAVY, '#16306a'], lh: 1, lines: 1 })
+    p.text({ name: 'Unit', x: 72, y: 500, w: 540, text: 'Days', font: 'anton', size: 120, color: WHITE, on: [NAVY, '#16306a'], lh: 1, upper: true, lines: 1 })
     return doc
   },
 }

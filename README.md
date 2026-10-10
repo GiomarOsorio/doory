@@ -37,7 +37,7 @@ that runs in the browser, with real-time co-editing, animation, video export and
 ## 🎨 The editor
 
 <p align="center">
-  <img src=".github/readme/editor.webp" alt="Editing the Sunset Sessions story template in the Doory editor" width="900" />
+  <img src=".github/readme/editor.webp" alt="Editing the Night Bloom concert poster template in the Doory editor" width="900" />
 </p>
 
 | | |
@@ -58,7 +58,7 @@ that runs in the browser, with real-time co-editing, animation, video export and
 ## 🖼️ Templates that look good from the start
 
 <p align="center">
-  <img src=".github/readme/template-collage.webp" alt="Ten starter templates: a concert poster, a wedding invitation, a sunset story, a sale post, a café flyer, a quote card, a resume, a YouTube thumbnail, a pitch deck and a business card" width="900" />
+  <img src=".github/readme/template-collage.webp" alt="Ten starter templates: a gig poster, a wedding invitation, an event story, a sale post, a café flyer, a quote card, a resume, a YouTube thumbnail, a pitch deck and a business card" width="900" />
 </p>
 
 Every starter template is fully editable, ships in the repository with its own palette, and is set in open-licensed

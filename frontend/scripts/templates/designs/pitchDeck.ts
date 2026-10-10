@@ -1,142 +1,85 @@
-import { avatarBackdrop, photoBackdrop } from '../decor'
-import { circleInPage, ringInPage } from '../geometry'
 import { DocBuilder, type PageBuilder } from '../kit'
-import { INK, MUTED, PALETTES, WHITE } from '../palette'
+import { avatarBackdrop, photoBackdrop } from '../decor'
+import type { IconName } from '../icons'
 import type { TemplateDesign } from '../registry'
 
-/** This design's own palette (see ../palette.ts). */
-const ACCENT = PALETTES.indigo
-
+// Cream and ink with one deep green: an editorial cover, a slide of big numbers and a dark closing slide.
 const W = 1920
 const H = 1080
-const PAGE = { x: 0, y: 0, w: W, h: H }
-const GOLD = '#ffd23f'
+const CREAM = '#f5f0e6'
+const INK = '#16211c'
+const MUTED = '#55605a'
+const GREEN = '#1d6b4f'
+const PALE = '#dfe9e1'
+const CARD = '#ffffff'
+const NIGHT = '#16352a'
 
-/** Small square logo placeholder with the company name, top left of a slide. */
-function wordmark(p: PageBuilder, x: number, y: number, color: string, on: string, markFill: string): void {
-  p.rect({ name: 'Logo mark', x, y, w: 44, h: 44, fill: markFill, radius: 12 })
-  p.circle({ name: 'Logo dot', cx: x + 22, cy: y + 22, r: 9, fill: on })
-  p.text({ name: 'Company name', x: x + 62, y: y + 7, w: 360, text: 'Company name', font: 'manrope', bold: true, size: 28, color, on, lines: 1 })
-}
-
-function pageNumber(p: PageBuilder, n: number, color: string, on: string): void {
-  p.text({ name: 'Page number', x: W - 120 - 160, y: 996, w: 160, text: `0${n} / 03`, font: 'inter', size: 22, color, on, align: 'right', spacing: 80, lines: 1 })
-}
-
-function cover(doc: DocBuilder): void {
-  const p = doc.page(
-    'Cover',
-    { type: 'solid', color: ACCENT[50] },
-    'Welcome everyone and say who you are in one sentence. Give the one-line promise of the company, then the three things you will cover: the problem, the shift that makes it solvable now, and what you need from the room.',
-  )
-  // Right panel with the photo slot.
-  p.rect({ name: 'Panel', x: 1180, y: 0, w: 740, h: 1080, fill: ACCENT[600], locked: true })
-  p.path({ name: 'Panel circle', d: circleInPage(1600, 1010, 470, { x: 1180, y: 0, w: 740, h: 1080 }), fill: ACCENT[700], locked: true })
-  p.path({ name: 'Panel rings', d: [330, 400].map((r) => ringInPage(1180, 0, r, r - 3, { x: 1180, y: 0, w: 740, h: 1080 })).join(' '), fill: ACCENT[400], opacity: 0.7, locked: true })
-  photoBackdrop(p, {
-    name: 'Cover photo backdrop',
-    box: { x: 1270, y: 150, w: 560, h: 780 },
-    shape: { kind: 'rect', radius: 56 },
-    tones: { sky: [ACCENT[100], ACCENT[200]], sun: ACCENT[50], hillFar: ACCENT[300], hillNear: ACCENT[400] },
-  })
-  p.placeholder({ name: 'Cover photo', x: 1270, y: 150, w: 560, h: 780, mask: 'rounded', maskRadius: 56 / 560 })
-  p.star({ name: 'Sparkle', cx: 1780, cy: 118, size: 64, points: 4, innerRatio: 0.22, fill: GOLD })
-
-  wordmark(p, 120, 100, INK, ACCENT[50], ACCENT[600])
-  p.text({ name: 'Eyebrow', x: 120, y: 320, w: 800, text: 'Investor pitch', font: 'manrope', bold: true, size: 26, color: ACCENT[700], on: ACCENT[50], spacing: 260, upper: true, lines: 1 })
-  p.text({ name: 'Title', x: 120, y: 375, w: 1040, text: 'Ideas that move people forward.', font: 'manrope', bold: true, size: 124, color: INK, on: ACCENT[50], lh: 1.06, lines: 2 })
-  p.text({ name: 'Subtitle', x: 120, y: 690, w: 820, text: 'A short introduction to what we are building, who it is for and why the time is now.', font: 'inter', size: 32, color: MUTED, on: ACCENT[50], lh: 1.45, lines: 2 })
-  p.line({ name: 'Rule', x1: 120, y1: 900, x2: 200, y2: 900, color: ACCENT[600], width: 6 })
-  p.text({ name: 'Presenter', x: 120, y: 930, w: 700, text: 'Jordan Ellis, Founder and CEO', font: 'inter', bold: true, size: 24, color: INK, on: ACCENT[50], lines: 1 })
-}
-
-interface Reason {
-  stat: string
-  heading: string
-  body: string
-}
-
-const REASONS: Reason[] = [
-  { stat: '62%', heading: 'Work is scattered across too many tools', body: 'Teams lose hours every week moving between apps just to find the latest version of anything.' },
-  { stat: '3.2x', heading: 'People expect software to feel simple', body: 'Customers now compare every product with the easiest one they use, and they leave when it is not.' },
-  { stat: '14 min', heading: 'Getting started takes minutes, not months', body: 'What once took a consultant and a quarter can now be running before the first meeting ends.' },
-]
-
-function reasons(doc: DocBuilder): void {
-  const p = doc.page(
-    'Three reasons',
-    { type: 'solid', color: ACCENT[50] },
-    'One reason per column. Spend about a minute on each: read the number, say what it means for a real customer, then move on. Replace the figures with your own and cite the source in the notes.',
-  )
-  wordmark(p, 120, 70, INK, ACCENT[50], ACCENT[600])
-  p.text({ name: 'Eyebrow', x: 120, y: 170, w: 800, text: 'Why now', font: 'manrope', bold: true, size: 26, color: ACCENT[700], on: ACCENT[50], spacing: 260, upper: true, lines: 1 })
-  p.text({ name: 'Title', x: 120, y: 215, w: 1500, text: 'Three shifts make this the moment', font: 'manrope', bold: true, size: 68, color: INK, on: ACCENT[50], lh: 1.1, lines: 1 })
-
-  REASONS.forEach((reason, i) => {
-    const x = 120 + i * 580
-    const card = p.rect({
-      name: `Card ${i + 1}`,
-      x,
-      y: 350,
-      w: 520,
-      h: 565,
-      fill: WHITE,
-      radius: 28,
-      shadow: { color: `${ACCENT[950]}22`, blur: 44, offsetX: 0, offsetY: 16 },
-    })
-    void card
-    p.circle({ name: `Number chip ${i + 1}`, cx: x + 44 + 30, cy: 350 + 44 + 30, r: 30, fill: ACCENT[100] })
-    p.text({ name: `Number ${i + 1}`, x: x + 44, y: 350 + 44 + 14, w: 60, text: `0${i + 1}`, font: 'manrope', bold: true, size: 24, color: ACCENT[700], on: ACCENT[100], align: 'center', lines: 1 })
-    p.text({ name: `Stat ${i + 1}`, x: x + 44, y: 490, w: 432, text: reason.stat, font: 'manrope', bold: true, size: 108, color: ACCENT[600], on: WHITE, lh: 1, lines: 1 })
-    p.text({ name: `Heading ${i + 1}`, x: x + 44, y: 626, w: 432, text: reason.heading, font: 'manrope', bold: true, size: 36, color: INK, on: WHITE, lh: 1.25, lines: 2 })
-    p.text({ name: `Body ${i + 1}`, x: x + 44, y: 750, w: 432, text: reason.body, font: 'inter', size: 26, color: MUTED, on: WHITE, lh: 1.5 })
-  })
-  p.text({ name: 'Source', x: 120, y: 996, w: 900, text: 'Sample figures: replace them with your own and name the source.', font: 'inter', size: 20, color: MUTED, on: ACCENT[50], lines: 1 })
-  pageNumber(p, 2, MUTED, ACCENT[50])
-}
-
-function closing(doc: DocBuilder): void {
-  const p = doc.page(
-    'Closing',
-    { type: 'solid', color: ACCENT[600] },
-    'Finish with the ask in one sentence, then stop talking. Leave this slide up during questions so people can write down how to reach you.',
-  )
-  p.path({ name: 'Decor circle', d: circleInPage(1560, 540, 640, PAGE), fill: ACCENT[700], locked: true })
-  p.path({ name: 'Decor rings', d: [470, 540].map((r) => ringInPage(1560, 540, r, r - 3, PAGE)).join(' '), fill: ACCENT[400], opacity: 0.6, locked: true })
-  p.circle({ name: 'Photo ring', cx: 1560, cy: 540, r: 300, fill: ACCENT[50] })
-  avatarBackdrop(p, { name: 'Team photo backdrop', cx: 1560, cy: 540, d: 560, bg: [ACCENT[200], ACCENT[300]], figure: ACCENT[50] })
-  p.placeholder({ name: 'Team photo', x: 1280, y: 260, w: 560, h: 560, mask: 'circle' })
-  p.star({ name: 'Sparkle', cx: 1290, cy: 250, size: 70, points: 4, innerRatio: 0.22, fill: GOLD })
-
-  wordmark(p, 120, 100, WHITE, ACCENT[600], ACCENT[50])
-  p.text({ name: 'Title', x: 120, y: 330, w: 1000, text: 'Thank you', font: 'manrope', bold: true, size: 150, color: WHITE, on: ACCENT[600], lh: 1, lines: 1 })
-  p.text({ name: 'Subtitle', x: 120, y: 540, w: 880, text: 'Let us build what comes next, together.', font: 'inter', size: 40, color: WHITE, on: ACCENT[600], lh: 1.35, lines: 1 })
-  const rows: { icon: 'mail' | 'globe' | 'phone'; text: string }[] = [
-    { icon: 'mail', text: 'hello@yourcompany.com' },
-    { icon: 'globe', text: 'yourcompany.com' },
-    { icon: 'phone', text: '+1 555 0100' },
-  ]
-  rows.forEach((row, i) => {
-    const y = 730 + i * 80
-    p.icon({ name: `${row.icon} icon`, icon: row.icon, x: 120, y, size: 44, color: WHITE, width: 3 })
-    p.text({ name: `Contact ${i + 1}`, x: 190, y: y + 4, w: 700, text: row.text, font: 'manrope', bold: true, size: 34, color: WHITE, on: ACCENT[600], lines: 1 })
-  })
-  pageNumber(p, 3, WHITE, ACCENT[600])
+function logo(p: PageBuilder, on: string, color: string, mark: string): void {
+  p.rect({ name: 'Logo mark', x: 96, y: 84, w: 40, h: 40, fill: mark, radius: 12 })
+  p.text({ name: 'Company name', x: 150, y: 88, w: 500, text: 'Fieldnote', font: 'archivo', bold: true, size: 28, color, on, lines: 1 })
 }
 
 export const pitchDeck: TemplateDesign = {
   slug: 'modern-pitch-deck',
   title: 'Modern pitch deck',
   category: 'presentations',
-  tags: ['pitch', 'startup', 'slides', 'presentation', 'investor', 'business'],
-  description: 'Three clean 16:9 slides: a cover with a photo slot, a three-column "why now" slide and a closing slide with contact details.',
+  tags: ['presentation', 'pitch', 'startup', 'deck', 'business', 'investor'],
+  description: 'A calm, editorial 16:9 pitch deck in cream, ink and deep green: a cover with a photo, a slide of big numbers and a closing slide.',
   preset: 'presentation',
   featured: true,
   build() {
     const doc = new DocBuilder(this.slug, { width: W, height: H, unit: 'px', presetId: 'presentation' })
-    cover(doc)
-    reasons(doc)
-    closing(doc)
+
+    // 1. Cover.
+    const cover = doc.page('Cover', { type: 'solid', color: CREAM }, 'Say who you are and why this matters in one sentence.')
+    logo(cover, CREAM, INK, GREEN)
+    cover.text({ name: 'Eyebrow', x: 96, y: 330, w: 900, text: 'Seed round  ·  2027', font: 'archivo', bold: true, size: 26, color: GREEN, on: CREAM, spacing: 240, upper: true, lines: 1 })
+    cover.text({ name: 'Title', x: 90, y: 380, w: 1000, text: 'Ideas that move people forward.', font: 'lora', size: 118, color: INK, on: CREAM, lh: 1.05, lines: 2 })
+    cover.text({ name: 'Subtitle', x: 96, y: 790, w: 820, text: 'Fieldnote turns scattered team knowledge into one place everyone can find and trust.', font: 'archivo', size: 30, color: MUTED, on: CREAM, lh: 1.45, lines: 2 })
+    cover.text({ name: 'Presenter', x: 96, y: 950, w: 900, text: 'Jordan Ellis, founder and CEO', font: 'archivo', bold: true, size: 24, color: INK, on: CREAM, lines: 1 })
+    photoBackdrop(cover, { name: 'Cover photo stand-in', box: { x: 1180, y: 84, w: 644, h: 912 }, shape: { kind: 'rect', radius: 32 }, tones: { sky: ['#e3ece4', '#c7dccd'], sun: '#f5f0e6', hillFar: '#6d9c80', hillNear: '#1d6b4f' } })
+    cover.placeholder({ name: 'Cover photo', x: 1180, y: 84, w: 644, h: 912, mask: 'rounded', maskRadius: 0.05 })
+    cover.circle({ name: 'Accent dot', cx: 1180, cy: 860, r: 74, fill: GREEN })
+    cover.icon({ name: 'Accent arrow', icon: 'arrowRight', x: 1146, y: 826, size: 68, color: CREAM, width: 2.6 })
+
+    // 2. Why now: three numbers.
+    const why = doc.page('Why now', { type: 'solid', color: CREAM }, 'Three facts that make this the right moment. Replace the sample figures with your own and name the source.')
+    logo(why, CREAM, INK, GREEN)
+    why.text({ name: 'Eyebrow', x: 96, y: 220, w: 900, text: 'Why now', font: 'archivo', bold: true, size: 26, color: GREEN, on: CREAM, spacing: 240, upper: true, lines: 1 })
+    why.text({ name: 'Title', x: 92, y: 262, w: 1500, text: 'Three shifts make this the moment', font: 'lora', size: 76, color: INK, on: CREAM, lines: 1 })
+    const stats: { icon: IconName; value: string; label: string; text: string }[] = [
+      { icon: 'briefcase', value: '62%', label: 'Work is scattered across too many tools', text: 'Teams lose hours every week looking for the latest version of anything.' },
+      { icon: 'user', value: '3.2×', label: 'People expect software to feel simple', text: 'They compare every product with the easiest one they use.' },
+      { icon: 'clock', value: '14 min', label: 'Getting started takes minutes', text: 'What once took a consultant can now run before the first meeting ends.' },
+    ]
+    stats.forEach((s, i) => {
+      const x = 96 + i * 584
+      why.rect({ name: `Card ${i + 1}`, x, y: 440, w: 552, h: 480, fill: CARD, radius: 28 })
+      why.circle({ name: `Icon disc ${i + 1}`, cx: x + 76, cy: 516, r: 36, fill: PALE })
+      why.icon({ name: `Icon ${i + 1}`, icon: s.icon, x: x + 56, y: 496, size: 40, color: GREEN, width: 2 })
+      why.text({ name: `Value ${i + 1}`, x: x + 40, y: 580, w: 480, text: s.value, font: 'archivo', bold: true, size: 110, color: GREEN, on: CARD, lh: 1, lines: 1 })
+      why.text({ name: `Label ${i + 1}`, x: x + 40, y: 712, w: 470, text: s.label, font: 'archivo', bold: true, size: 30, color: INK, on: CARD, lh: 1.25 })
+      why.text({ name: `Text ${i + 1}`, x: x + 40, y: 800, w: 470, text: s.text, font: 'archivo', size: 23, color: MUTED, on: CARD, lh: 1.45, lines: 2 })
+    })
+    why.text({ name: 'Source', x: 96, y: 976, w: 1200, text: 'Sample figures: replace them with your own and name the source.', font: 'archivo', size: 20, color: MUTED, on: CREAM, lines: 1 })
+
+    // 3. Thank you.
+    const end = doc.page('Thank you', { type: 'solid', color: NIGHT }, 'Close with how to reach you.')
+    logo(end, NIGHT, CREAM, PALE)
+    end.text({ name: 'Title', x: 90, y: 320, w: 1100, text: 'Thank you', font: 'lora', size: 170, color: CREAM, on: NIGHT, lh: 1, lines: 1 })
+    end.text({ name: 'Subtitle', x: 96, y: 520, w: 900, text: 'Let’s build what comes next, together.', font: 'archivo', size: 36, color: PALE, on: NIGHT, lines: 1 })
+    const contacts: { icon: IconName; text: string }[] = [
+      { icon: 'mail', text: 'hello@fieldnote.example' },
+      { icon: 'globe', text: 'fieldnote.example' },
+      { icon: 'phone', text: '+1 555 0100' },
+    ]
+    contacts.forEach((c, i) => {
+      end.icon({ name: `${c.text} icon`, icon: c.icon, x: 96, y: 680 + i * 70, size: 34, color: PALE, width: 2 })
+      end.text({ name: c.text, x: 150, y: 682 + i * 70, w: 800, text: c.text, font: 'archivo', bold: true, size: 30, color: CREAM, on: NIGHT, lines: 1 })
+    })
+    avatarBackdrop(end, { name: 'Portrait stand-in', cx: 1550, cy: 520, d: 540, bg: ['#2c5a47', '#1d6b4f'], figure: '#dfe9e1' })
+    end.placeholder({ name: 'Portrait', x: 1280, y: 250, w: 540, h: 540, mask: 'circle' })
+    end.circle({ name: 'Ring', cx: 1550, cy: 520, r: 300, fill: '#00000000', stroke: GREEN, strokeWidth: 3 })
     return doc
   },
 }

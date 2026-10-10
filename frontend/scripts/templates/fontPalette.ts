@@ -21,6 +21,10 @@ export interface FontPick {
 
 export const FONT_PICKS = {
   anton: { family: 'Anton', id: 'anton', category: 'sans-serif', weights: [400] },
+  archivo: { family: 'Archivo', id: 'archivo', category: 'sans-serif', weights: [400, 700] },
+  lora: { family: 'Lora', id: 'lora', category: 'serif', weights: [400, 700], italic: true },
+  oswald: { family: 'Oswald', id: 'oswald', category: 'sans-serif', weights: [400, 700] },
+  pinyon: { family: 'Pinyon Script', id: 'pinyon-script', category: 'handwriting', weights: [400] },
   bebas: { family: 'Bebas Neue', id: 'bebas-neue', category: 'sans-serif', weights: [400] },
   crimson: { family: 'Crimson Text', id: 'crimson-text', category: 'serif', weights: [400, 700], italic: true },
   dmSans: { family: 'DM Sans', id: 'dm-sans', category: 'sans-serif', weights: [400, 700] },

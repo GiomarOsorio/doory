@@ -1,49 +1,44 @@
 import { DocBuilder } from '../kit'
-import { raysInPage } from '../geometry'
-import { INK, PALETTES, WHITE } from '../palette'
 import type { TemplateDesign } from '../registry'
 
-/** This design's own palette (see ../palette.ts). */
-const ACCENT = PALETTES.tangerine
-
-const GOLD = '#ffd23f'
-const PAGE = { x: 0, y: 0, w: 1080, h: 1080 }
+// Editorial black and white with one loud accent: one giant word, one sticker, one button.
+const PAPER = '#f3efe7'
+const INK = '#141414'
+const ACCENT = '#ff5a1f'
+const MUTED = '#5b5550'
 
 export const saleAnnouncement: TemplateDesign = {
   slug: 'bold-sale-announcement',
   title: 'Bold sale announcement',
   category: 'social-media',
-  tags: ['sale', 'instagram', 'promo', 'discount', 'shop'],
-  description: 'A loud, high-contrast sale post: giant headline, starburst discount badge and a clear call to action.',
+  tags: ['sale', 'instagram', 'promo', 'discount', 'shop', 'minimal'],
+  description: 'An editorial sale post: one giant word, a round discount sticker in a single loud accent and a clear button.',
   preset: 'instagram-post',
   featured: true,
   build() {
     const doc = new DocBuilder(this.slug, { width: 1080, height: 1080, unit: 'px', presetId: 'instagram-post' })
-    const p = doc.page('Sale', { type: 'solid', color: ACCENT[600] })
+    const p = doc.page('Sale', { type: 'solid', color: PAPER })
 
-    // Backdrop: rays that fan out from the badge, locked so they never get in the way of editing.
-    p.path({ name: 'Sunburst rays', d: raysInPage(860, 760, 7.5, PAGE, 3), fill: ACCENT[700], locked: true })
+    // Masthead.
+    p.text({ name: 'Eyebrow', x: 64, y: 64, w: 480, text: 'End of season', font: 'archivo', bold: true, size: 26, color: INK, on: PAPER, spacing: 220, upper: true, lines: 1 })
+    p.text({ name: 'Channel', x: 536, y: 64, w: 480, text: 'Online & in store', font: 'archivo', size: 26, color: INK, on: PAPER, spacing: 120, upper: true, align: 'right', lines: 1 })
+    p.line({ name: 'Masthead rule', x1: 64, y1: 118, x2: 1016, y2: 118, color: INK, width: 3 })
 
-    // Eyebrow pill.
-    p.rect({ name: 'Eyebrow pill', x: 70, y: 64, w: 330, h: 60, fill: INK, radius: 30 })
-    p.text({ name: 'Eyebrow', x: 70, y: 64 + 15, w: 330, text: 'End of season', font: 'dmSans', bold: true, size: 25, color: ACCENT[50], on: INK, align: 'center', spacing: 160, upper: true, lines: 1 })
+    // The word.
+    p.text({ name: 'Headline', x: 46, y: 132, w: 990, text: 'SALE', font: 'anton', size: 500, color: INK, on: PAPER, lh: 1, lines: 1 })
 
-    // Headline and supporting line.
-    p.text({ name: 'Headline', x: 60, y: 140, w: 960, text: 'SALE', font: 'anton', size: 540, color: ACCENT[50], on: [ACCENT[600], ACCENT[700]], lh: 1, lines: 1 })
-    p.text({ name: 'Tagline', x: 70, y: 700, w: 560, text: 'Fresh finds for every wardrobe, all marked down.', font: 'dmSans', bold: true, size: 40, color: WHITE, on: [ACCENT[600], ACCENT[700]], lh: 1.2, lines: 2 })
+    // Sticker in the accent, tilted like it was slapped on.
+    p.circle({ name: 'Sticker', cx: 820, cy: 690, r: 176, fill: ACCENT, angle: -12 })
+    p.text({ name: 'Sticker intro', x: 680, y: 586, w: 280, text: 'Up to', font: 'archivo', bold: true, size: 30, color: INK, on: ACCENT, align: 'center', spacing: 200, upper: true, angle: -12, lines: 1 })
+    p.text({ name: 'Sticker value', x: 660, y: 618, w: 320, text: '50%', font: 'anton', size: 150, color: INK, on: ACCENT, align: 'center', lh: 1, angle: -12, lines: 1 })
+    p.text({ name: 'Sticker label', x: 680, y: 772, w: 280, text: 'Off everything', font: 'archivo', bold: true, size: 24, color: INK, on: ACCENT, align: 'center', spacing: 160, upper: true, angle: -12, lines: 1 })
 
-    // Footer.
-    p.rect({ name: 'Footer band', x: 0, y: 900, w: 1080, h: 180, fill: ACCENT[50], locked: true })
-    p.text({ name: 'Dates', x: 70, y: 930, w: 560, text: 'Saturday 14 – Sunday 15 June', font: 'dmSans', bold: true, size: 32, color: INK, on: ACCENT[50], lines: 1 })
-    p.text({ name: 'Website', x: 70, y: 980, w: 560, text: 'yourstore.com  ·  In store and online', font: 'dmSans', size: 26, color: '#5c5155', on: ACCENT[50], lines: 1 })
-    p.rect({ name: 'Button', x: 700, y: 935, w: 310, h: 90, fill: ACCENT[600], radius: 45 })
-    p.text({ name: 'Button label', x: 700, y: 935 + 26, w: 310, text: 'Shop now', font: 'dmSans', bold: true, size: 34, color: WHITE, on: ACCENT[600], align: 'center', lines: 1 })
-
-    // Badge, last so it overlaps the footer band.
-    p.star({ name: 'Badge burst', cx: 860, cy: 745, size: 350, points: 22, innerRatio: 0.9, fill: GOLD, angle: 12 })
-    p.text({ name: 'Badge intro', x: 710, y: 646, w: 300, text: 'Up to', font: 'dmSans', bold: true, size: 28, color: INK, on: GOLD, align: 'center', spacing: 160, upper: true, lines: 1 })
-    p.text({ name: 'Badge value', x: 710, y: 681, w: 300, text: '50%', font: 'anton', size: 130, color: INK, on: GOLD, align: 'center', lh: 1, lines: 1 })
-    p.text({ name: 'Badge label', x: 710, y: 805, w: 300, text: 'Off', font: 'dmSans', bold: true, size: 36, color: INK, on: GOLD, align: 'center', spacing: 200, upper: true, lines: 1 })
+    // Copy and call to action.
+    p.text({ name: 'Tagline', x: 64, y: 690, w: 520, text: 'Fresh finds for every wardrobe, marked down for one weekend only.', font: 'archivo', size: 38, color: INK, on: PAPER, lh: 1.25, lines: 3 })
+    p.rect({ name: 'Button', x: 64, y: 878, w: 380, h: 92, fill: INK, radius: 46 })
+    p.text({ name: 'Button label', x: 64, y: 878 + 27, w: 340, text: 'Shop the sale', font: 'archivo', bold: true, size: 32, color: PAPER, on: INK, align: 'center', lines: 1 })
+    p.icon({ name: 'Button arrow', icon: 'arrowRight', x: 368, y: 878 + 30, size: 32, color: ACCENT, width: 3 })
+    p.text({ name: 'Details', x: 64, y: 1000, w: 952, text: 'Sat 14 – Sun 15 June  ·  yourstore.com', font: 'archivo', size: 24, color: MUTED, on: PAPER, spacing: 40, lines: 1 })
     return doc
   },
 }

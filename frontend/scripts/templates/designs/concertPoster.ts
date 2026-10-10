@@ -1,83 +1,62 @@
-import { segmentsPath, slicedDisc } from '../geometry'
-import { DocBuilder } from '../kit'
-import { PALETTES } from '../palette'
+import { DocBuilder, circlePath } from '../kit'
 import type { TemplateDesign } from '../registry'
 
-/** This design's own palette (see ../palette.ts). */
-const ACCENT = PALETTES.synth
-
+// Type-led gig poster: the headliner dominates, the support acts and details follow in a clear hierarchy,
+// with a halftone sun for texture. Near-black, cream and one acid accent.
 const W = 1728
 const H = 2304
-const PAGE = { x: 0, y: 0, w: W, h: H }
-const CREAM = ACCENT[50]
-const NIGHT = ACCENT[950]
-const DEEP = '#0d0617'
-const SUN = { cx: 864, cy: 1130, r: 450 }
-const HORIZON = 1440
+const NIGHT = '#111014'
+const CREAM = '#f2ece0'
+const ACID = '#d7ff3d'
+const GREY = '#a9a39a'
+
+/** Dots on a grid inside a circle, growing towards its lower right: one path, so it moves as one shape. */
+function halftone(cx: number, cy: number, r: number, step: number): string {
+  const parts: string[] = []
+  for (let y = cy - r; y <= cy + r; y += step) {
+    for (let x = cx - r; x <= cx + r; x += step) {
+      const d = Math.hypot(x - cx, y - cy)
+      if (d > r) continue
+      const t = Math.min(1, Math.max(0, ((x - cx) + (y - cy)) / (2 * r) + 0.5))
+      const dot = step * (0.08 + 0.42 * t)
+      parts.push(circlePath(x, y, dot))
+    }
+  }
+  return parts.join(' ')
+}
 
 export const concertPoster: TemplateDesign = {
   slug: 'night-bloom-concert-poster',
   title: 'Night Bloom concert poster',
   category: 'posters',
-  tags: ['poster', 'concert', 'festival', 'music', 'retro', 'event', 'print'],
-  description: 'A retro sunset festival poster for 18 x 24 in print: striped sun, perspective floor and a clear line-up.',
+  tags: ['poster', 'concert', 'festival', 'music', 'gig', 'event', 'print'],
+  description: 'A type-led gig poster for 18 x 24 in print: the headliner huge, the support acts and details in a clear hierarchy, and a halftone sun.',
   preset: '',
   featured: true,
   build() {
     const doc = new DocBuilder(this.slug, { width: W, height: H, unit: 'in' })
-    const p = doc.page('Poster', { type: 'gradient', kind: 'linear', angle: 90, stops: [{ offset: 0, color: NIGHT }, { offset: 1, color: DEEP }] })
+    const p = doc.page('Poster', { type: 'solid', color: NIGHT })
 
-    // The night sky: stars scattered with a fixed pattern.
-    const stars: ReturnType<typeof p.star>[] = []
-    let seed = 7
-    const next = (): number => {
-      seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0
-      return seed / 4294967296
-    }
-    for (let i = 0; i < 22; i++) {
-      const size = 14 + Math.round(next() * 22)
-      stars.push(p.star({ name: `Star ${i + 1}`, cx: 90 + next() * (W - 180), cy: 700 + next() * 660 - (i % 3) * 120, size, points: 4, innerRatio: 0.2, fill: CREAM, opacity: 0.35 + next() * 0.5 }))
-    }
-    p.group('Stars', stars, { locked: true })
+    // Texture first, so everything else sits on top of it.
+    p.path({ name: 'Halftone sun', d: halftone(1200, 1390, 470, 36), fill: ACID, locked: true })
 
-    // The sun, sliced by stripes that grow towards the horizon, and the floor it sinks into.
-    p.path({
-      name: 'Sun',
-      d: slicedDisc(SUN.cx, SUN.cy, SUN.r, [[1215, 1225], [1262, 1276], [1312, 1330], [1366, 1388], [1420, 1446]], HORIZON, PAGE),
-      fill: { angle: 90, stops: [[0, '#ffd23f'], [0.5, '#ff8a5b'], [1, ACCENT[600]]] },
-      locked: true,
-    })
-    const floor: [[number, number], [number, number]][] = []
-    for (const y of [1460, 1488, 1522, 1566, 1626, 1704]) floor.push([[0, y], [W, y]])
-    for (let k = -9; k <= 9; k++) floor.push([[864 + k * 40, HORIZON], [864 + k * 300, 1730]])
-    p.path({ name: 'Floor grid', d: segmentsPath(floor, { x: 0, y: HORIZON, w: W, h: 290 }), stroke: ACCENT[400], strokeWidth: 3, opacity: 0.75, locked: true })
-    p.line({ name: 'Horizon', x1: 0, y1: HORIZON, x2: W, y2: HORIZON, color: ACCENT[300], width: 4, locked: true })
+    // Top line.
+    p.text({ name: 'Festival', x: 110, y: 110, w: 900, text: 'Night Bloom Festival', font: 'archivo', bold: true, size: 46, color: CREAM, on: NIGHT, spacing: 240, upper: true, lines: 1 })
+    p.text({ name: 'Edition', x: 1018, y: 110, w: 600, text: 'Vol. 04', font: 'archivo', size: 46, color: CREAM, on: NIGHT, spacing: 240, upper: true, align: 'right', lines: 1 })
+    p.line({ name: 'Top rule', x1: 110, y1: 190, x2: 1618, y2: 190, color: CREAM, width: 4 })
 
-    // Header.
-    p.text({ name: 'Dates', x: 120, y: 118, w: 760, text: 'Fri 13 – Sun 15 June', font: 'josefin', bold: true, size: 38, color: ACCENT[200], on: NIGHT, spacing: 200, upper: true, lines: 1 })
-    p.text({ name: 'Ages', x: W - 120 - 760, y: 118, w: 760, text: 'All ages  ·  Rain or shine', font: 'josefin', bold: true, size: 38, color: ACCENT[200], on: NIGHT, align: 'right', spacing: 200, upper: true, lines: 1 })
-    p.line({ name: 'Header rule', x1: 120, y1: 200, x2: W - 120, y2: 200, color: ACCENT[400], width: 3 })
-    p.text({ name: 'Title', x: 60, y: 232, w: W - 120, text: 'Night Bloom', font: 'bebas', size: 340, color: CREAM, on: NIGHT, align: 'center', lh: 1, upper: true, lines: 1 })
-    p.text({ name: 'Subtitle', x: 120, y: 585, w: W - 240, text: 'Three nights of live music under the open sky', font: 'josefin', bold: true, size: 36, color: ACCENT[200], on: NIGHT, align: 'center', spacing: 240, upper: true, lines: 1 })
+    // Headliner.
+    p.text({ name: 'Headliner', x: 96, y: 240, w: 1540, text: 'Marlow & the Echoes', font: 'anton', size: 330, color: CREAM, on: NIGHT, lh: 0.92, upper: true, lines: 2 })
 
-    // Line-up.
-    p.text({ name: 'Lineup label', x: 120, y: 1775, w: W - 240, text: 'Line-up', font: 'josefin', bold: true, size: 32, color: ACCENT[300], on: DEEP, align: 'center', spacing: 500, upper: true, lines: 1 })
-    p.text({ name: 'Headliner', x: 120, y: 1822, w: W - 240, text: 'Marlow & The Echoes', font: 'bebas', size: 150, color: CREAM, on: DEEP, align: 'center', lh: 1, upper: true, lines: 1 })
-    p.text({ name: 'Main acts', x: 120, y: 1974, w: W - 240, text: 'Paper Tigers  ·  Neon Orchard  ·  Velvet Static', font: 'bebas', size: 82, color: ACCENT[200], on: DEEP, align: 'center', spacing: 60, lh: 1, upper: true, lines: 1 })
-    p.text({ name: 'More acts', x: 120, y: 2068, w: W - 240, text: 'Ruby Lane  ·  Hollow Pines  ·  The Late Flowers  ·  and more to be announced', font: 'josefin', size: 30, color: ACCENT[200], on: DEEP, align: 'center', spacing: 80, lines: 1 })
+    // Support acts.
+    p.text({ name: 'With', x: 110, y: 930, w: 900, text: 'with', font: 'lora', italic: true, size: 70, color: ACID, on: NIGHT, lines: 1 })
+    p.text({ name: 'Support acts', x: 110, y: 1020, w: 1000, text: 'Paper Tigers\nNeon Orchard\nVelvet Static', font: 'archivo', bold: true, size: 96, color: CREAM, on: NIGHT, lh: 1.08, upper: true, lines: 3 })
 
-    // Footer.
-    p.line({ name: 'Footer rule', x1: 120, y1: 2142, x2: W - 120, y2: 2142, color: ACCENT[400], width: 3 })
-    const columns = [
-      { label: 'Where', value: 'Riverside Park, Main Lawn', align: 'left' as const },
-      { label: 'Gates', value: 'Open daily from 4 PM', align: 'center' as const },
-      { label: 'Tickets', value: 'From $45 at yourfestival.com', align: 'right' as const },
-    ]
-    columns.forEach((col, i) => {
-      const x = 120 + i * 496
-      p.text({ name: `${col.label} label`, x, y: 2160, w: 496, text: col.label, font: 'josefin', bold: true, size: 22, color: ACCENT[400], on: DEEP, align: col.align, spacing: 300, upper: true, lines: 1 })
-      p.text({ name: `${col.label} value`, x, y: 2196, w: 496, text: col.value, font: 'josefin', bold: true, size: 28, color: CREAM, on: DEEP, align: col.align, lines: 1 })
-    })
+    // Dates and details.
+    p.line({ name: 'Bottom rule', x1: 110, y1: 1880, x2: 1618, y2: 1880, color: CREAM, width: 4 })
+    p.text({ name: 'Dates', x: 96, y: 1920, w: 900, text: '13–15.06', font: 'anton', size: 250, color: ACID, on: NIGHT, lh: 1, lines: 1 })
+    p.text({ name: 'Details', x: 1018, y: 1940, w: 600, text: 'Riverside Park\nGates 4 PM\nTickets from $45', font: 'archivo', bold: true, size: 50, color: CREAM, on: NIGHT, lh: 1.3, align: 'right', lines: 3 })
+    p.text({ name: 'Website', x: 1018, y: 2160, w: 600, text: 'nightbloom.example', font: 'archivo', size: 40, color: GREY, on: NIGHT, align: 'right', lines: 1 })
     return doc
   },
 }
