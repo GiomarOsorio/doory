@@ -1,0 +1,208 @@
+{
+  "version": 1,
+  "templates": [
+    {
+      "slug": "bold-sale-announcement",
+      "title": "Bold sale announcement",
+      "category": "social-media",
+      "tags": [
+        "sale",
+        "instagram",
+        "promo",
+        "discount",
+        "shop"
+      ],
+      "description": "A loud, high-contrast sale post: giant headline, starburst discount badge and a clear call to action.",
+      "preset": "instagram-post",
+      "is_featured": true,
+      "fonts": [
+        "Anton",
+        "DM Sans"
+      ]
+    },
+    {
+      "slug": "serif-quote-card",
+      "title": "Serif quote card",
+      "category": "social-media",
+      "tags": [
+        "quote",
+        "instagram",
+        "testimonial",
+        "typography",
+        "minimal"
+      ],
+      "description": "An elegant centred quote with a round author photo, drawn in classic serif italics.",
+      "preset": "instagram-post",
+      "is_featured": false,
+      "fonts": [
+        "DM Sans",
+        "Playfair Display"
+      ]
+    },
+    {
+      "slug": "rooftop-event-story",
+      "title": "Rooftop event story",
+      "category": "social-media",
+      "tags": [
+        "story",
+        "event",
+        "instagram",
+        "party",
+        "music",
+        "invitation"
+      ],
+      "description": "A vertical story for a sunset event: an arched photo slot in front of a glowing sun, the date and a call to action.",
+      "preset": "instagram-story",
+      "is_featured": false,
+      "fonts": [
+        "DM Sans",
+        "Playfair Display"
+      ]
+    },
+    {
+      "slug": "modern-pitch-deck",
+      "title": "Modern pitch deck",
+      "category": "presentations",
+      "tags": [
+        "pitch",
+        "startup",
+        "slides",
+        "presentation",
+        "investor",
+        "business"
+      ],
+      "description": "Three clean 16:9 slides: a cover with a photo slot, a three-column \"why now\" slide and a closing slide with contact details.",
+      "preset": "presentation",
+      "is_featured": true,
+      "fonts": [
+        "Inter",
+        "Manrope"
+      ]
+    },
+    {
+      "slug": "night-bloom-concert-poster",
+      "title": "Night Bloom concert poster",
+      "category": "posters",
+      "tags": [
+        "poster",
+        "concert",
+        "festival",
+        "music",
+        "retro",
+        "event",
+        "print"
+      ],
+      "description": "A retro sunset festival poster for 18 x 24 in print: striped sun, perspective floor and a clear line-up.",
+      "preset": "",
+      "is_featured": true,
+      "fonts": [
+        "Bebas Neue",
+        "Josefin Sans"
+      ]
+    },
+    {
+      "slug": "grand-opening-flyer",
+      "title": "Grand opening flyer",
+      "category": "flyers",
+      "tags": [
+        "flyer",
+        "grand opening",
+        "cafe",
+        "shop",
+        "local business",
+        "print"
+      ],
+      "description": "A US Letter flyer for a new shop or cafe: striped awning, big serif headline, photo slot, details and a coupon bar.",
+      "preset": "letter",
+      "is_featured": false,
+      "fonts": [
+        "Playfair Display",
+        "Poppins"
+      ]
+    },
+    {
+      "slug": "botanical-celebration-invitation",
+      "title": "Botanical celebration invitation",
+      "category": "invitations",
+      "tags": [
+        "invitation",
+        "wedding",
+        "birthday",
+        "party",
+        "elegant",
+        "botanical",
+        "print",
+        "save the date"
+      ],
+      "description": "A 5 x 7 in invitation with a double frame, hand-drawn leaf sprigs and script names. Works for a wedding, an engagement or a birthday.",
+      "preset": "",
+      "is_featured": false,
+      "fonts": [
+        "Crimson Text",
+        "Great Vibes",
+        "Playfair Display"
+      ]
+    },
+    {
+      "slug": "modern-resume",
+      "title": "Modern resume",
+      "category": "resumes",
+      "tags": [
+        "resume",
+        "cv",
+        "a4",
+        "job",
+        "career",
+        "professional",
+        "print"
+      ],
+      "description": "A two-column A4 resume: a dark sidebar with photo, contact, skills and languages, and a timeline of experience.",
+      "preset": "a4",
+      "is_featured": false,
+      "fonts": [
+        "Inter",
+        "Montserrat"
+      ]
+    },
+    {
+      "slug": "bold-youtube-thumbnail",
+      "title": "Bold YouTube thumbnail",
+      "category": "youtube",
+      "tags": [
+        "youtube",
+        "thumbnail",
+        "video",
+        "challenge",
+        "vlog",
+        "creator"
+      ],
+      "description": "A punchy 1280 x 720 thumbnail: giant outlined number, a tilted caption and a framed photo slot for your face.",
+      "preset": "youtube-thumbnail",
+      "is_featured": false,
+      "fonts": [
+        "Anton",
+        "Montserrat"
+      ]
+    },
+    {
+      "slug": "clean-business-card",
+      "title": "Clean business card",
+      "category": "business",
+      "tags": [
+        "business card",
+        "print",
+        "contact",
+        "networking",
+        "minimal",
+        "qr code"
+      ],
+      "description": "A 3.5 x 2 in business card, front and back: name, role and contact rows on the front, logo and a QR code on the back.",
+      "preset": "business-card",
+      "is_featured": false,
+      "fonts": [
+        "Inter",
+        "Manrope"
+      ]
+    }
+  ]
+}

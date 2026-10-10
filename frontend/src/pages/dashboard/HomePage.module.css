@@ -1,0 +1,81 @@
+.chips {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(12.5rem, 1fr));
+  gap: var(--space-3);
+}
+
+.chips > li {
+  display: flex;
+}
+
+.chip {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  color: var(--color-text);
+  font-weight: 600;
+  box-shadow: var(--shadow-sm);
+  transition:
+    border-color var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out);
+}
+
+.chip:hover {
+  border-color: var(--ink);
+  box-shadow: 3px 3px 0 var(--pastel-pink);
+  text-decoration: none;
+  transform: translate(-1px, -2px) rotate(-0.6deg);
+}
+
+.chipIcon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 2.5rem;
+  height: 2.5rem;
+  border: 1.5px solid var(--ink);
+  border-radius: 50%;
+  background: var(--pastel-butter);
+  color: var(--ink);
+}
+
+.chips > li:nth-child(5n + 2) .chipIcon {
+  background: var(--pastel-pink);
+}
+
+.chips > li:nth-child(5n + 3) .chipIcon {
+  background: var(--pastel-mint);
+}
+
+.chips > li:nth-child(5n + 4) .chipIcon {
+  background: var(--violet-100);
+}
+
+.chips > li:nth-child(5n + 5) .chipIcon {
+  background: var(--pastel-sky);
+}
+
+.chipText {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.chipSize {
+  font-size: var(--text-xs);
+  font-weight: 500;
+  color: var(--color-text-muted);
+}
+
+.more {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-weight: 600;
+}

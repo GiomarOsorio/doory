@@ -1,0 +1,83 @@
+.banner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.text {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+}
+
+.text svg {
+  flex: none;
+}
+
+.banner[data-tone='warning'] .text {
+  color: var(--color-warning);
+}
+
+.text strong {
+  color: var(--color-text);
+  font-weight: 600;
+}
+
+.banner[data-tone='warning'] .text strong {
+  color: inherit;
+}
+
+.label {
+  white-space: nowrap;
+}
+
+/* Beside the editor's own actions the message gets no room on small windows: the icon stays and the text is read by assistive technology only. */
+.banner[data-tone='info'] .label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+
+@media (min-width: 1100px) {
+  .banner[data-tone='info'] .label {
+    position: static;
+    width: auto;
+    height: auto;
+    overflow: visible;
+    clip-path: none;
+  }
+}
+
+@media (max-width: 639px) {
+  .banner[data-tone='info'] .text {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+
+  .banner[data-tone='warning'] .label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+}
+
+.extra {
+  display: none;
+}
+
+@media (min-width: 1280px) {
+  .extra {
+    display: inline;
+  }
+}

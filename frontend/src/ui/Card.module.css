@@ -1,0 +1,19 @@
+.card {
+  background: var(--color-surface);
+  border: 1.5px solid var(--ink);
+  border-radius: var(--radius-xl);
+  box-shadow: 4px 4px 0 var(--pastel-butter);
+  transition:
+    border-color var(--duration-base) var(--ease-out),
+    box-shadow var(--duration-base) var(--ease-out),
+    transform var(--duration-base) var(--ease-out);
+}
+
+.card[data-padded] {
+  padding: var(--space-5);
+}
+
+.card[data-interactive]:hover {
+  box-shadow: 5px 5px 0 var(--pastel-pink);
+  transform: translate(-1px, -2px);
+}

@@ -1,0 +1,9 @@
+.link {
+  display: inline-flex;
+  border-radius: var(--radius-md);
+  transition: transform var(--duration-fast) var(--ease-out);
+}
+
+.link:hover {
+  transform: scale(1.06);
+}
