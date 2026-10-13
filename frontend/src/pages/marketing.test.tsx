@@ -197,14 +197,14 @@ describe('"Your local designs" strip', () => {
   it('is hidden when the browser has no local designs', async () => {
     renderApp('/')
     await screen.findByRole('heading', { level: 1 })
-    expect(screen.queryByText('Pick up where you left off')).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Pick up where you left off' })).not.toBeInTheDocument()
   })
 
   it('lists local designs so guests can come back, and deletes after confirmation', async () => {
     const kept = await createLocalDesign({ title: 'Birthday card', document: createBlankDocument(480, 672) })
     await createLocalDesign({ title: 'Flyer', document: createBlankDocument(528, 816) })
     renderApp('/')
-    expect(await screen.findByText('Pick up where you left off')).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Pick up where you left off' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /Birthday card/ })).toHaveAttribute('href', `/local/${kept.id}`)
     await userEvent.click(screen.getByRole('button', { name: 'Delete Birthday card' }))
     const dialog = await screen.findByRole('alertdialog', { name: 'Delete “Birthday card”?' })

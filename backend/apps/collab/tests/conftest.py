@@ -44,6 +44,13 @@ def pytest_pyfunc_call(pyfuncitem):
     return None
 
 
+@pytest.fixture(autouse=True)
+def keep_the_test_connection(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Channels closes "obsolete" connections around every consumer call. Inside the test's transaction that closes the
+    shared PostgreSQL connection for good (SQLite in memory ignores it), so skip it, as Django's test client does."""
+    monkeypatch.setattr("channels.db.close_old_connections", lambda: None)
+
+
 def build_app(registry: RoomRegistry) -> Any:
     return RealtimeOriginValidator(
         AuthMiddlewareStack(

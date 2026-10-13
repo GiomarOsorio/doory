@@ -54,10 +54,10 @@ def test_there_are_exactly_ten_templates_with_unique_slugs(entries):
     assert len({entry["title"] for entry in entries}) == 10
 
 
-def test_every_category_is_a_standard_category_and_three_templates_are_featured(entries):
+def test_every_category_is_a_standard_category_and_four_templates_are_featured(entries):
     standard = {slug for slug, _, _ in CATEGORIES}
     assert {entry["category"] for entry in entries} <= standard
-    assert sum(1 for entry in entries if entry.get("is_featured")) == 3
+    assert sum(1 for entry in entries if entry.get("is_featured")) == 4
 
 
 def test_every_document_passes_the_server_validator_within_the_limits(entries):
@@ -138,11 +138,9 @@ def test_photo_slots_are_unfilled_placeholders_and_no_image_has_a_remote_source(
                     assert "qr" in obj, "only generated QR codes are images"
                     assert "src" not in obj
     assert with_slots == {
-        "serif-quote-card",
         "rooftop-event-story",
         "modern-pitch-deck",
         "grand-opening-flyer",
-        "modern-resume",
         "bold-youtube-thumbnail",
     }
 
@@ -163,7 +161,7 @@ def test_seeding_publishes_every_template_with_a_thumbnail_and_is_idempotent(ent
 
     assert "10 created, 0 updated, 0 kept, 0 failed" in out
     assert Template.objects.filter(is_published=True).count() == 10
-    assert Template.objects.filter(is_featured=True).count() == 3
+    assert Template.objects.filter(is_featured=True).count() == 4
     for template in Template.objects.all():
         assert template.category is not None
         assert template.thumbnail.name.endswith(".webp")
@@ -196,13 +194,13 @@ def test_the_public_api_lists_and_serves_the_templates(client):
     assert listing.status_code == 200
     assert listing.data["count"] == 10
     assert all(row["thumbnail_url"] for row in listing.data["results"])
-    assert client.get("/api/v1/templates/", {"featured": "true"}).data["count"] == 3
+    assert client.get("/api/v1/templates/", {"featured": "true"}).data["count"] == 4
     assert client.get("/api/v1/templates/", {"category": "social-media"}).data["count"] == 3
 
     detail = client.get("/api/v1/templates/modern-pitch-deck/")
     assert detail.status_code == 200
     assert detail.data["page_count"] == 3
-    assert detail.data["document"]["pages"][1]["name"] == "Three reasons"
+    assert detail.data["document"]["pages"][1]["name"] == "Why now"
     assert detail.data["preset"] == "presentation"
 
 

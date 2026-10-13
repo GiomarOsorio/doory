@@ -240,7 +240,7 @@ describe('brand kits page', () => {
     const hex = within(dialog).getByLabelText('Colour 1 hex')
     await userEvent.clear(hex)
     await userEvent.type(hex, 'zzz')
-    expect(within(dialog).getByText('Use a hex colour like #e11d48.')).toBeInTheDocument()
+    expect(within(dialog).getByText('Use a hex colour like #7a64e0.')).toBeInTheDocument()
     expect(submit).toBeDisabled()
   })
 
