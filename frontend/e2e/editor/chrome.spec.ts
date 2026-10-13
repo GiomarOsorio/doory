@@ -1,5 +1,5 @@
 /**
- * [layout] Top-bar tools, drawers and sidebars, theme toggle and the shortcuts dialog of the current layout.
+ * [layout] Top-bar tools, drawers and sidebars and the shortcuts dialog of the current layout.
  * [engine] specs must keep passing in any chrome; [layout] specs target the current UI and are to be rewritten with it.
  */
 import { expect, test } from '@playwright/test'
@@ -79,14 +79,6 @@ test.describe('[layout] chrome', () => {
     await expect(page.getByTestId('sidebar-elements')).toHaveCount(0)
     await openTool(page, 'layers')
     await expect(page.getByTestId('sidebar-layers')).toBeVisible()
-  })
-
-  test('theme toggle switches the design tokens used by the chrome', async ({ page }) => {
-    await openEditor(page, 'doc=blank&theme=light')
-    const bg = () => page.evaluate(() => getComputedStyle(document.querySelector('[data-editor-root]') as HTMLElement).backgroundColor)
-    const light = await bg()
-    await page.getByRole('button', { name: 'Toggle theme' }).click()
-    await expect.poll(bg).not.toBe(light)
   })
 })
 

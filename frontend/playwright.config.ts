@@ -2,6 +2,8 @@ import { defineConfig, devices } from '@playwright/test'
 
 export default defineConfig({
   testDir: './e2e',
+  // The specs at the top level run against a mocked API; every folder has a config of its own (`npm run e2e:<folder>`).
+  testIgnore: ['app/**', 'bg-removal/**', 'collab/**', 'comments/**', 'editor/**', 'perf/**'],
   timeout: 60_000,
   fullyParallel: false,
   reporter: [['list']],
