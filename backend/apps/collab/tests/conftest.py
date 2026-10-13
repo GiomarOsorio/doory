@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import inspect
 import uuid
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -45,10 +46,13 @@ def pytest_pyfunc_call(pyfuncitem):
 
 
 @pytest.fixture(autouse=True)
-def keep_the_test_connection(monkeypatch: pytest.MonkeyPatch) -> None:
+def keep_the_test_connection() -> Iterator[None]:
     """Channels closes "obsolete" connections around every consumer call. Inside the test's transaction that closes the
-    shared PostgreSQL connection for good (SQLite in memory ignores it), so skip it, as Django's test client does."""
-    monkeypatch.setattr("channels.db.close_old_connections", lambda: None)
+    shared PostgreSQL connection for good (SQLite in memory ignores it), so skip it, as Django's test client does.
+    A patcher of its own, so a test's `monkeypatch.undo()` keeps it."""
+    with pytest.MonkeyPatch.context() as patcher:
+        patcher.setattr("channels.db.close_old_connections", lambda: None)
+        yield
 
 
 def build_app(registry: RoomRegistry) -> Any:
