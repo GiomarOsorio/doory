@@ -209,6 +209,97 @@ docker compose exec api python manage.py sync_audio           # music and sound 
 </details>
 
 <details>
+<summary><b>Run it without Docker</b> (a Linux server with nginx and systemd)</summary>
+
+<br />
+
+Doory is three pieces: the API (Django on gunicorn), the real-time server for live co-editing (the same code on
+uvicorn) and the web app, a folder of static files that nginx serves while it forwards `/api` and `/ws` to the other
+two. The files in [`deploy/`](deploy) set this up. These steps are for Debian 12 or Ubuntu 24.04 with the checkout in
+`/opt/doory`; the paths are easy to change. You need Python 3.12, Node.js 22 (only to build the web app) and
+PostgreSQL.
+
+**1. Packages, a user and the code**
+
+```bash
+sudo apt install python3 python3-venv postgresql nginx git
+curl -fsSL https://deb.nodesource.com/setup_22.x | sudo bash - && sudo apt install nodejs
+sudo useradd --system --create-home --home-dir /var/lib/doory --shell /usr/sbin/nologin doory
+sudo mkdir /opt/doory && sudo chown doory:doory /opt/doory
+sudo -u doory git clone https://github.com/shaongitbd/doory /opt/doory
+```
+
+**2. The database**
+
+```bash
+sudo -u postgres createuser doory --pwprompt     # pick a password of letters and digits
+sudo -u postgres createdb doory --owner doory
+```
+
+**3. The API**
+
+```bash
+cd /opt/doory/backend
+sudo -u doory python3 -m venv .venv
+sudo -u doory .venv/bin/pip install -r requirements.txt
+sudo -u doory nano .env                          # paste the settings below
+```
+
+```ini
+DJANGO_SECRET_KEY=           # openssl rand -base64 48
+SITE_URL=https://design.example.com
+DJANGO_ALLOWED_HOSTS=design.example.com    # add the server's IP to try it by address
+DATABASE_URL=postgres://doory:YOUR_PASSWORD@127.0.0.1:5432/doory
+CACHE_URL=dbcache://doory_cache
+MEDIA_ROOT=/opt/doory/media
+# Plain http:// while you try it out; remove both lines once HTTPS works.
+SECURE_SSL_REDIRECT=false
+SECURE_COOKIES=false
+```
+
+Then prepare the database and add an admin account:
+
+```bash
+manage() { sudo -u doory .venv/bin/python manage.py "$@" --settings=doory.settings.prod; }
+manage migrate
+manage createcachetable
+manage collectstatic --noinput
+manage createsuperuser
+```
+
+The starter content is added with the same commands as above, e.g. `manage seed_gallery`,
+`manage sync_fonts --popular 100` and `manage seed_templates`.
+
+**4. The web app**
+
+```bash
+cd /opt/doory/frontend
+sudo -u doory npm ci && sudo -u doory npm run build    # writes frontend/dist
+```
+
+**5. Start everything**
+
+```bash
+sudo cp /opt/doory/deploy/doory-api.service /opt/doory/deploy/doory-realtime.service /etc/systemd/system/
+sudo systemctl daemon-reload && sudo systemctl enable --now doory-api doory-realtime
+sudo cp /opt/doory/deploy/nginx.conf /etc/nginx/conf.d/doory.conf    # set server_name in it
+sudo rm -f /etc/nginx/sites-enabled/default
+sudo -u doory mkdir -p /opt/doory/media       # uploads; nginx serves them from here
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+Open your domain. For HTTPS, `sudo apt install certbot python3-certbot-nginx && sudo certbot --nginx`, then remove the
+two `SECURE_` lines from `.env` and `sudo systemctl restart doory-api doory-realtime`.
+
+**Updating:** `sudo -u doory git pull`, then repeat `pip install`, `manage migrate`, `manage collectstatic --noinput` and
+`npm ci && npm run build`, and `sudo systemctl restart doory-api doory-realtime`.
+
+**Optional:** server-side PDF export needs a headless Chromium: `sudo .venv/bin/playwright install-deps chromium`, then
+`sudo -u doory .venv/bin/playwright install chromium`. Without it, set `SERVER_PDF_ENABLED=false` in `.env`.
+
+</details>
+
+<details>
 <summary><b>Develop locally</b></summary>
 
 <br />
