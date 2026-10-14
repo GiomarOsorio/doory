@@ -160,6 +160,15 @@ async function checkSlug(page: Page, slug: string, doc: DoryDocument, report: Re
       const { engine } = window.__qa!
       const out: { name: string; x: number; y: number; width: number; height: number; slack: number }[] = []
       for (const o of engine.state.doc.pages[i].objects) {
+        // A framed photo is larger than its frame and clipped to it: what shows is the frame.
+        const slot = o.slot as { cx: number; cy: number; width: number; height: number; angle: number } | undefined
+        if (slot) {
+          const rad = (slot.angle * Math.PI) / 180
+          const width = Math.abs(slot.width * Math.cos(rad)) + Math.abs(slot.height * Math.sin(rad))
+          const height = Math.abs(slot.width * Math.sin(rad)) + Math.abs(slot.height * Math.cos(rad))
+          out.push({ name: String(o.name), x: slot.cx - width / 2, y: slot.cy - height / 2, width, height, slack: 0 })
+          continue
+        }
         engine.select([o.id], engine.state.doc.pages[i].id)
         const b = engine.state.selection.bounds
         if (!b) continue

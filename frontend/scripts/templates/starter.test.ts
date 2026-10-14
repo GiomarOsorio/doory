@@ -8,7 +8,7 @@ import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { StaticCanvas } from 'fabric'
 import { createBlankDocument } from '@/lib/document'
-import type { DocObject, DoryDocument } from '@/types/document'
+import type { DocObject, DoryDocument, SlotSpec } from '@/types/document'
 import { installImageStub } from '@/editor/test/imageStub'
 import { migrateDocument } from '@/editor/engine/migrations'
 import { rotatedBounds } from '@/editor/engine/geometry'
@@ -60,10 +60,10 @@ describe('starter templates', () => {
     expect(counts).toMatchInlineSnapshot(`
       {
         "bold-sale-announcement": [
-          13,
+          11,
         ],
         "bold-youtube-thumbnail": [
-          13,
+          5,
         ],
         "botanical-celebration-invitation": [
           15,
@@ -73,12 +73,12 @@ describe('starter templates', () => {
           4,
         ],
         "grand-opening-flyer": [
-          17,
+          15,
         ],
         "modern-pitch-deck": [
-          10,
+          7,
           23,
-          13,
+          14,
         ],
         "modern-resume": [
           45,
@@ -87,7 +87,7 @@ describe('starter templates', () => {
           11,
         ],
         "rooftop-event-story": [
-          10,
+          11,
         ],
         "serif-quote-card": [
           6,
@@ -135,7 +135,9 @@ describe('starter templates', () => {
       for (const page of doc.pages) {
         const { canvas } = await rebuild(page.objects.filter((o) => o.type !== 'textbox'), doc.width, doc.height)
         for (const live of canvas.getObjects()) {
-          const box = live.getBoundingRect()
+          // A framed photo is larger than its frame and clipped to it: what shows is the frame.
+          const slot = (live as unknown as { slot?: SlotSpec }).slot
+          const box = slot ? rotatedBounds(slot.cx, slot.cy, slot.width, slot.height, slot.angle) : live.getBoundingRect()
           const name = String((live as unknown as { name?: string }).name)
           // A stroke is measured with half its width on either side of the path; that is not paint outside the page.
           const slack = (live.stroke ? live.strokeWidth / 2 : 0) + 0.6
@@ -175,7 +177,8 @@ describe('starter templates', () => {
         const centre = objectCenter(object)
         const w = Math.abs(Number(object.width ?? 0) * Number(object.scaleX ?? 1))
         const h = Math.abs(Number(object.height ?? 0) * Number(object.scaleY ?? 1))
-        const box = rotatedBounds(centre.x, centre.y, w, h, Number(object.angle ?? 0))
+        const slot = object.slot as SlotSpec | undefined
+        const box = slot ? rotatedBounds(slot.cx, slot.cy, slot.width, slot.height, slot.angle) : rotatedBounds(centre.x, centre.y, w, h, Number(object.angle ?? 0))
         expect(Number.isFinite(box.left + box.top + box.width + box.height), String(object.name)).toBe(true)
         expect(box.left, `${String(object.name)} left`).toBeGreaterThanOrEqual(-1)
         expect(box.top, `${String(object.name)} top`).toBeGreaterThanOrEqual(-1)

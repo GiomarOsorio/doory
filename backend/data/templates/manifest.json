@@ -11,9 +11,9 @@
         "promo",
         "discount",
         "shop",
-        "minimal"
+        "fashion"
       ],
-      "description": "An editorial sale post: one giant word, a round discount sticker in a single loud accent and a clear button.",
+      "description": "A split sale post: a fashion photo on the left, a giant \"Sale\" on the right, a round discount sticker across the seam and a clear button.",
       "preset": "instagram-post",
       "is_featured": true,
       "fonts": [
@@ -52,7 +52,7 @@
         "music",
         "sunset"
       ],
-      "description": "A photo-led event story at dusk: a big rounded photo, a serif title, the date, time and place, and an RSVP button inside the safe zone.",
+      "description": "A photo-led event story: friends at sunset fading into a dusk panel with a serif title, the date, time and place, and an RSVP button.",
       "preset": "instagram-story",
       "is_featured": true,
       "fonts": [
@@ -72,7 +72,7 @@
         "business",
         "investor"
       ],
-      "description": "A calm, editorial 16:9 pitch deck in cream, ink and deep green: a cover with a photo, a slide of big numbers and a closing slide.",
+      "description": "A calm 16:9 pitch deck in cream, ink and deep green: a cover with a photo, a slide of three numbers and a closing slide with your contacts.",
       "preset": "presentation",
       "is_featured": true,
       "fonts": [
@@ -115,7 +115,7 @@
         "print",
         "minimal"
       ],
-      "description": "A warm, minimal café opening flyer for US Letter: an arched photo, a serif headline, an opening-day offer and the details in one row.",
+      "description": "A café opening flyer for US Letter: a large coffee photo, the café name and \"Grand Opening\" in a serif, an opening-day offer and the details in one row.",
       "preset": "letter",
       "is_featured": false,
       "fonts": [
@@ -171,10 +171,10 @@
         "youtube",
         "thumbnail",
         "video",
-        "before-after",
-        "challenge"
+        "challenge",
+        "vlog"
       ],
-      "description": "A high-contrast before-and-after thumbnail: a huge number, three words, two photos and an arrow, all clear of the edges.",
+      "description": "A high-contrast challenge thumbnail: a face on the right, \"I tried it for 30 days\" in huge type on deep blue, clear of the edges.",
       "preset": "youtube-thumbnail",
       "is_featured": false,
       "fonts": [

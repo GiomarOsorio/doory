@@ -2,7 +2,9 @@
 
 The files are generated, reproducibly, by `npm run templates:build` in `frontend/`:
 `manifest.json` lists every template, `<slug>.json` is its document and `thumbs/<slug>.webp` its
-preview. The import goes through `apps.gallery.importer.import_template`, so a template is validated exactly
+preview. The photos the templates use are in `photos/`; they are copied to media storage
+(`templates/photos/<name>.webp`, where the documents point) every time the command runs. The import goes
+through `apps.gallery.importer.import_template`, so a template is validated exactly
 like one added in the admin or with `import_template`.
 
 By default the command only *adds*: a template whose slug already exists is left alone (staff may have edited,
@@ -17,6 +19,8 @@ from pathlib import Path
 from typing import Any
 
 from django.conf import settings
+from django.core.files import File
+from django.core.files.storage import default_storage
 from django.core.management import call_command
 from django.core.management.base import BaseCommand, CommandError
 
@@ -31,6 +35,9 @@ MANIFEST_VERSION = 1
 MAX_FILE_BYTES = 16 * 1024 * 1024
 SLUG = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 ENTRY_KEYS = {"slug", "title", "category", "tags", "description", "preset", "is_featured", "fonts"}
+PHOTO_NAME = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*\.webp$")
+PHOTOS_DIR = "templates/photos/"
+PHOTOS_URL = f"{settings.MEDIA_URL}{PHOTOS_DIR}"
 
 
 def _read_json(path: Path) -> Any:
@@ -86,6 +93,45 @@ def load_document(directory: Path, slug: str) -> dict[str, Any]:
     return document
 
 
+def photos_used(document: Any) -> set[str]:
+    """File names of the starter photos a document shows (image sources under `/media/templates/photos/`)."""
+    found: set[str] = set()
+    stack: list[Any] = [document]
+    while stack:
+        node = stack.pop()
+        if isinstance(node, dict):
+            src = node.get("src")
+            if isinstance(src, str) and src.startswith(PHOTOS_URL):
+                found.add(src[len(PHOTOS_URL) :])
+            stack.extend(node.values())
+        elif isinstance(node, list):
+            stack.extend(node)
+    return found
+
+
+def install_photos(directory: Path) -> tuple[int, int]:
+    """Copy `photos/*.webp` to media storage (same-size files are kept); returns (copied, kept)."""
+    folder = directory / "photos"
+    if not folder.is_dir():
+        return 0, 0
+    copied = kept = 0
+    for path in sorted(folder.iterdir()):
+        if not PHOTO_NAME.match(path.name):
+            continue
+        name = f"{PHOTOS_DIR}{path.name}"
+        if default_storage.exists(name):
+            if default_storage.size(name) == path.stat().st_size:
+                kept += 1
+                continue
+            default_storage.delete(name)
+        with path.open("rb") as handle:
+            saved = default_storage.save(name, File(handle, name=path.name))
+        if saved != name:
+            raise CommandError(f"Could not store {path.name} at {name} (the storage chose {saved}).")
+        copied += 1
+    return copied, kept
+
+
 def missing_fonts(families: set[str]) -> list[str]:
     """Families the templates use that the font catalogue lacks (their text falls back to a system font)."""
     installed = set(
@@ -121,12 +167,21 @@ class Command(BaseCommand):
         documents = {entry["slug"]: load_document(directory, entry["slug"]) for entry in entries}
 
         call_command("seed_gallery", stdout=self.stdout)
+        copied, stored = install_photos(directory)
+        if copied or stored:
+            self.stdout.write(f"Starter photos: {copied} copied, {stored} already stored.")
+        shipped = {path.name for path in (directory / "photos").glob("*.webp")}
         existing = set(Template.objects.filter(slug__in=documents).values_list("slug", flat=True))
 
         created = updated = kept = 0
         failures: list[str] = []
         for entry in entries:
             slug = entry["slug"]
+            absent = sorted(photos_used(documents[slug]) - shipped)
+            if absent:
+                failures.append(f"{slug}: missing photos {', '.join(absent)}")
+                self.stderr.write(self.style.ERROR(f"FAILED  {slug}: missing photos {', '.join(absent)}"))
+                continue
             if slug in existing and not update:
                 kept += 1
                 self.stdout.write(f"kept    {slug}")

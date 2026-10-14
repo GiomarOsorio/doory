@@ -1,9 +1,8 @@
 import { DocBuilder } from '../kit'
-import { archMask } from '../geometry'
-import { photoBackdrop } from '../decor'
 import type { TemplateDesign } from '../registry'
 
-// Warm, modern and minimal: cream paper, coffee brown, an arched photo and one caramel sticker.
+// One big coffee photo on top, the name and the news on cream underneath, the details in one row: the way café flyers
+// that people actually pin up are built. One caramel sticker carries the offer.
 const W = 816
 const H = 1056
 const CREAM = '#f4ece1'
@@ -16,39 +15,37 @@ export const grandOpeningFlyer: TemplateDesign = {
   title: 'Grand opening flyer',
   category: 'flyers',
   tags: ['flyer', 'opening', 'cafe', 'coffee', 'shop', 'print', 'minimal'],
-  description: 'A warm, minimal café opening flyer for US Letter: an arched photo, a serif headline, an opening-day offer and the details in one row.',
+  description: 'A café opening flyer for US Letter: a large coffee photo, the café name and "Grand Opening" in a serif, an opening-day offer and the details in one row.',
   preset: 'letter',
-  build() {
+  async build() {
     const doc = new DocBuilder(this.slug, { width: W, height: H, unit: 'in', presetId: 'letter' })
     const p = doc.page('Flyer', { type: 'solid', color: CREAM })
 
-    p.text({ name: 'Name', x: 0, y: 54, w: W, text: 'Corner Bloom Café', font: 'archivo', bold: true, size: 18, color: BROWN, on: CREAM, spacing: 420, upper: true, align: 'center', lines: 1 })
+    await p.photo({ name: 'Photo', file: 'cafe-latte.webp', x: 0, y: 0, w: W, h: 560, focusX: 0.45, focusY: 0.42 })
 
-    // Arched photo with the offer sticker on its shoulder.
-    photoBackdrop(p, { name: 'Photo stand-in', box: { x: 178, y: 104, w: 460, h: 470 }, shape: { kind: 'arch' }, tones: { sky: ['#f6dcc0', '#efc59c'], sun: '#fff6ea', hillFar: '#c9945f', hillNear: '#8c5a36' } })
-    p.placeholder({ name: 'Photo', x: 178, y: 104, w: 460, h: 470, mask: archMask(460, 470) })
-    p.circle({ name: 'Offer sticker', cx: 640, cy: 196, r: 84, fill: CARAMEL, angle: 10 })
-    p.text({ name: 'Offer value', x: 566, y: 152, w: 148, text: 'Free', font: 'playfair', bold: true, size: 40, color: BROWN, on: CARAMEL, align: 'center', angle: 10, lines: 1 })
-    p.text({ name: 'Offer terms', x: 566, y: 200, w: 148, text: 'coffee for our first 100 guests', font: 'archivo', bold: true, size: 13, color: BROWN, on: CARAMEL, align: 'center', lh: 1.2, angle: 10, lines: 2 })
+    // The offer sticker on the photo's lower edge.
+    p.circle({ name: 'Offer sticker', cx: 668, cy: 556, r: 86, fill: CARAMEL, angle: 8 })
+    p.text({ name: 'Offer value', x: 592, y: 510, w: 152, text: 'Free', font: 'playfair', bold: true, size: 42, color: BROWN, on: CARAMEL, align: 'center', angle: 8, lines: 1 })
+    p.text({ name: 'Offer terms', x: 592, y: 560, w: 152, text: 'coffee for the first 100 guests', font: 'archivo', bold: true, size: 13, color: BROWN, on: CARAMEL, align: 'center', lh: 1.2, angle: 8, lines: 2 })
 
-    // Headline and copy.
-    p.text({ name: 'Headline', x: 0, y: 604, w: W, text: 'Grand', font: 'playfair', size: 108, color: BROWN, on: CREAM, align: 'center', lh: 1, lines: 1 })
-    p.text({ name: 'Headline second line', x: 0, y: 706, w: W, text: 'Opening', font: 'playfair', italic: true, size: 108, color: BROWN, on: CREAM, align: 'center', lh: 1, lines: 1 })
-    p.text({ name: 'Tagline', x: 148, y: 834, w: 520, text: 'Fresh coffee, warm pastries and a seat by the window. Come and say hello.', font: 'archivo', size: 17, color: MUTED, on: CREAM, align: 'center', lh: 1.5, lines: 2 })
+    // Name and headline.
+    p.text({ name: 'Name', x: 64, y: 604, w: 520, text: 'Corner Bloom Café', font: 'playfair', italic: true, size: 30, color: MUTED, on: CREAM, lines: 1 })
+    p.text({ name: 'Headline', x: 60, y: 646, w: 700, text: 'Grand Opening', font: 'playfair', bold: true, size: 84, color: BROWN, on: CREAM, lh: 1, lines: 1 })
+    p.text({ name: 'Tagline', x: 64, y: 752, w: 470, text: 'Fresh coffee, warm pastries and a seat by the window. Come and say hello.', font: 'archivo', size: 18, color: MUTED, on: CREAM, lh: 1.5, lines: 2 })
 
     // Details in one row.
-    p.line({ name: 'Details rule', x1: 70, y1: 912, x2: 746, y2: 912, color: BROWN, width: 1.2 })
+    p.line({ name: 'Details rule', x1: 64, y1: 860, x2: 752, y2: 860, color: BROWN, width: 1.2 })
     const columns = [
       { icon: 'calendar' as const, text: 'Saturday 12 July' },
-      { icon: 'clock' as const, text: '8 AM – 6 PM' },
+      { icon: 'clock' as const, text: '8 AM to 6 PM' },
       { icon: 'pin' as const, text: '24 Orchard Lane' },
     ]
     columns.forEach((col, i) => {
-      const x = 70 + i * 228
-      p.icon({ name: `${col.text} icon`, icon: col.icon, x, y: 942, size: 20, color: CARAMEL, width: 2 })
-      p.text({ name: col.text, x: x + 30, y: 943, w: 190, text: col.text, font: 'archivo', bold: true, size: 15, color: BROWN, on: CREAM, lines: 1 })
+      const x = 64 + i * 232
+      p.icon({ name: `${col.text} icon`, icon: col.icon, x, y: 892, size: 20, color: CARAMEL, width: 2 })
+      p.text({ name: col.text, x: x + 30, y: 893, w: 194, text: col.text, font: 'archivo', bold: true, size: 15, color: BROWN, on: CREAM, lines: 1 })
     })
-    p.text({ name: 'Website', x: 0, y: 1000, w: W, text: 'cornerbloom.example  ·  @cornerbloomcafe', font: 'archivo', size: 13, color: MUTED, on: CREAM, align: 'center', spacing: 60, lines: 1 })
+    p.text({ name: 'Website', x: 64, y: 980, w: 688, text: 'cornerbloom.example  ·  @cornerbloomcafe', font: 'archivo', size: 13, color: MUTED, on: CREAM, lines: 1 })
     return doc
   },
 }

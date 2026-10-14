@@ -9,7 +9,9 @@ from io import BytesIO, StringIO
 from pathlib import Path
 
 import pytest
+from django.conf import settings
 from django.core.files.base import ContentFile
+from django.core.files.storage import default_storage
 from django.core.management import CommandError, call_command
 from PIL import Image
 
@@ -126,23 +128,44 @@ def test_text_uses_only_fonts_a_default_install_has_in_the_weights_sync_fonts_in
         assert sorted(used) == sorted(entry["fonts"]), entry["slug"]
 
 
-def test_photo_slots_are_unfilled_placeholders_and_no_image_has_a_remote_source(entries):
-    with_slots: set[str] = set()
+def test_photos_are_framed_starter_photos_that_ship_with_the_templates(entries):
+    with_photos: set[str] = set()
     for entry in entries:
         for page in load_document(DATA_DIR, entry["slug"])["pages"]:
             for obj in walk(page["objects"]):
-                if obj.get("isPlaceholder"):
-                    with_slots.add(entry["slug"])
-                    assert obj["type"] == "rect"
-                if obj["type"] == "image":
-                    assert "qr" in obj, "only generated QR codes are images"
-                    assert "src" not in obj
-    assert with_slots == {
+                assert not obj.get("isPlaceholder"), f"{entry['slug']}: an empty photo slot"
+                if obj["type"] != "image" or "qr" in obj:
+                    continue
+                with_photos.add(entry["slug"])
+                assert obj["src"].startswith("/media/templates/photos/"), obj["src"]
+                assert (DATA_DIR / "photos" / obj["src"].rsplit("/", 1)[1]).is_file(), obj["src"]
+                assert obj["slot"]["width"] > 0 and obj["slot"]["height"] > 0, "a photo sits in a frame"
+    assert with_photos == {
+        "bold-sale-announcement",
         "rooftop-event-story",
         "modern-pitch-deck",
         "grand-opening-flyer",
         "bold-youtube-thumbnail",
     }
+
+
+def test_every_shipped_photo_is_used_small_and_credited(entries):
+    used = {
+        obj["src"].rsplit("/", 1)[1]
+        for entry in entries
+        for page in load_document(DATA_DIR, entry["slug"])["pages"]
+        for obj in walk(page["objects"])
+        if obj["type"] == "image" and "src" in obj
+    }
+    shipped = {path.name for path in (DATA_DIR / "photos").glob("*.webp")}
+    assert shipped == used
+    credits = (Path(settings.BASE_DIR).parent / "THIRD_PARTY.md").read_text(encoding="utf-8")
+    for name in shipped:
+        path = DATA_DIR / "photos" / name
+        assert path.stat().st_size < 400 * 1024, name
+        with Image.open(path) as image:
+            assert image.format == "WEBP" and max(image.size) <= 2000
+        assert name in credits, f"{name} is not credited in THIRD_PARTY.md"
 
 
 def test_thumbnails_are_small_webp_images_of_the_first_page(entries):
@@ -167,9 +190,13 @@ def test_seeding_publishes_every_template_with_a_thumbnail_and_is_idempotent(ent
         assert template.thumbnail.name.endswith(".webp")
         assert template.page_count == len(template.document["pages"])
 
+    for path in (DATA_DIR / "photos").glob("*.webp"):
+        assert default_storage.size(f"templates/photos/{path.name}") == path.stat().st_size
+
     Template.objects.filter(slug="modern-resume").update(use_count=7, title="Edited by staff")
     out, _ = run("seed_templates")
     assert "0 created, 0 updated, 10 kept, 0 failed" in out
+    assert "0 copied" in out
     assert Template.objects.count() == 10
     assert Template.objects.get(slug="modern-resume").title == "Edited by staff"
 
@@ -227,6 +254,16 @@ def test_a_broken_template_is_reported_and_the_others_are_still_installed(tmp_pa
     with pytest.raises(CommandError, match=r"serif-quote-card\.json is not a valid design document"):
         run("seed_templates", data_dir=str(tmp_path / "data"))
     assert not Template.objects.exists()
+
+
+def test_a_template_whose_photo_is_missing_is_refused_and_the_others_are_installed(tmp_path):
+    shutil.copytree(DATA_DIR, tmp_path / "data")
+    (tmp_path / "data" / "photos" / "cafe-latte.webp").unlink()
+
+    with pytest.raises(CommandError, match="1 template"):
+        run("seed_templates", data_dir=str(tmp_path / "data"))
+    assert not Template.objects.filter(slug="grand-opening-flyer").exists()
+    assert Template.objects.count() == 9
 
 
 def test_a_template_the_importer_refuses_does_not_stop_the_rest(tmp_path):

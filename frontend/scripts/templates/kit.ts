@@ -7,11 +7,13 @@
  * downwards from their top-left corner (the origin the designs use for text), so a longer text pushes down, not
  * up. Ids are derived from the template slug, so a rebuild gives byte-identical JSON.
  */
-import { Ellipse, Group, Path, Polygon, Rect, StaticCanvas, Textbox, type FabricObject } from 'fabric'
+import { Ellipse, Group, Path, Point, Polygon, Rect, StaticCanvas, Textbox, type FabricObject } from 'fabric'
 import type { DocObject, DocPage, DoryDocument, MaskShape, PageBackground, ShadowSpec } from '@/types/document'
 import { applyEffects } from '@/editor/engine/objects/effects'
 import { buildFill, type FillSpec } from '@/editor/engine/objects/fills'
-import { createLine, createPlaceholder, createQrCode, createStar } from '@/editor/engine/objects/factories'
+import { createImage, createLine, createPlaceholder, createQrCode, createStar } from '@/editor/engine/objects/factories'
+import { applySlotClip } from '@/editor/engine/objects/masks'
+import { coverSlotTransform, slotOf } from '@/editor/engine/objects/slot'
 import { asDory, type DoryProps, type QrSpec } from '@/editor/engine/objects/dory'
 import { serializeObjects } from '@/editor/engine/serialization'
 import { FONT_PICKS, stackOf, type FontKey } from './fontPalette'
@@ -172,6 +174,19 @@ export interface PlaceholderOptions {
   /** Corner radius of a `rounded` mask, as a fraction of the shorter side (0-0.5). */
   maskRadius?: number
   angle?: number
+}
+
+/** Where the starter photos are published (backend/data/templates/photos, copied to media by `seed_templates`). */
+export const PHOTOS_URL = '/media/templates/photos/'
+
+export interface PhotoOptions extends PlaceholderOptions {
+  /** File name in backend/data/templates/photos. */
+  file: string
+  /** Which part of the picture the frame shows, 0-1 across the part that does not fit (0.5 = centred). */
+  focusX?: number
+  focusY?: number
+  /** Zoom beyond "just covers the frame" (1 = covers). */
+  zoom?: number
 }
 
 export interface TextOptions {
@@ -385,6 +400,27 @@ export class PageBuilder {
     if (o.angle) frame.set({ angle: o.angle })
     asDory(frame).name = o.name
     return this.add(frame, { name: o.name })
+  }
+
+  /**
+   * A photo in a frame, as if a placeholder had been filled: the picture covers the frame and is clipped to it, and in
+   * the editor it can be panned or replaced while the frame stays put.
+   */
+  async photo(o: PhotoOptions): Promise<FabricObject> {
+    const frame = createPlaceholder({ x: o.x + o.w / 2, y: o.y + o.h / 2 }, o.w, o.h, o.mask)
+    if (o.maskRadius !== undefined) asDory(frame).maskRadius = o.maskRadius
+    if (o.angle) frame.set({ angle: o.angle })
+    const slot = slotOf(frame)
+    const src = `${PHOTOS_URL}${o.file}`
+    const img = await createImage({ src, url: src }, new Point(0, 0), { width: 1, height: 1 })
+    const cover = coverSlotTransform(slot, img.width, img.height)
+    const scale = cover.scale * (o.zoom ?? 1)
+    const spareX = img.width * scale - slot.width
+    const spareY = img.height * scale - slot.height
+    img.set({ left: slot.cx + (0.5 - (o.focusX ?? 0.5)) * spareX, top: slot.cy + (0.5 - (o.focusY ?? 0.5)) * spareY, scaleX: scale, scaleY: scale, angle: slot.angle })
+    Object.assign(img, { slot })
+    applySlotClip(img)
+    return this.add(img, { name: o.name })
   }
 
   private makeText(o: TextOptions): { box: Textbox; widest: number } {

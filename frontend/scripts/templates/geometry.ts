@@ -94,15 +94,6 @@ export function archPolygon(x: number, y: number, w: number, h: number, steps = 
   return out
 }
 
-/**
- * The same arch as a photo-frame mask (`{ path }` in the 100 x 100 box the engine stretches over the frame). The
- * editor's own `arch` frame has an elliptical top; this one keeps the top a true semicircle at any proportion.
- */
-export function archMask(w: number, h: number): { path: string } {
-  const ry = Math.round(((48 * w) / h) * 100) / 100
-  return { path: `M2 98 V${2 + ry} A48 ${ry} 0 0 1 98 ${2 + ry} V98 Z` }
-}
-
 export function polygonPath(points: readonly Point[]): string {
   return `${points.map(([x, y], i) => `${i === 0 ? 'M' : 'L'} ${r2(x)} ${r2(y)}`).join(' ')} Z`
 }
