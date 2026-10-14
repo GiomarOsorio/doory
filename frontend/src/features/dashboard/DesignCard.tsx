@@ -1,6 +1,7 @@
 import { Copy, ExternalLink, FolderInput, MoreHorizontal, Pencil, Star, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
+import { designKind, getPreset } from '@/features/presets'
 import { formatRelative } from '@/lib/time'
 import type { DesignSummary } from '@/types/api'
 import { Checkbox, IconButton, Menu, MenuItem, MenuSeparator, Thumbnail } from '@/ui'
@@ -29,7 +30,7 @@ export function DesignCard({ design, layout, selected, selectionActive, dragIds,
     <article className={styles.card} data-layout={layout} data-selected={selected || undefined} data-selecting={selectionActive || undefined} draggable={!renaming} onDragStart={(event) => setDraggedDesigns(event, dragIds())}>
       <div className={styles.thumbWrap}>
         <Link to={`/design/${design.id}`} className={styles.thumbLink} aria-hidden="true" tabIndex={-1}>
-          <Thumbnail src={design.thumbnail_url} alt="" aspect={layout === 'list' ? 1.4 : 4 / 3} fit="contain" className={styles.thumb} />
+          <Thumbnail src={design.thumbnail_url} alt="" aspect={layout === 'list' ? 1.4 : 4 / 3} fit="contain" page={design} className={styles.thumb} />
         </Link>
         <div className={styles.select}>
           <Checkbox aria-label={`Select ${title}`} checked={selected} onChange={(event) => onSelectChange(event.target.checked)} />
@@ -63,10 +64,9 @@ export function DesignCard({ design, layout, selected, selectionActive, dragIds,
           </Link>
         )}
         <p className={styles.meta}>
-          Edited {formatRelative(design.updated_at)}
+          {designKind(design)} · {formatRelative(design.updated_at)}
           <span className={styles.extra}>
-            {' '}
-            · {design.width} × {design.height}
+            {getPreset(design.preset) ? ` · ${design.width} × ${design.height}` : ''}
             {design.page_count > 1 ? ` · ${design.page_count} pages` : ''}
           </span>
         </p>

@@ -136,6 +136,18 @@ export function getPreset(id: string | null | undefined): SizePreset | undefined
   return id ? BY_ID.get(id) : undefined
 }
 
+/** "Poster (18 × 24 in)" → { name: "Poster", detail: "18 × 24 in" }; a label without a size gets the pixel size as detail. */
+export function presetParts(preset: SizePreset): { name: string; detail: string } {
+  const match = /^(.*?)\s*\((.*)\)$/.exec(preset.label)
+  return match ? { name: match[1], detail: match[2] } : { name: preset.label, detail: `${preset.width} × ${preset.height}` }
+}
+
+/** What a design is, for its card: the size preset's name ("Instagram Post"), or its pixel size. */
+export function designKind(design: { preset?: string | null; width: number; height: number }): string {
+  const preset = getPreset(design.preset)
+  return preset ? presetParts(preset).name : `${design.width} × ${design.height} px`
+}
+
 export function presetsByCategory(): Array<{ category: PresetCategory; presets: SizePreset[] }> {
   return PRESET_CATEGORIES.map((category) => ({ category, presets: SIZE_PRESETS.filter((preset) => preset.category === category.id) })).filter((group) => group.presets.length > 0)
 }
