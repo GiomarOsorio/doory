@@ -1,84 +1,90 @@
 import { DocBuilder, type PageBuilder } from '../kit'
-import type { IconName } from '../icons'
 import type { TemplateDesign } from '../registry'
 
-// Cream and ink with one deep green, the way calm investor decks look: a cover with a real photo, a slide of three
-// numbers and a dark closing slide with the contacts.
+// After the best-selling "Series A" investor deck: white slides, heavy sans titles, a small grey section label, a light
+// grey photo panel on the cover, the problem as three soft cards and the market as nested circles, with one blue accent.
 const W = 1920
 const H = 1080
-const CREAM = '#f5f0e6'
-const INK = '#16211c'
-const MUTED = '#55605a'
-const GREEN = '#1d6b4f'
-const PALE = '#dfe9e1'
-const CARD = '#ffffff'
-const NIGHT = '#16352a'
+const WHITE = '#ffffff'
+const INK = '#0b0d12'
+const MUTED = '#5e6470'
+const SOFT = '#f2f3f5'
+const LINE = '#e3e5e9'
+const BLUE = '#2f5bff'
 
-function logo(p: PageBuilder, on: string, color: string, mark: string): void {
-  p.rect({ name: 'Logo mark', x: 96, y: 84, w: 40, h: 40, fill: mark, radius: 12 })
-  p.text({ name: 'Company name', x: 150, y: 88, w: 500, text: 'Fieldnote', font: 'archivo', bold: true, size: 28, color, on, lines: 1 })
+function header(p: PageBuilder, section: string, index: string): void {
+  p.rect({ name: 'Logo mark', x: 96, y: 72, w: 36, h: 36, fill: INK, radius: 10 })
+  p.text({ name: 'Company name', x: 146, y: 74, w: 400, text: 'Fieldnote', font: 'inter', bold: true, size: 26, color: INK, on: WHITE, lines: 1 })
+  p.text({ name: 'Section', x: 1424, y: 78, w: 400, text: `${section}  ·  ${index}`, font: 'inter', size: 22, color: MUTED, on: WHITE, align: 'right', lines: 1 })
 }
 
 export const pitchDeck: TemplateDesign = {
   slug: 'modern-pitch-deck',
   title: 'Modern pitch deck',
   category: 'presentations',
-  tags: ['presentation', 'pitch', 'startup', 'deck', 'business', 'investor'],
-  description: 'A calm 16:9 pitch deck in cream, ink and deep green: a cover with a photo, a slide of three numbers and a closing slide with your contacts.',
+  tags: ['presentation', 'pitch', 'startup', 'deck', 'business', 'investor', 'series a'],
+  description: 'A clean investor deck in white, ink and one blue: a cover with a photo panel, the problem as three cards and the market as nested circles.',
   preset: 'presentation',
   featured: true,
   async build() {
     const doc = new DocBuilder(this.slug, { width: W, height: H, unit: 'px', presetId: 'presentation' })
 
     // 1. Cover.
-    const cover = doc.page('Cover', { type: 'solid', color: CREAM }, 'Say who you are and why this matters in one sentence.')
-    logo(cover, CREAM, INK, GREEN)
-    cover.text({ name: 'Eyebrow', x: 96, y: 330, w: 900, text: 'Seed round, 2027', font: 'archivo', bold: true, size: 28, color: GREEN, on: CREAM, lines: 1 })
-    cover.text({ name: 'Title', x: 90, y: 380, w: 1000, text: 'Every answer your team already wrote down.', font: 'lora', size: 104, color: INK, on: CREAM, lh: 1.08, lines: 3 })
-    cover.text({ name: 'Subtitle', x: 96, y: 790, w: 820, text: 'Fieldnote gathers meeting notes, docs and chats into one search, so nobody asks the same question twice.', font: 'archivo', size: 30, color: MUTED, on: CREAM, lh: 1.45, lines: 2 })
-    cover.text({ name: 'Presenter', x: 96, y: 950, w: 900, text: 'Jordan Ellis, founder and CEO', font: 'archivo', bold: true, size: 24, color: INK, on: CREAM, lines: 1 })
-    await cover.photo({ name: 'Cover photo', file: 'deck-desk.webp', x: 1180, y: 84, w: 644, h: 912, mask: 'rounded', maskRadius: 0.05, focusX: 0.55, focusY: 0.5 })
+    const cover = doc.page('Cover', { type: 'solid', color: WHITE }, 'Say what you do and what you are raising in one sentence.')
+    header(cover, 'Investor presentation', '2027')
+    cover.text({ name: 'Title', x: 92, y: 330, w: 900, text: 'Series A Pitch Deck', font: 'inter', bold: true, size: 120, color: INK, on: WHITE, lh: 1.02, lines: 2 })
+    cover.text({ name: 'Subtitle', x: 96, y: 610, w: 760, text: 'One search for everything your team already wrote down: notes, docs and chats.', font: 'inter', size: 32, color: MUTED, on: WHITE, lh: 1.4, lines: 2 })
+    cover.rect({ name: 'Pill 1', x: 96, y: 760, w: 200, h: 60, fill: INK, radius: 30 })
+    cover.text({ name: 'Pill 1 label', x: 96, y: 760 + 16, w: 200, text: 'Raising $8M', font: 'inter', bold: true, size: 22, color: WHITE, on: INK, align: 'center', lines: 1 })
+    cover.rect({ name: 'Pill 2', x: 312, y: 760, w: 200, h: 60, fill: WHITE, radius: 30, stroke: LINE, strokeWidth: 2 })
+    cover.text({ name: 'Pill 2 label', x: 312, y: 760 + 16, w: 200, text: 'March 2027', font: 'inter', bold: true, size: 22, color: INK, on: WHITE, align: 'center', lines: 1 })
+    cover.text({ name: 'Presenter', x: 96, y: 960, w: 800, text: 'Jordan Ellis, founder and CEO', font: 'inter', size: 22, color: MUTED, on: WHITE, lines: 1 })
+    cover.rect({ name: 'Photo panel', x: 1060, y: 150, w: 764, h: 834, fill: SOFT, radius: 36 })
+    await cover.photo({ name: 'Cover photo', file: 'deck-architecture.webp', x: 1060, y: 150, w: 764, h: 834, mask: 'rounded', maskRadius: 0.047, focusX: 0.25, focusY: 0.6 })
 
-    // 2. Why now: three numbers.
-    const why = doc.page('Why now', { type: 'solid', color: CREAM }, 'Three facts that make this the right moment. Replace the sample figures with your own and name the source.')
-    logo(why, CREAM, INK, GREEN)
-    why.text({ name: 'Eyebrow', x: 96, y: 220, w: 900, text: 'Why now', font: 'archivo', bold: true, size: 28, color: GREEN, on: CREAM, lines: 1 })
-    why.text({ name: 'Title', x: 92, y: 262, w: 1500, text: 'Teams write more than ever, and find less', font: 'lora', size: 76, color: INK, on: CREAM, lines: 1 })
-    const stats: { icon: IconName; value: string; label: string; text: string }[] = [
-      { icon: 'briefcase', value: '11', label: 'Apps hold a team’s notes', text: 'Docs, chat, email, tickets and meeting tools each keep a piece of the answer.' },
-      { icon: 'clock', value: '5 h', label: 'A week spent searching', text: 'Per person, asking around or searching the same places again.' },
-      { icon: 'user', value: '1 in 3', label: 'Questions already answered', text: 'The answer exists; nobody can find where it was written down.' },
+    // 2. The problem: three cards.
+    const problem = doc.page('The problem', { type: 'solid', color: WHITE }, 'Three problems your customer has today, each in one line.')
+    header(problem, 'The problem', '02')
+    problem.text({ name: 'Title', x: 92, y: 210, w: 1500, text: 'Answers get lost between tools', font: 'inter', bold: true, size: 84, color: INK, on: WHITE, lines: 1 })
+    problem.text({ name: 'Lead', x: 96, y: 330, w: 1200, text: 'Teams write more than ever, and find less of it when they need it.', font: 'inter', size: 30, color: MUTED, on: WHITE, lines: 1 })
+    const cards = [
+      { n: '01', title: 'Notes are everywhere', text: 'Docs, chat, email, tickets and meeting tools each hold part of the answer.' },
+      { n: '02', title: 'Search starts over', text: 'People spend about five hours a week looking for things they have seen before.' },
+      { n: '03', title: 'Questions repeat', text: 'One question in three has been answered already. Nobody can find where.' },
     ]
-    stats.forEach((s, i) => {
+    cards.forEach((c, i) => {
       const x = 96 + i * 584
-      why.rect({ name: `Card ${i + 1}`, x, y: 440, w: 552, h: 480, fill: CARD, radius: 28 })
-      why.circle({ name: `Icon disc ${i + 1}`, cx: x + 76, cy: 516, r: 36, fill: PALE })
-      why.icon({ name: `Icon ${i + 1}`, icon: s.icon, x: x + 56, y: 496, size: 40, color: GREEN, width: 2 })
-      why.text({ name: `Value ${i + 1}`, x: x + 40, y: 580, w: 480, text: s.value, font: 'archivo', bold: true, size: 110, color: GREEN, on: CARD, lh: 1, lines: 1 })
-      why.text({ name: `Label ${i + 1}`, x: x + 40, y: 712, w: 470, text: s.label, font: 'archivo', bold: true, size: 30, color: INK, on: CARD, lh: 1.25, lines: 1 })
-      why.text({ name: `Text ${i + 1}`, x: x + 40, y: 800, w: 470, text: s.text, font: 'archivo', size: 23, color: MUTED, on: CARD, lh: 1.45, lines: 2 })
+      const dark = i === 1
+      const fill = dark ? INK : SOFT
+      problem.rect({ name: `Card ${i + 1}`, x, y: 450, w: 552, h: 470, fill, radius: 28 })
+      problem.text({ name: `Card ${i + 1} number`, x: x + 44, y: 494, w: 200, text: c.n, font: 'inter', bold: true, size: 30, color: dark ? '#9aa3b2' : MUTED, on: fill, lines: 1 })
+      problem.text({ name: `Card ${i + 1} title`, x: x + 44, y: 700, w: 470, text: c.title, font: 'inter', bold: true, size: 40, color: dark ? WHITE : INK, on: fill, lines: 1 })
+      problem.text({ name: `Card ${i + 1} text`, x: x + 44, y: 768, w: 464, text: c.text, font: 'inter', size: 25, color: dark ? '#c9ced8' : MUTED, on: fill, lh: 1.45 })
     })
-    why.text({ name: 'Source', x: 96, y: 976, w: 1200, text: 'Sample figures: replace them with your own and name the source.', font: 'archivo', size: 20, color: MUTED, on: CREAM, lines: 1 })
 
-    // 3. Thank you.
-    const end = doc.page('Thank you', { type: 'solid', color: NIGHT }, 'Close with how to reach you.')
-    logo(end, NIGHT, CREAM, PALE)
-    end.text({ name: 'Title', x: 90, y: 320, w: 1100, text: 'Thank you', font: 'lora', size: 170, color: CREAM, on: NIGHT, lh: 1, lines: 1 })
-    end.text({ name: 'Subtitle', x: 96, y: 520, w: 900, text: 'Questions, or a demo for your team? Get in touch.', font: 'archivo', size: 36, color: PALE, on: NIGHT, lines: 1 })
-    const contacts: { icon: IconName; text: string }[] = [
-      { icon: 'mail', text: 'hello@fieldnote.example' },
-      { icon: 'globe', text: 'fieldnote.example' },
-      { icon: 'phone', text: '+1 555 0100' },
+    // 3. The market: nested circles and the three numbers.
+    const market = doc.page('Market opportunity', { type: 'solid', color: WHITE }, 'Size the market from the top down and say where the numbers come from.')
+    header(market, 'Market opportunity', '03')
+    market.text({ name: 'Title', x: 92, y: 210, w: 1500, text: 'A large market, and a clear first slice', font: 'inter', bold: true, size: 84, color: INK, on: WHITE, lines: 1 })
+    market.circle({ name: 'TAM circle', cx: 540, cy: 680, r: 300, fill: SOFT })
+    market.circle({ name: 'SAM circle', cx: 540, cy: 760, r: 210, fill: '#e1e7ff' })
+    market.circle({ name: 'SOM circle', cx: 540, cy: 850, r: 120, fill: BLUE })
+    market.text({ name: 'TAM label', x: 340, y: 430, w: 400, text: 'TAM', font: 'inter', bold: true, size: 28, color: MUTED, on: SOFT, align: 'center', lines: 1 })
+    market.text({ name: 'SAM label', x: 340, y: 590, w: 400, text: 'SAM', font: 'inter', bold: true, size: 28, color: '#3a4ba8', on: '#e1e7ff', align: 'center', lines: 1 })
+    market.text({ name: 'SOM label', x: 340, y: 830, w: 400, text: 'SOM', font: 'inter', bold: true, size: 32, color: WHITE, on: BLUE, align: 'center', lines: 1 })
+    const rows = [
+      { value: '$47B', label: 'Total addressable market', text: 'Knowledge-work software spend, worldwide.' },
+      { value: '$8.2B', label: 'Serviceable market', text: 'Teams of 20 to 500 people that already pay for a docs tool.' },
+      { value: '$410M', label: 'Obtainable in five years', text: 'Five per cent of the serviceable market.' },
     ]
-    contacts.forEach((c, i) => {
-      end.icon({ name: `${c.text} icon`, icon: c.icon, x: 96, y: 680 + i * 70, size: 34, color: PALE, width: 2 })
-      end.text({ name: c.text, x: 150, y: 682 + i * 70, w: 800, text: c.text, font: 'archivo', bold: true, size: 30, color: CREAM, on: NIGHT, lines: 1 })
+    rows.forEach((r, i) => {
+      const y = 420 + i * 190
+      market.line({ name: `Rule ${i + 1}`, x1: 1000, y1: y, x2: 1824, y2: y, color: LINE, width: 2 })
+      market.text({ name: `Value ${i + 1}`, x: 1000, y: y + 34, w: 330, text: r.value, font: 'inter', bold: true, size: 76, color: i === 2 ? BLUE : INK, on: WHITE, lh: 1, lines: 1 })
+      market.text({ name: `Label ${i + 1}`, x: 1340, y: y + 36, w: 484, text: r.label, font: 'inter', bold: true, size: 28, color: INK, on: WHITE, lines: 1 })
+      market.text({ name: `Text ${i + 1}`, x: 1340, y: y + 82, w: 484, text: r.text, font: 'inter', size: 22, color: MUTED, on: WHITE, lh: 1.4 })
     })
-    // The founder's initials where a portrait would go.
-    end.circle({ name: 'Monogram disc', cx: 1550, cy: 520, r: 230, fill: GREEN })
-    end.text({ name: 'Monogram', x: 1320, y: 440, w: 460, text: 'JE', font: 'lora', size: 150, color: CREAM, on: GREEN, align: 'center', lh: 1, lines: 1 })
-    end.text({ name: 'Founder', x: 1320, y: 790, w: 460, text: 'Jordan Ellis', font: 'archivo', bold: true, size: 30, color: CREAM, on: NIGHT, align: 'center', lines: 1 })
-    end.text({ name: 'Founder role', x: 1320, y: 834, w: 460, text: 'Founder and CEO', font: 'archivo', size: 24, color: PALE, on: NIGHT, align: 'center', lines: 1 })
+    market.text({ name: 'Source', x: 96, y: 1000, w: 1400, text: 'Sample figures: replace them with your own and name the source.', font: 'inter', size: 20, color: MUTED, on: WHITE, lines: 1 })
     return doc
   },
 }
