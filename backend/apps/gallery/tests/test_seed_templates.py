@@ -144,7 +144,7 @@ def test_photos_are_framed_starter_photos_that_ship_with_the_templates(entries):
         "bold-sale-announcement",
         "rooftop-event-story",
         "modern-pitch-deck",
-        "grand-opening-flyer",
+        "modern-resume",
         "bold-youtube-thumbnail",
     }
 
@@ -227,7 +227,7 @@ def test_the_public_api_lists_and_serves_the_templates(client):
     detail = client.get("/api/v1/templates/modern-pitch-deck/")
     assert detail.status_code == 200
     assert detail.data["page_count"] == 3
-    assert detail.data["document"]["pages"][1]["name"] == "Why now"
+    assert detail.data["document"]["pages"][1]["name"] == "The problem"
     assert detail.data["preset"] == "presentation"
 
 
@@ -258,11 +258,11 @@ def test_a_broken_template_is_reported_and_the_others_are_still_installed(tmp_pa
 
 def test_a_template_whose_photo_is_missing_is_refused_and_the_others_are_installed(tmp_path):
     shutil.copytree(DATA_DIR, tmp_path / "data")
-    (tmp_path / "data" / "photos" / "cafe-latte.webp").unlink()
+    (tmp_path / "data" / "photos" / "deck-architecture.webp").unlink()
 
     with pytest.raises(CommandError, match="1 template"):
         run("seed_templates", data_dir=str(tmp_path / "data"))
-    assert not Template.objects.filter(slug="grand-opening-flyer").exists()
+    assert not Template.objects.filter(slug="modern-pitch-deck").exists()
     assert Template.objects.count() == 9
 
 

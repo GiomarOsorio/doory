@@ -13,12 +13,12 @@
         "shop",
         "fashion"
       ],
-      "description": "A split sale post: a fashion photo on the left, a giant \"Sale\" on the right, a round discount sticker across the seam and a clear button.",
+      "description": "A bold sale post: a shopper in an orange shape, a script \"Super offer\" over a heavy headline, a discount badge and a dark band with your contact line and a Shop now button.",
       "preset": "instagram-post",
       "is_featured": true,
       "fonts": [
-        "Anton",
-        "Archivo"
+        "Great Vibes",
+        "Poppins"
       ]
     },
     {
@@ -29,15 +29,15 @@
         "quote",
         "instagram",
         "minimal",
-        "neutral",
-        "typography"
+        "black",
+        "typography",
+        "inspiration"
       ],
-      "description": "A calm, neutral quote post: an oversized quotation mark, a serif quote with plenty of space and a small author line.",
+      "description": "A minimalist quote post: black, a centred serif quote with one word in capitals and one in italics, and a small handle at the foot.",
       "preset": "instagram-post",
       "is_featured": false,
       "fonts": [
-        "Archivo",
-        "Lora"
+        "Crimson Text"
       ]
     },
     {
@@ -50,14 +50,14 @@
         "instagram",
         "party",
         "music",
-        "sunset"
+        "sunset",
+        "minimal"
       ],
-      "description": "A photo-led event story: friends at sunset fading into a dusk panel with a serif title, the date, time and place, and an RSVP button.",
+      "description": "A full-bleed photo story: tiny labels at the top, a big lowercase title with the time and a line of text, a strip of dates with the day picked out.",
       "preset": "instagram-story",
       "is_featured": true,
       "fonts": [
-        "Archivo",
-        "Playfair Display"
+        "Manrope"
       ]
     },
     {
@@ -70,14 +70,14 @@
         "startup",
         "deck",
         "business",
-        "investor"
+        "investor",
+        "series a"
       ],
-      "description": "A calm 16:9 pitch deck in cream, ink and deep green: a cover with a photo, a slide of three numbers and a closing slide with your contacts.",
+      "description": "A clean investor deck in white, ink and one blue: a cover with a photo panel, the problem as three cards and the market as nested circles.",
       "preset": "presentation",
       "is_featured": true,
       "fonts": [
-        "Archivo",
-        "Lora"
+        "Inter"
       ]
     },
     {
@@ -87,19 +87,20 @@
       "tags": [
         "poster",
         "concert",
+        "tour",
         "festival",
         "music",
         "gig",
         "event",
         "print"
       ],
-      "description": "A type-led gig poster for 18 x 24 in print: the headliner huge, the support acts and details in a clear hierarchy, and a halftone sun.",
+      "description": "A tour poster for 18 x 24 in print: the act in huge gradient type between two outlined words, the city, venue and date on a warm band, and the special guest below.",
       "preset": "",
       "is_featured": true,
       "fonts": [
-        "Anton",
         "Archivo",
-        "Lora"
+        "Great Vibes",
+        "Oswald"
       ]
     },
     {
@@ -109,18 +110,21 @@
       "tags": [
         "flyer",
         "opening",
+        "invitation",
         "cafe",
-        "coffee",
+        "boutique",
         "shop",
         "print",
-        "minimal"
+        "minimal",
+        "elegant"
       ],
-      "description": "A café opening flyer for US Letter: a large coffee photo, the café name and \"Grand Opening\" in a serif, an opening-day offer and the details in one row.",
+      "description": "An elegant grand opening flyer for US Letter: a sweeping script \"Grand\" over a spaced serif \"Opening\", and the time, day and place in three columns.",
       "preset": "letter",
       "is_featured": false,
       "fonts": [
-        "Archivo",
-        "Playfair Display"
+        "Crimson Text",
+        "Great Vibes",
+        "Pinyon Script"
       ]
     },
     {
@@ -133,14 +137,15 @@
         "botanical",
         "elegant",
         "minimal",
-        "rsvp"
+        "black and white"
       ],
-      "description": "A quiet, elegant 5 x 7 in wedding invitation: linen paper, a soft arch with greenery, script names and an RSVP QR code.",
+      "description": "A minimalist 5 x 7 in wedding invitation: a fine line-drawn sprig, the names in spaced serif capitals with a script \"and\", and the date in a row split by hairlines.",
       "preset": "",
       "is_featured": false,
       "fonts": [
-        "Lora",
-        "Pinyon Script"
+        "Crimson Text",
+        "Great Vibes",
+        "Playfair Display"
       ]
     },
     {
@@ -153,14 +158,16 @@
         "job",
         "career",
         "a4",
-        "ats",
-        "minimal"
+        "photo",
+        "minimal",
+        "two column"
       ],
-      "description": "A clean single-column A4 resume with one accent colour, easy for people and resume parsers to read: profile, experience, education and skills.",
+      "description": "An elegant two-column A4 resume with a round photo: the name in spaced capitals, contacts with icons, and experience along a fine timeline.",
       "preset": "a4",
       "is_featured": false,
       "fonts": [
-        "Archivo"
+        "Inter",
+        "Josefin Sans"
       ]
     },
     {
@@ -174,12 +181,11 @@
         "challenge",
         "vlog"
       ],
-      "description": "A high-contrast challenge thumbnail: a face on the right, \"I tried it for 30 days\" in huge type on deep blue, clear of the edges.",
+      "description": "A bold challenge thumbnail: deep blue to violet with streaks of light, a face on the right, a huge yellow \"30 days\" and a red pill.",
       "preset": "youtube-thumbnail",
       "is_featured": false,
       "fonts": [
-        "Anton",
-        "Archivo"
+        "Anton"
       ]
     },
     {
@@ -190,15 +196,18 @@
         "business card",
         "contact",
         "print",
-        "minimal",
-        "personal brand"
+        "elegant",
+        "luxury",
+        "black",
+        "qr code"
       ],
-      "description": "A type-first two-sided business card: your name large on the front with the contact details, and a giant initial with a QR code on the back.",
+      "description": "An elegant two-sided business card: a charcoal front with a faint script name behind your name in spaced capitals, and a back with your contacts and a QR code.",
       "preset": "business-card",
       "is_featured": false,
       "fonts": [
-        "Archivo",
-        "Oswald"
+        "Crimson Text",
+        "Great Vibes",
+        "Inter"
       ]
     }
   ]

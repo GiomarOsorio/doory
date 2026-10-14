@@ -60,37 +60,37 @@ describe('starter templates', () => {
     expect(counts).toMatchInlineSnapshot(`
       {
         "bold-sale-announcement": [
-          11,
+          19,
         ],
         "bold-youtube-thumbnail": [
-          5,
+          8,
         ],
         "botanical-celebration-invitation": [
-          15,
+          20,
         ],
         "clean-business-card": [
-          9,
-          4,
+          3,
+          12,
         ],
         "grand-opening-flyer": [
           15,
         ],
         "modern-pitch-deck": [
-          7,
+          12,
+          17,
           23,
-          14,
         ],
         "modern-resume": [
-          45,
+          64,
         ],
         "night-bloom-concert-poster": [
-          11,
+          17,
         ],
         "rooftop-event-story": [
-          11,
+          16,
         ],
         "serif-quote-card": [
-          6,
+          3,
         ],
       }
     `)
