@@ -10,10 +10,12 @@ export interface ThumbnailProps {
   aspect?: number
   className?: string
   fit?: 'cover' | 'contain'
+  /** Size of the design: without a picture, a blank page of these proportions stands in for it (a new, untouched design). */
+  page?: { width: number; height: number }
 }
 
-/** Image with a brand-gradient fallback for missing or failed thumbnails. */
-export function Thumbnail({ src, alt, aspect = 1, className, fit = 'cover' }: ThumbnailProps) {
+/** Image with a quiet fallback for missing or failed thumbnails: a blank page when the design's size is known. */
+export function Thumbnail({ src, alt, aspect = 1, className, fit = 'cover', page }: ThumbnailProps) {
   const [failedSrc, setFailedSrc] = useState<string | null>(null)
   const [loaded, setLoaded] = useState<string | null>(null)
   const usable = Boolean(src) && failedSrc !== src
@@ -23,7 +25,11 @@ export function Thumbnail({ src, alt, aspect = 1, className, fit = 'cover' }: Th
         <img src={src ?? undefined} alt={alt} loading="lazy" decoding="async" className={styles.image} data-fit={fit} onLoad={() => setLoaded(src ?? null)} onError={() => setFailedSrc(src ?? null)} />
       ) : (
         <div className={styles.fallback} role="img" aria-label={alt}>
-          <ImageIcon size={28} aria-hidden="true" />
+          {page && page.width > 0 && page.height > 0 ? (
+            <span className={styles.page} style={{ aspectRatio: `${page.width} / ${page.height}`, ...(page.width / page.height >= aspect ? { width: '72%' } : { height: '72%' }) }} />
+          ) : (
+            <ImageIcon size={24} aria-hidden="true" />
+          )}
         </div>
       )}
     </div>
