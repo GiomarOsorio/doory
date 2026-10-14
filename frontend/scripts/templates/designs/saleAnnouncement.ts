@@ -1,42 +1,62 @@
 import { DocBuilder } from '../kit'
 import type { TemplateDesign } from '../registry'
 
-// The split layout shops use for a sale post: a fashion photo on one half, the offer on the other, one loud accent on
-// the sticker that sits across the seam.
-const PAPER = '#f3efe7'
-const INK = '#141414'
-const ACCENT = '#ff5a1f'
-const MUTED = '#5b5550'
+// After the most downloaded sale post on the big template sites: a shopper in an orange organic shape on the right, a
+// script "Super offer" over a heavy three-line headline, a round discount badge, and a dark wave along the bottom with
+// the contact line and a yellow "Shop now".
+const RED = '#e3262f'
+const NAVY = '#0f1729'
+const ORANGE = '#ff9a1f'
+const YELLOW = '#ffc629'
+const WHITE = '#ffffff'
+
+// The wave the dark band starts with (page coordinates).
+const WAVE = 'M 0 560 C 200 530 420 556 600 590 C 760 618 920 604 1080 560 L 1080 1080 L 0 1080 Z'
+// The organic shape the photo sits in, as a mask in the frame's 100 x 100 box.
+const BLOB = { path: 'M 14 0 L 100 0 L 100 88 C 84 98 66 100 50 96 C 30 91 20 78 12 62 C 4 46 0 30 4 16 C 6 8 9 3 14 0 Z' }
 
 export const saleAnnouncement: TemplateDesign = {
   slug: 'bold-sale-announcement',
   title: 'Bold sale announcement',
   category: 'social-media',
   tags: ['sale', 'instagram', 'promo', 'discount', 'shop', 'fashion'],
-  description: 'A split sale post: a fashion photo on the left, a giant "Sale" on the right, a round discount sticker across the seam and a clear button.',
+  description: 'A bold sale post: a shopper in an orange shape, a script "Super offer" over a heavy headline, a discount badge and a dark band with your contact line and a Shop now button.',
   preset: 'instagram-post',
   featured: true,
   async build() {
     const doc = new DocBuilder(this.slug, { width: 1080, height: 1080, unit: 'px', presetId: 'instagram-post' })
-    const p = doc.page('Sale', { type: 'solid', color: PAPER })
+    const p = doc.page('Sale', { type: 'solid', color: RED })
 
-    await p.photo({ name: 'Photo', file: 'sale-shopper.webp', x: 0, y: 0, w: 540, h: 1080, focusX: 0.62, focusY: 0.5 })
+    // The orange shape and the shopper in it.
+    p.path({ name: 'Orange shape', d: 'M 470 0 L 1080 0 L 1080 720 C 960 760 820 740 700 690 C 560 630 500 520 470 380 C 450 260 440 120 470 0 Z', fill: ORANGE })
+    await p.photo({ name: 'Photo', file: 'sale-bags.webp', x: 520, y: 0, w: 560, h: 700, mask: BLOB, focusX: 0.36, focusY: 0.35, zoom: 1.05 })
 
-    // The offer.
-    p.text({ name: 'Eyebrow', x: 600, y: 72, w: 420, text: 'End of season', font: 'archivo', bold: true, size: 30, color: INK, on: PAPER, lines: 1 })
-    p.text({ name: 'Headline', x: 592, y: 120, w: 440, text: 'SALE', font: 'anton', size: 236, color: INK, on: PAPER, lh: 1, lines: 1 })
-    p.text({ name: 'Tagline', x: 600, y: 380, w: 410, text: 'Fresh finds for every wardrobe, marked down for one weekend only.', font: 'archivo', size: 30, color: INK, on: PAPER, lh: 1.3, lines: 3 })
+    // The dark wave.
+    p.path({ name: 'Dark band', d: WAVE, fill: NAVY })
 
-    // Sticker across the seam, tilted like it was slapped on.
-    p.circle({ name: 'Sticker', cx: 540, cy: 690, r: 150, fill: ACCENT, angle: -12 })
-    p.text({ name: 'Sticker intro', x: 420, y: 600, w: 240, text: 'Up to', font: 'archivo', bold: true, size: 28, color: INK, on: ACCENT, align: 'center', angle: -12, lines: 1 })
-    p.text({ name: 'Sticker value', x: 400, y: 630, w: 280, text: '50%', font: 'anton', size: 128, color: INK, on: ACCENT, align: 'center', lh: 1, angle: -12, lines: 1 })
-    p.text({ name: 'Sticker label', x: 420, y: 766, w: 240, text: 'off everything', font: 'archivo', bold: true, size: 24, color: INK, on: ACCENT, align: 'center', angle: -12, lines: 1 })
+    // Logo.
+    p.circle({ name: 'Logo mark', cx: 96, cy: 96, r: 34, fill: WHITE })
+    p.text({ name: 'Logo initial', x: 62, y: 70, w: 68, text: 'L', font: 'poppins', bold: true, size: 40, color: RED, on: WHITE, align: 'center', lh: 1, lines: 1 })
+    p.text({ name: 'Logo name', x: 146, y: 78, w: 300, text: 'Lumen Store', font: 'poppins', bold: true, size: 30, color: WHITE, on: RED, lines: 1 })
 
-    // Call to action and details.
-    p.rect({ name: 'Button', x: 732, y: 872, w: 288, h: 84, fill: INK, radius: 42 })
-    p.text({ name: 'Button label', x: 732, y: 872 + 24, w: 288, text: 'Shop the sale', font: 'archivo', bold: true, size: 30, color: PAPER, on: INK, align: 'center', lines: 1 })
-    p.text({ name: 'Details', x: 600, y: 990, w: 420, text: 'Sat 14 to Sun 15 June  ·  yourstore.com', font: 'archivo', size: 21, color: MUTED, on: PAPER, align: 'right', lines: 1 })
+    // Headline.
+    p.text({ name: 'Script', x: 64, y: 280, w: 460, text: 'Super offer', font: 'greatVibes', size: 84, color: WHITE, on: RED, lh: 1, lines: 1 })
+    p.text({ name: 'Headline line 1', x: 60, y: 372, w: 520, text: 'WEEKEND', font: 'poppins', bold: true, size: 100, color: WHITE, on: RED, lh: 1, lines: 1 })
+    p.text({ name: 'Headline line 2', x: 60, y: 630, w: 560, text: 'FASHION', font: 'poppins', bold: true, size: 100, color: ORANGE, on: NAVY, lh: 1, lines: 1 })
+    p.text({ name: 'Headline line 3', x: 60, y: 734, w: 560, text: 'BIG SALE', font: 'poppins', bold: true, size: 100, color: WHITE, on: NAVY, lh: 1, lines: 1 })
+
+    // Badge.
+    p.circle({ name: 'Badge', cx: 800, cy: 740, r: 118, fill: YELLOW })
+    p.circle({ name: 'Badge ring', cx: 800, cy: 740, r: 100, fill: '#00000000', stroke: NAVY, strokeWidth: 3, dash: [8, 7] })
+    p.text({ name: 'Badge value', x: 690, y: 680, w: 220, text: '30%', font: 'poppins', bold: true, size: 72, color: NAVY, on: YELLOW, align: 'center', lh: 1, lines: 1 })
+    p.text({ name: 'Badge label', x: 690, y: 756, w: 220, text: 'OFF', font: 'poppins', bold: true, size: 52, color: NAVY, on: YELLOW, align: 'center', lh: 1, lines: 1 })
+
+    // Contact line and button.
+    p.icon({ name: 'Phone icon', icon: 'phone', x: 64, y: 930, size: 52, color: WHITE, width: 2 })
+    p.text({ name: 'Website', x: 132, y: 924, w: 520, text: 'lumenstore.example', font: 'poppins', size: 28, color: WHITE, on: NAVY, lines: 1 })
+    p.text({ name: 'Phone', x: 132, y: 960, w: 520, text: '+1 555 0148', font: 'poppins', bold: true, size: 40, color: WHITE, on: NAVY, lines: 1 })
+    p.rect({ name: 'Button', x: 744, y: 936, w: 272, h: 72, fill: YELLOW, radius: 12 })
+    p.text({ name: 'Button label', x: 744, y: 936 + 18, w: 272, text: 'SHOP NOW', font: 'poppins', bold: true, size: 32, color: NAVY, on: YELLOW, align: 'center', lines: 1 })
     return doc
   },
 }
