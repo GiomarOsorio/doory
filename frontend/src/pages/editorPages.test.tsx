@@ -104,13 +104,12 @@ describe('/create', () => {
 })
 
 describe('/local/:localId', () => {
-  it('mounts the editor in guest mode with the "saved in this browser" nudge', async () => {
+  it('mounts the editor in guest mode with the way to an account (the editor itself says where the design is saved)', async () => {
     const local = await createLocalDesign({ title: 'My poster', document: createBlankDocument(800, 600) })
     renderApp(`/local/${local.id}`)
     const editor = await screen.findByTestId('editor')
     expect(editor).toHaveAttribute('data-mode', 'guest')
     expect(within(editor).getByRole('heading', { name: 'My poster' })).toBeInTheDocument()
-    expect(within(editor).getByText('Saved in this browser')).toBeInTheDocument()
     expect(within(editor).getByRole('button', { name: 'Sign up' })).toBeInTheDocument()
     expect(within(editor).getByRole('link', { name: 'Doory home' })).toHaveAttribute('href', '/')
   })

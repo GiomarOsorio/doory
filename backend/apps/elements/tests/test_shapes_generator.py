@@ -87,7 +87,7 @@ def test_every_file_survives_the_sanitiser_unchanged_in_meaning(generated):
 def test_every_file_is_recolourable_with_one_hex_colour(generated):
     _, files = generated
     for path in files:
-        assert svg_colors(sanitize_svg(path.read_bytes())) == ["#e11d48"], path.name
+        assert svg_colors(sanitize_svg(path.read_bytes())) == [load_shape_generator().COLOR], path.name
 
 
 def test_every_file_has_a_sensible_viewbox_title_and_size(generated):

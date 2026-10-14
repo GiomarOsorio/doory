@@ -17,6 +17,8 @@ export interface MenuItem {
   checked?: boolean
   danger?: boolean
   separator?: boolean
+  /** A small label over the items that follow it (not focusable). */
+  heading?: boolean
 }
 
 interface MenuProps {
@@ -123,6 +125,10 @@ export function Menu({ items, label, at, anchorRef, onClose }: MenuProps) {
       {items.map((item) =>
         item.separator ? (
           <div key={item.id} role="separator" className={styles.sep} />
+        ) : item.heading ? (
+          <div key={item.id} role="presentation" className={styles.heading}>
+            {item.label}
+          </div>
         ) : (
           <button
             key={item.id}

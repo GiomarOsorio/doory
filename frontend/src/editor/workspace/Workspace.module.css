@@ -49,13 +49,6 @@
   cursor: text;
 }
 
-.addPage {
-  position: relative;
-  z-index: 2;
-  margin-top: 8px;
-  flex: none;
-}
-
 .dropHint {
   position: absolute;
   inset: 12px;

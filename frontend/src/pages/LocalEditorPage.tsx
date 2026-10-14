@@ -118,7 +118,7 @@ export default function LocalEditorPage() {
         onTitleChange={setTitle}
         onSaveStateChange={setSaveState}
         topBarStart={<EditorHomeLink to="/" />}
-        topBarEnd={<GuestBanner saveState={saveState} signedIn={status === 'authenticated'} memoryOnly={storageMode === 'memory'} busy={migration.active} onSave={() => void saveToAccount()} />}
+        topBarEnd={<GuestBanner signedIn={status === 'authenticated'} memoryOnly={storageMode === 'memory'} busy={migration.active} onSave={() => void saveToAccount()} />}
       />
       <MigrationOverlay open={migration.active} progress={migration.progress} />
     </>

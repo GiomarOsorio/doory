@@ -25,6 +25,7 @@ import { useClipboardEvents, useKeyboardShortcuts } from './hooks/useKeyboardSho
 import { useLatest } from './hooks/useLatest'
 import { ChromeProvider } from './chrome/ChromeContext'
 import { DrawerHost, SidebarHost } from './chrome/ToolHost'
+import { ToolRail } from './chrome/ToolRail'
 import { ContextualToolbar } from './toolbar/ContextualToolbar'
 import { TopBar } from './TopBar'
 import { t } from './strings'
@@ -170,16 +171,18 @@ export const EditorApp = forwardRef<EditorHandle, EditorAppProps>(function Edito
           <ConflictBanner onResolve={onConflictResolve} />
           <CollabBanner />
           <MissingFontsNotice />
-          <ContextualToolbar />
           <div className={styles.body}>
+            <ToolRail edge="side" />
             <SidebarHost />
             <div className={styles.main}>
+              <ContextualToolbar />
               <Workspace stripOpen={stripOpen} onToggleStrip={() => setStripOpen((o) => !o)} />
               <NotesHost />
               <LazyTimelineHost />
               {stripOpen ? <PageStrip /> : null}
             </div>
           </div>
+          <ToolRail edge="bottom" />
           <DrawerHost />
         </ChromeProvider>
         <DialogHost onTitle={onTitle} />

@@ -31,8 +31,8 @@ from PIL import ImageColor
 from apps.core.svg import ALLOWED_ATTRIBUTES, MAX_BYTES, SVG_NS, XLINK_NS, SvgError
 
 #: Bump when the normaliser's output changes: packs are re-synced (their fingerprint includes this).
-NORMALIZER_VERSION = 2
-DEFAULT_COLOR = "#e11d48"
+NORMALIZER_VERSION = 3
+DEFAULT_COLOR = "#7a64e0"
 
 SHAPES = {"path", "rect", "circle", "ellipse", "line", "polyline", "polygon", "text"}
 CONTAINERS = {"svg", "g", "a", "switch"}

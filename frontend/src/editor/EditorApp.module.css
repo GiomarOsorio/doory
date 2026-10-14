@@ -69,6 +69,13 @@
   flex-direction: column;
 }
 
+/* Below the desktop breakpoint the tools are a bar along the bottom; sheets open on top of it. */
+@media (max-width: 1023px) {
+  .root {
+    --ed-rail-bottom: calc(61px + env(safe-area-inset-bottom));
+  }
+}
+
 .live {
   position: absolute;
   width: 1px;

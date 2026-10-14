@@ -304,8 +304,10 @@
     gap: 4px;
     padding: 4px 8px;
   }
-  .slider {
-    width: 80px;
+  /* Phones zoom with two fingers: the slider and the notes and timeline toggles (both in the View menu) make room for the page controls. */
+  .slider,
+  .roomy {
+    display: none;
   }
   .percent {
     display: none;

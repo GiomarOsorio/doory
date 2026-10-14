@@ -5,7 +5,7 @@ import { GuestBanner, type GuestBannerProps } from './GuestBanner'
 
 function setup(props: Partial<GuestBannerProps> = {}) {
   const onSave = vi.fn()
-  render(<GuestBanner saveState={null} signedIn={false} memoryOnly={false} onSave={onSave} {...props} />)
+  render(<GuestBanner signedIn={false} memoryOnly={false} onSave={onSave} {...props} />)
   return { onSave }
 }
 
@@ -21,15 +21,20 @@ describe('GuestBanner', () => {
   it.each([
     ['a signed-in guest', { signedIn: true }, 'Save to account'],
     ['storage blocked by the browser', { memoryOnly: true }, 'Sign up'],
-    ['a failed local save', { saveState: { status: 'error', message: 'Disk full' } as const }, 'Sign up'],
   ])('keeps the action secondary for %s', (_label, props, name) => {
     setup(props)
     expect(screen.getByRole('button', { name })).toHaveAttribute('data-variant', 'secondary')
   })
 
-  it('tells assistive technology what is going on', () => {
+  it('leaves the save state to the editor’s own indicator: only the button, no second “saved” message', () => {
     setup()
-    expect(screen.getByRole('status')).toHaveTextContent('Saved in this browser')
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    expect(screen.queryByText(/keep it forever/i)).not.toBeInTheDocument()
+  })
+
+  it('warns when the browser keeps nothing', () => {
+    setup({ memoryOnly: true })
+    expect(screen.getByRole('status')).toHaveTextContent('Won’t be kept')
   })
 
   it('shows the busy state without a second click going through', async () => {

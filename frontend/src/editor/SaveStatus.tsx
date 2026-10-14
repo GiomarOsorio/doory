@@ -73,11 +73,15 @@ function LiveStatus() {
   }
 }
 
-/** Save-state pill: Saving… / Saved / Saved in this browser / Conflict / Error with retry; the live state while a room is connected. */
+/**
+ * The one save indicator of the editor: Saving… / Saved / Saved in this browser (a guest's design, before and after its first save) /
+ * Conflict / Error with retry; the live state while a room is connected.
+ */
 export function SaveStatus() {
   const editor = useEditor()
   const save = useEditorState((s) => s.save)
   const readOnly = useEditorState((s) => s.readOnly)
+  const guest = useEditorState((s) => s.mode === 'guest')
   const live = useCollabState((s) => s.status !== 'fallback')
   if (live) return <LiveStatus />
   if (readOnly) {
@@ -122,7 +126,7 @@ export function SaveStatus() {
       )
     case 'local':
       return (
-        <span className={`${styles.pill} ${styles.ok}`} role="status">
+        <span className={`${styles.pill} ${styles.ok}`} role="status" title={t.save.localHint}>
           <Check size={14} />
           <span className={styles.text}>{t.save.local}</span>
         </span>
@@ -136,9 +140,9 @@ export function SaveStatus() {
       )
     default:
       return (
-        <span className={`${styles.pill} ${styles.ok}`} role="status">
+        <span className={`${styles.pill} ${styles.ok}`} role="status" title={guest ? t.save.localHint : undefined}>
           <Check size={14} />
-          <span className={styles.text}>{t.save.saved}</span>
+          <span className={styles.text}>{guest ? t.save.local : t.save.saved}</span>
         </span>
       )
   }

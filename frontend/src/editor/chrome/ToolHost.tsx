@@ -5,7 +5,6 @@ import { useEditorState, usePortalRoot } from '../context'
 import { type PanelDefinition } from '../panels/registry'
 import { useVisiblePanels } from '../panels/useVisiblePanels'
 import { t } from '../strings'
-import { Popover } from '../ui/Popover'
 import { I } from './icons'
 import { useChrome, useOpenTool } from './ChromeContext'
 import ed from './ed.module.css'
@@ -17,51 +16,70 @@ function useOpenPanel(): PanelDefinition | undefined {
   return useMemo(() => visible.find((p) => p.id === openId), [visible, openId])
 }
 
-/** The drawer of the open tool: a popover under its top-bar button (a bottom sheet on small screens). */
+/** Below the desktop breakpoint the open tool is a bottom sheet over the workspace. */
 export function DrawerHost() {
   const panel = useOpenPanel()
   const compact = useEditorState((s) => s.ui.compact)
   const { close } = useOpenTool()
-  if (!panel) return null
-  if (compact) return <Sheet panel={panel} onClose={close} />
-  if (panel.placement !== 'drawer') return null
-  return <DrawerPopover panel={panel} onClose={close} />
+  if (!panel || !compact) return null
+  return <Sheet panel={panel} onClose={close} />
 }
 
-function DrawerPopover({ panel, onClose }: { panel: PanelDefinition; onClose: () => void }) {
-  const chrome = useChrome()
-  // The top-bar button of the tool, or the "More" button when the tool is collapsed into it.
-  const anchorRef = useMemo(() => ({ current: chrome.getAnchor(panel.id) ?? chrome.getAnchor('more') }), [chrome, panel.id])
-  const Body = panel.component
-  return (
-    <Popover open onClose={onClose} anchorRef={anchorRef} label={panel.title ?? panel.label} placement="bottom" width={panel.width ?? 320} variant="plain" cover gap={8} focusOnOpen={chrome.isKeyboardOpen()}>
-      <div className={styles.drawerScroll} data-testid={`drawer-${panel.id}`}>
-        <div className={ed.drawerBody}>
-          <Body close={onClose} />
-        </div>
-      </div>
-    </Popover>
-  )
-}
+/** Panels stay open while things are added from them, so their "close after adding" is a no-op beside the rail. */
+const keepOpen = (): void => undefined
 
-/** The docked sidebar of the open tool (desktop only). */
+/**
+ * The open tool, docked between the rail and the workspace (desktop). It stays until its rail entry is pressed
+ * again, its close button is used, or Escape is pressed inside it: clicking the design does not close it.
+ */
 export function SidebarHost() {
   const panel = useOpenPanel()
   const compact = useEditorState((s) => s.ui.compact)
   const { close } = useOpenTool()
-  if (!panel || compact || panel.placement === 'drawer') return null
+  const chrome = useChrome()
+  const ref = useRef<HTMLElement>(null)
+  const id = panel?.id
+  useEffect(() => {
+    if (!id || !chrome.isKeyboardOpen()) return
+    ref.current?.querySelector<HTMLElement>('input, button:not([data-close]), [tabindex="0"]')?.focus({ preventScroll: true })
+  }, [id, chrome])
+  if (!panel || compact) return null
   const Body = panel.component
+  const title = panel.title ?? panel.label
+  const closeAndReturn = (): void => {
+    close()
+    chrome.getAnchor(panel.id)?.focus({ preventScroll: true })
+  }
   return (
-    <aside className={styles.sidebar} aria-label={panel.title ?? panel.label} data-testid={`sidebar-${panel.id}`} data-panel={panel.id}>
+    <aside
+      ref={ref}
+      className={styles.sidebar}
+      style={{ width: Math.max(320, panel.width ?? 0) }}
+      aria-label={title}
+      data-testid={`sidebar-${panel.id}`}
+      data-panel={panel.id}
+      onKeyDown={(e) => {
+        if (e.key !== 'Escape' || e.defaultPrevented) return
+        e.preventDefault()
+        e.stopPropagation()
+        closeAndReturn()
+      }}
+    >
       <header className={styles.sidebarHead}>
-        <h2 className={styles.sidebarTitle}>{panel.title ?? panel.label}</h2>
-        <button type="button" className={styles.close} onClick={close} aria-label={t.chrome.closeTool(panel.title ?? panel.label)} data-testid="sidebar-close">
+        <h2 className={styles.sidebarTitle}>{title}</h2>
+        <button type="button" className={styles.close} onClick={closeAndReturn} aria-label={t.chrome.closeTool(title)} data-testid="sidebar-close" data-close>
           {I.xClear}
         </button>
       </header>
-      <div className={styles.sidebarBody}>
-        <Body close={close} />
-      </div>
+      {panel.placement === 'drawer' ? (
+        <div className={styles.sidebarScroll} data-testid={`drawer-${panel.id}`}>
+          <Body close={keepOpen} />
+        </div>
+      ) : (
+        <div className={styles.sidebarBody}>
+          <Body close={close} />
+        </div>
+      )}
     </aside>
   )
 }

@@ -1,5 +1,5 @@
-import { Download, MoreHorizontal, Presentation, Share2 } from 'lucide-react'
-import { type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { ChevronDown, Menu as MenuIcon, Presentation, Share2, Users } from 'lucide-react'
+import { type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { useCollabState } from './collab/context'
 import { PresenceStack } from './chrome/PresenceStack'
 import { openAccountDialog } from './chrome/accountGate'
@@ -7,9 +7,8 @@ import { I } from './chrome/icons'
 import { useChrome, useOpenTool } from './chrome/ChromeContext'
 import { useEditor, useEditorState } from './context'
 import { commands, isCommandEnabled } from './commands'
-import { type ExportFormat, exportFormats } from './engine/export/registry'
+import { type ExportFormat, DEFAULT_EXPORT_OPTIONS, exportFormats } from './engine/export/registry'
 import { downloadFiles, runExport } from './engine/export/exporter'
-import { DEFAULT_EXPORT_OPTIONS } from './engine/export/registry'
 import { useNotesOpen } from './panels/notesVisibility'
 import { useTimelineView } from './workspace/timelineVisibility'
 import { type PanelDefinition } from './panels/registry'
@@ -19,10 +18,8 @@ import { SaveStatus } from './SaveStatus'
 import { t } from './strings'
 import { Menu, type MenuItem } from './ui/Menu'
 import { Tooltip } from './ui/Tooltip'
-import { Toolbar } from './ui/Toolbar'
 import ed from './chrome/ed.module.css'
 import styles from './TopBar.module.css'
-import { useSyncExternalStore } from 'react'
 
 interface TopBarProps {
   start?: ReactNode
@@ -31,23 +28,8 @@ interface TopBarProps {
   onPresent: () => void
 }
 
-/** How much of the bar has to give way, from the available width (see `levelFor`). */
-type Level = 0 | 1 | 2 | 3
-
-/**
- * The bar has three groups: the design on the left, the add-to-design tools in the middle (kept centred) and
- * the actions on the right. Width goes to the most important group first: the right-hand secondary icons
- * move into the "More" menu, then the middle tools beyond the first six, then beyond the first four.
- */
-function levelFor(available: number): Level {
-  if (available >= 1480) return 0
-  if (available >= 1340) return 1
-  if (available >= 1180) return 2
-  return 3
-}
-const TOOLS_AT_LEVEL: Record<Level, number> = { 0: 99, 1: 99, 2: 6, 3: 4 }
-/** Below this bar width (and at the last level) one more tool moves into "More": the status next to the title needs the room. */
-const TIGHT_BAR_WIDTH = 900
+/** Below this bar width File and View become one menu and the title moves into the left-hand group. */
+const NARROW_BAR = 760
 
 function TitleField({ onTitle }: { onTitle: (title: string) => void }) {
   const editor = useEditor()
@@ -84,32 +66,6 @@ function TitleField({ onTitle }: { onTitle: (title: string) => void }) {
   )
 }
 
-function ToolEntry({ panel, open, onToggle }: { panel: PanelDefinition; open: boolean; onToggle: () => void }) {
-  const chrome = useChrome()
-  const ref = useCallback((el: HTMLButtonElement | null) => chrome.setAnchor(panel.id, el), [chrome, panel.id])
-  return (
-    <button
-      ref={ref}
-      type="button"
-      className={`${styles.entry} ${open ? styles.entryOn : ''}`}
-      aria-haspopup="dialog"
-      aria-expanded={open}
-      title={panel.shortcut ? `${panel.label} (${panel.shortcut})` : panel.label}
-      data-testid={`ed-add-entry-${panel.id}`}
-      data-tool={panel.id}
-      onPointerEnter={panel.preload}
-      onFocus={panel.preload}
-      onClick={(e) => {
-        chrome.setKeyboardOpen(e.detail === 0)
-        onToggle()
-      }}
-    >
-      <span className={styles.entryIcon}>{panel.icon}</span>
-      <span className={styles.entryLabel}>{panel.label}</span>
-    </button>
-  )
-}
-
 /** A tool that lives as an icon button at the right end of the bar (Comments). */
 function EndTool({ panel, open, onToggle }: { panel: PanelDefinition; open: boolean; onToggle: () => void }) {
   const chrome = useChrome()
@@ -123,78 +79,45 @@ function EndTool({ panel, open, onToggle }: { panel: PanelDefinition; open: bool
   )
 }
 
-function ShareButton() {
-  const editor = useEditor()
-  const mode = useEditorState((s) => s.mode)
-  // Not `disabled` while busy: a disabled button drops focus, and the dialog gives focus back to its opener.
-  const busy = useRef(false)
-  if (mode !== 'guest' && !editor.adapter.services.sharing) return null
-  return (
-    <button
-      type="button"
-      className={`${ed.btn} ${ed.primary} ${styles.share}`}
-      aria-haspopup="dialog"
-      data-testid="ed-share"
-      onPointerEnter={() => preloadDialog('share')}
-      onFocus={() => preloadDialog('share')}
-      onClick={() => {
-        if (busy.current) return
-        busy.current = true
-        void openAccountDialog(editor, 'share', 'share', (x) => !!x.adapter.services.sharing, t.share.unavailable).finally(() => {
-          busy.current = false
-        })
-      }}
-    >
-      <Share2 size={15} aria-hidden="true" />
-      <span className={styles.btnLabel}>{t.topbar.share}</span>
-    </button>
-  )
-}
-
-function MoreTools({ panels, openId, onToggle }: { panels: readonly PanelDefinition[]; openId: string | null; onToggle: (id: string) => void }) {
-  const chrome = useChrome()
+/** A text button in the bar that opens a menu (File, View). */
+function MenuButton({ label, items, testId, icon, onOpen }: { label: string; items: MenuItem[]; testId: string; icon?: ReactNode; onOpen?: () => void }) {
   const [open, setOpen] = useState(false)
   const anchor = useRef<HTMLButtonElement>(null)
-  const setRef = useCallback(
-    (el: HTMLButtonElement | null) => {
-      anchor.current = el
-      chrome.setAnchor('more', el)
-    },
-    [chrome],
-  )
-  const items: MenuItem[] = panels.map((p) => ({ id: p.id, label: p.label, icon: p.icon, checked: undefined, onSelect: () => onToggle(p.id) }))
-  const active = panels.some((p) => p.id === openId)
   return (
     <>
-      <button ref={setRef} type="button" className={`${styles.entry} ${active || open ? styles.entryOn : ''}`} aria-haspopup="menu" aria-expanded={open} data-testid="ed-add-entry-more" onClick={() => setOpen((o) => !o)} onPointerEnter={() => panels.forEach((p) => p.preload?.())}>
-        <span className={styles.entryIcon}>
-          <MoreHorizontal size={18} />
-        </span>
-        <span className={styles.entryLabel}>{t.chrome.more}</span>
+      <button
+        ref={anchor}
+        type="button"
+        className={`${styles.menuBtn} ${icon ? styles.menuIcon : ''}`}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label={icon ? label : undefined}
+        data-testid={testId}
+        onPointerEnter={onOpen}
+        onClick={() => setOpen((o) => !o)}
+      >
+        {icon ?? label}
       </button>
-      {open ? <Menu label={t.chrome.moreTools} items={items} anchorRef={anchor} onClose={() => setOpen(false)} /> : null}
+      {open ? <Menu label={label} items={items} anchorRef={anchor} onClose={() => setOpen(false)} /> : null}
     </>
   )
 }
 
-function useWidth(ref: React.RefObject<HTMLElement | null>): number {
-  const [width, setWidth] = useState(0)
-  useLayoutEffect(() => {
-    const el = ref.current
-    if (!el) return
-    const ro = new ResizeObserver(([entry]) => setWidth(Math.round(entry.contentRect.width)))
-    ro.observe(el)
-    return () => ro.disconnect()
-  }, [ref])
-  return width
-}
-
-function DownloadMenu() {
+/**
+ * The one primary action: sharing with people, downloading and presenting live in a single menu, so the bar
+ * keeps one call to action instead of three buttons side by side.
+ */
+function ShareMenu({ onPresent }: { onPresent: () => void }) {
   const editor = useEditor()
+  const mode = useEditorState((s) => s.mode)
+  const readOnly = useEditorState((s) => s.readOnly)
   const formats = useSyncExternalStore(exportFormats.subscribe, exportFormats.getSnapshot)
   const [open, setOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const anchor = useRef<HTMLButtonElement>(null)
+  // The account dialog may take a moment to load; a second pick of "Share with people" meanwhile is ignored.
+  const sharing = useRef(false)
+  const canShare = !readOnly && (mode === 'guest' || !!editor.adapter.services.sharing)
 
   const quick = useCallback(
     async (format: ExportFormat): Promise<void> => {
@@ -212,24 +135,70 @@ function DownloadMenu() {
     [editor],
   )
 
+  const share = (): void => {
+    if (sharing.current) return
+    sharing.current = true
+    void openAccountDialog(editor, 'share', 'share', (x) => !!x.adapter.services.sharing, t.share.unavailable).finally(() => {
+      sharing.current = false
+    })
+  }
+
+  const presentNotes = commands.get('file.presentNotes')
   const quickFormats = formats.filter((f) => ['jpg', 'png', 'pdf', 'svg'].includes(f.id) && (!f.available || f.available(editor)))
   const items: MenuItem[] = [
+    ...(canShare ? [{ id: 'share-people', label: t.topbar.shareWithPeople, hint: t.topbar.shareWithPeopleHint, icon: <Users size={16} aria-hidden="true" />, onSelect: share }, { id: 's-share', separator: true }] : []),
+    { id: 'h-download', label: t.topbar.downloadHeading, heading: true },
     ...quickFormats.map((f) => ({ id: f.id, label: f.label, hint: t.topbar.formatHint[f.id as 'jpg'], onSelect: () => void quick(f) })),
-    { id: 'sep', separator: true },
     { id: 'video', label: t.topbar.videoDownload, hint: t.topbar.videoDownloadHint, onSelect: () => editor.openDialog('download', { format: 'mp4' }) },
     { id: 'more', label: t.topbar.moreDownloadOptions, onSelect: () => editor.openDialog('download') },
+    { id: 's-present', separator: true },
+    { id: 'h-present', label: t.topbar.presentHeading, heading: true },
+    { id: 'present', label: t.topbar.presentFull, icon: <Presentation size={16} aria-hidden="true" />, onSelect: onPresent },
+    ...(presentNotes ? [{ id: 'present-notes', label: presentNotes.label, icon: presentNotes.icon, onSelect: () => void presentNotes.run(editor) }] : []),
   ]
+  const label = busy ? t.dialog.downloadWorking : canShare ? t.topbar.share : t.dialog.downloadButton
   return (
     <>
-      <button ref={anchor} type="button" className={`${ed.btn} ${ed.ghost} ${styles.download}`} aria-haspopup="menu" aria-expanded={open} disabled={busy} data-testid="ed-download" onPointerEnter={() => preloadDialog('download')} onFocus={() => preloadDialog('download')} onClick={() => setOpen((o) => !o)}>
-        <Download size={15} aria-hidden="true" />
-        <span className={styles.btnLabel}>{busy ? t.dialog.downloadWorking : t.dialog.downloadButton}</span>
+      <button
+        ref={anchor}
+        type="button"
+        className={`${ed.btn} ${ed.primary} ${styles.share}`}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        disabled={busy}
+        data-testid="ed-share"
+        onPointerEnter={() => {
+          preloadDialog('download')
+          if (canShare) preloadDialog('share')
+        }}
+        onFocus={() => preloadDialog('download')}
+        onClick={() => setOpen((o) => !o)}
+      >
+        {canShare ? <Share2 size={15} aria-hidden="true" /> : I.download}
+        <span className={styles.btnLabel}>{label}</span>
+        <ChevronDown size={14} aria-hidden="true" className={styles.chevron} />
       </button>
-      {open ? <Menu label={t.dialog.downloadButton} items={items} anchorRef={anchor} onClose={() => setOpen(false)} /> : null}
+      {open ? <Menu label={label} items={items} anchorRef={anchor} onClose={() => setOpen(false)} /> : null}
     </>
   )
 }
 
+function useWidth(ref: React.RefObject<HTMLElement | null>): number {
+  const [width, setWidth] = useState(0)
+  useLayoutEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const ro = new ResizeObserver(([entry]) => setWidth(Math.round(entry.contentRect.width)))
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [ref])
+  return width
+}
+
+/**
+ * The bar: the design's menus, history and save state on the left, its title in the middle, and the people,
+ * comments and the one Share menu on the right. The tools that add to the design live in the rail (ToolRail).
+ */
 export function TopBar({ start, end, onTitle, onPresent }: TopBarProps) {
   const editor = useEditor()
   const history = useEditorState((s) => s.history)
@@ -241,23 +210,10 @@ export function TopBar({ start, end, onTitle, onPresent }: TopBarProps) {
   const visible = useVisiblePanels()
   const { openId, toggle } = useOpenTool()
   const barRef = useRef<HTMLElement>(null)
-  const endRef = useRef<HTMLDivElement>(null)
-  const stackRef = useRef<HTMLDivElement>(null)
   const barWidth = useWidth(barRef)
-  const endWidth = useWidth(endRef)
-  /** The avatar stack takes room from the right-hand group, so the bar collapses its tools a step earlier while it is there. */
-  const stackWidth = useWidth(stackRef)
-  const level = levelFor(barWidth - endWidth - stackWidth)
-  /** Phone widths: the end tools (Comments) move into the More menu so the bar keeps room for the title. */
-  const narrow = barWidth > 0 && barWidth < 720
-  const [moreOpen, setMoreOpen] = useState(false)
-  const moreRef = useRef<HTMLButtonElement>(null)
+  const narrow = barWidth > 0 && barWidth < NARROW_BAR
 
-  const tools = visible.filter((p) => p.slot !== 'end' && (!readOnly || p.readOnly))
   const endTools = visible.filter((p) => p.slot === 'end' && (!readOnly || p.readOnly))
-  const limit = level === 3 && barWidth > 0 && barWidth < TIGHT_BAR_WIDTH ? TOOLS_AT_LEVEL[3] - 1 : TOOLS_AT_LEVEL[level]
-  const shown = tools.slice(0, limit)
-  const hidden = tools.slice(limit)
 
   const cmd = (id: string, label?: string): MenuItem => {
     const c = commands.get(id)
@@ -270,63 +226,69 @@ export function TopBar({ start, end, onTitle, onPresent }: TopBarProps) {
       onSelect: () => c && void c.run(editor),
     }
   }
-  const notesItems: MenuItem[] = [{ ...cmd('view.notes'), checked: notesOpen }, cmd('file.notesMarkdown'), cmd('file.notesText')]
-  const animationItems: MenuItem[] = [{ ...cmd('view.timeline'), checked: timelineOpen }, cmd('view.playPage')]
-  const endItems: MenuItem[] = narrow ? endTools.map((p) => ({ id: `tool-${p.id}`, label: p.label, icon: p.icon, checked: openId === p.id || undefined, onSelect: () => toggle(p.id) })) : []
-  const moreItems: MenuItem[] = readOnly
-    ? [...endItems, cmd('file.download'), ...notesItems, ...animationItems, { id: 'present', label: t.topbar.present, onSelect: onPresent }, cmd('file.presentNotes'), cmd('file.shortcuts')]
+  const notesDownloads: MenuItem[] = [cmd('file.notesMarkdown'), cmd('file.notesText')]
+  const fileItems: MenuItem[] = readOnly
+    ? [cmd('file.download'), ...notesDownloads]
     : [
-        ...endItems,
         cmd('file.rename'),
-        cmd('file.reset'),
-        cmd('file.save'),
-        { id: 's1', separator: true },
-        cmd('page.add', t.menu.newPage),
         cmd('file.resize'),
-        cmd('file.download'),
         cmd('file.history'),
-        { id: 's-notes', separator: true },
-        ...notesItems,
-        ...animationItems,
-        { id: 's2', separator: true },
-        { id: 'rulers', label: t.menu.rulers, checked: ui.rulers, onSelect: () => editor.patchUi({ rulers: !ui.rulers }) },
-        { id: 'grid', label: t.menu.grid, checked: ui.grid, onSelect: () => editor.patchUi({ grid: !ui.grid }) },
-        { id: 'guides', label: t.menu.guides, checked: ui.guides, onSelect: () => editor.patchUi({ guides: !ui.guides }) },
-        { id: 'snap', label: t.menu.snapping, checked: ui.snapping, onSelect: () => editor.patchUi({ snapping: !ui.snapping }) },
-        { id: 'bleed', label: t.menu.bleed, checked: ui.bleed, onSelect: () => editor.patchUi({ bleed: !ui.bleed }) },
-        ...(guideCount > 0 ? [{ id: 'clear-guides', label: t.design.clearGuides(guideCount), onSelect: () => editor.pages.setGuides(editor.state.activePageId, []) }] : []),
-        { id: 's3', separator: true },
-        ...(level >= 1 ? [{ id: 'present', label: t.topbar.present, onSelect: onPresent }] : []),
-        cmd('file.presentNotes'),
-        cmd('file.shortcuts'),
+        cmd('file.save'),
+        { id: 'f1', separator: true },
+        cmd('page.add', t.menu.newPage),
+        { id: 'f2', separator: true },
+        cmd('file.download'),
+        ...notesDownloads,
+        { id: 'f3', separator: true },
+        cmd('file.reset'),
       ]
+  const viewItems: MenuItem[] = [
+    ...(readOnly
+      ? []
+      : [
+          { id: 'rulers', label: t.menu.rulers, checked: ui.rulers, onSelect: () => editor.patchUi({ rulers: !ui.rulers }) },
+          { id: 'grid', label: t.menu.grid, checked: ui.grid, onSelect: () => editor.patchUi({ grid: !ui.grid }) },
+          { id: 'guides', label: t.menu.guides, checked: ui.guides, onSelect: () => editor.patchUi({ guides: !ui.guides }) },
+          { id: 'snap', label: t.menu.snapping, checked: ui.snapping, onSelect: () => editor.patchUi({ snapping: !ui.snapping }) },
+          { id: 'bleed', label: t.menu.bleed, checked: ui.bleed, onSelect: () => editor.patchUi({ bleed: !ui.bleed }) },
+          ...(guideCount > 0 ? [{ id: 'clear-guides', label: t.design.clearGuides(guideCount), onSelect: () => editor.pages.setGuides(editor.state.activePageId, []) }] : []),
+          { id: 'v1', separator: true },
+        ]),
+    { ...cmd('view.notes'), checked: notesOpen },
+    { ...cmd('view.timeline'), checked: timelineOpen },
+    cmd('view.playPage'),
+    { id: 'v2', separator: true },
+    cmd('file.shortcuts'),
+  ]
+  /** Phone widths: one menu with a heading per group, and Comments joins it so the bar keeps room for the title. */
+  const combinedItems: MenuItem[] = [
+    ...endTools.map((p) => ({ id: `tool-${p.id}`, label: p.label, icon: p.icon, checked: openId === p.id || undefined, onSelect: () => toggle(p.id) })),
+    ...(endTools.length > 0 ? [{ id: 'c0', separator: true }] : []),
+    { id: 'h-file', label: t.topbar.file, heading: true },
+    ...fileItems,
+    { id: 'c1', separator: true },
+    { id: 'h-view', label: t.topbar.view, heading: true },
+    ...viewItems,
+  ]
 
-  // Closing a tool when the bar collapses it into "More" is not needed: its drawer anchors to the More button.
   useEffect(() => {
     if (readOnly) editor.patchUi({ panelId: null })
   }, [readOnly, editor])
 
   return (
-    <header ref={barRef} className={styles.bar} data-testid="ed-topbar" data-level={level}>
+    <header ref={barRef} className={styles.bar} data-testid="ed-topbar" data-narrow={narrow || undefined}>
       <div className={styles.left}>
         {start}
-        <TitleField onTitle={onTitle} />
-        <SaveStatus />
-      </div>
-
-      <Toolbar label={t.chrome.tools} className={styles.center}>
-        {shown.map((p) => (
-          <ToolEntry key={p.id} panel={p} open={openId === p.id} onToggle={() => toggle(p.id)} />
-        ))}
-        {hidden.length > 0 ? <MoreTools panels={hidden} openId={openId} onToggle={toggle} /> : null}
-      </Toolbar>
-
-      <div className={styles.right}>
-        <div ref={stackRef} className={styles.presence}>
-          <PresenceStack />
-        </div>
+        {narrow ? (
+          <MenuButton label={t.topbar.menu} items={combinedItems} testId="ed-more" icon={<MenuIcon size={18} aria-hidden="true" />} onOpen={() => preloadDialog('download')} />
+        ) : (
+          <nav className={styles.menus} aria-label={t.topbar.menus}>
+            <MenuButton label={t.topbar.file} items={fileItems} testId="ed-menu-file" onOpen={() => preloadDialog('download')} />
+            <MenuButton label={t.topbar.view} items={viewItems} testId="ed-menu-view" />
+          </nav>
+        )}
         {readOnly ? null : (
-          <>
+          <span className={styles.history}>
             <Tooltip label={history.undoLabel ? `${t.topbar.undo} ${history.undoLabel.toLowerCase()}` : t.topbar.undo} shortcut="Mod+Z" disabled={!history.canUndo}>
               <button type="button" className={`${ed.btn} ${ed.iconOnly} ${ed.ghost}`} aria-label={t.topbar.undo} disabled={!history.canUndo} data-testid="ed-undo" onClick={() => void editor.undo()}>
                 {I.undo}
@@ -337,27 +299,25 @@ export function TopBar({ start, end, onTitle, onPresent }: TopBarProps) {
                 {I.redo}
               </button>
             </Tooltip>
-          </>
+          </span>
         )}
-        {!narrow ? endTools.map((p) => <EndTool key={p.id} panel={p} open={openId === p.id} onToggle={() => toggle(p.id)} />) : null}
-        {level === 0 || readOnly ? (
-          <Tooltip label={t.topbar.present}>
-            <button type="button" className={`${ed.btn} ${ed.iconOnly} ${ed.ghost}`} aria-label={t.topbar.present} data-testid="ed-present" onClick={onPresent}>
-              <Presentation size={18} aria-hidden="true" />
-            </button>
-          </Tooltip>
-        ) : null}
-        <Tooltip label={t.chrome.more} disabled={moreOpen}>
-          <button ref={moreRef} type="button" className={`${ed.btn} ${ed.iconOnly} ${ed.ghost}`} aria-label={t.chrome.more} aria-haspopup="menu" aria-expanded={moreOpen} data-testid="ed-more" onClick={() => setMoreOpen((o) => !o)}>
-            <MoreHorizontal size={18} aria-hidden="true" />
-          </button>
-        </Tooltip>
-        {moreOpen ? <Menu label={t.chrome.more} items={moreItems} anchorRef={moreRef} onClose={() => setMoreOpen(false)} /> : null}
-        <DownloadMenu />
-        {readOnly ? null : <ShareButton />}
-        <div ref={endRef} className={styles.end}>
-          {end}
+        {narrow ? <TitleField onTitle={onTitle} /> : null}
+        <SaveStatus />
+      </div>
+
+      {narrow ? null : (
+        <div className={styles.center}>
+          <TitleField onTitle={onTitle} />
         </div>
+      )}
+
+      <div className={styles.right}>
+        <div className={styles.presence}>
+          <PresenceStack />
+        </div>
+        {!narrow ? endTools.map((p) => <EndTool key={p.id} panel={p} open={openId === p.id} onToggle={() => toggle(p.id)} />) : null}
+        {end ? <div className={styles.end}>{end}</div> : null}
+        <ShareMenu onPresent={onPresent} />
       </div>
     </header>
   )

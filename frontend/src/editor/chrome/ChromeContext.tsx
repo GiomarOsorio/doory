@@ -2,10 +2,10 @@ import { type ReactNode, createContext, useCallback, useContext, useMemo, useRef
 import { useEditor, useEditorState } from '../context'
 
 interface ChromeValue {
-  /** Remembers the top-bar button of each tool so its drawer can open right under it. */
+  /** Remembers the rail entry (or top-bar button) of each tool, so closing its panel can give focus back to it. */
   setAnchor(id: string, el: HTMLElement | null): void
   getAnchor(id: string): HTMLElement | null
-  /** Remembers whether the open tool was opened from the keyboard, so its drawer takes focus (a pointer click leaves focus alone). */
+  /** Remembers whether the open tool was opened from the keyboard, so its panel takes focus (a pointer click leaves focus alone). */
   setKeyboardOpen(value: boolean): void
   isKeyboardOpen(): boolean
 }

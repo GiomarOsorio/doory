@@ -1,4 +1,3 @@
-import { Plus } from 'lucide-react'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useEditor, useEditorState, useEditorStateShallow } from '../context'
 import { pageSize } from '../engine/docOps'
@@ -8,7 +7,6 @@ import { getPageSize, pageSizes, widestPage } from '../engine/pageSizes'
 import { wheelZoom } from '../engine/zoom'
 import { useLatest } from '../hooks/useLatest'
 import { t } from '../strings'
-import { Button } from '../ui/Button'
 import { LazyCommentPins } from './CommentPinsLoader'
 import { PageSlot } from './PageSlot'
 import { Rulers } from './Rulers'
@@ -400,7 +398,7 @@ export function Workspace({ stripOpen, onToggleStrip }: WorkspaceProps) {
           if (e.target === e.currentTarget) e.preventDefault()
         }}
       >
-        <div className={styles.content} data-workspace-bg style={{ minWidth: `max(100%, ${layout.contentWidth}px)`, paddingTop: metrics.padding, paddingBottom: metrics.padding + 56 }}>
+        <div className={styles.content} data-workspace-bg style={{ minWidth: `max(100%, ${layout.contentWidth}px)`, paddingTop: metrics.padding, paddingBottom: metrics.padding }}>
           {doc.pages.map((page, index) => {
             const slot = layout.slots[index]
             return (
@@ -421,11 +419,6 @@ export function Workspace({ stripOpen, onToggleStrip }: WorkspaceProps) {
               />
             )
           })}
-          {readOnly ? null : (
-            <Button className={styles.addPage} variant="soft" icon={<Plus size={18} />} onClick={() => editor.pages.add(doc.pages.length)}>
-              {t.workspace.addPage}
-            </Button>
-          )}
         </div>
       </div>
       <LazyCommentPins scrollRef={scrollRef} artboards={artboards} />

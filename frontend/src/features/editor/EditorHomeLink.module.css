@@ -1,5 +1,6 @@
 .link {
   display: inline-flex;
+  flex: none;
   border-radius: var(--radius-md);
   transition: transform var(--duration-fast) var(--ease-out);
 }

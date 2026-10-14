@@ -1,6 +1,6 @@
 /**
- * Tool registry: every entry is a button in the top bar (icon over label) that opens its component either as
- * a drawer anchored under the button or as a docked sidebar. Features add tools without touching core files:
+ * Tool registry: every entry is a button in the tool rail (icon over label) that opens its component in a panel docked
+ * beside the rail, which stays open until it is closed. Features add tools without touching core files:
  *
  * ```tsx
  * registerPanel({ id: 'charts', label: 'Charts', icon: <ChartBar size={18} />, order: 45, placement: 'drawer', component: ChartsDrawer })
@@ -20,10 +20,10 @@ export interface PanelProps {
 
 export interface PanelDefinition {
   id: string
-  /** Label under the icon in the top bar. */
+  /** Label under the icon in the rail. */
   label: string
   icon: ReactNode
-  /** Lower comes first in the top bar. Built-ins use 10, 20, 30… */
+  /** Lower comes first in the rail. Built-ins use 10, 20, 30… */
   order: number
   /** Rendered inside the drawer / sidebar; use `useEditor()` & friends for state. */
   component: ComponentType<PanelProps>
@@ -31,15 +31,15 @@ export interface PanelDefinition {
   requires?(ctx: { editor: EditorEngine; state: EditorState }): boolean
   /** Sidebar / sheet heading (defaults to `label`). */
   title?: string
-  /** `drawer`: popover under the top-bar button. `sidebar`: docked at the left of the workspace. Default `sidebar`. */
+  /** `drawer`: sections that scroll as one column, and adding from it keeps it open. `sidebar`: the panel lays itself out. Default `sidebar`. */
   placement?: 'drawer' | 'sidebar'
-  /** Drawer width in px (default 320). */
+  /** Panel width in px (at least 320). */
   width?: number
   /** Shortcut hint for the tooltip. */
   shortcut?: string
-  /** `tools`: icon-over-label entry in the middle of the top bar (default). `end`: icon button at the right end. */
+  /** `tools`: an entry in the rail (default). `end`: an icon button at the right end of the top bar. */
   slot?: 'tools' | 'end'
-  /** Starts downloading the panel's code (lazy panels); the top-bar button calls it when it is hovered or focused. */
+  /** Starts downloading the panel's code (lazy panels); its button calls it when it is hovered or focused. */
   preload?(): void
   /** Also offered while the design is open view-only or comment-only (a shared link), e.g. Comments. */
   readOnly?: boolean

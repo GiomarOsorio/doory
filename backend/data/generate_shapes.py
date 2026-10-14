@@ -4,7 +4,8 @@ Usage:  python generate_shapes.py <target-dir>
 
 Writes one folder per pack (`basic-shapes`, `lines-dividers`, `frames-masks`, `arrows-callouts`), with
 sub-folders that become search tags. Every file has a tidy `viewBox`, a `<title>` and a single hex colour
-(`#e11d48`) used for all fills and strokes, so the editor can recolour it by swapping that one value.
+(`#7a64e0`, the brand's lilac) used for all fills and strokes, so the editor can recolour it by swapping
+that one value.
 The geometry is computed here (no third-party artwork), which keeps the whole set original.
 """
 
@@ -17,7 +18,7 @@ from dataclasses import dataclass
 from html import escape
 from pathlib import Path as FilePath
 
-COLOR = "#e11d48"
+COLOR = "#7a64e0"
 NS = "http://www.w3.org/2000/svg"
 
 PACKS = {

@@ -5,6 +5,7 @@ from django.core.files.storage import default_storage
 
 from apps.elements import bulk
 from apps.elements.models import Element, ElementPack
+from apps.elements.normalize import DEFAULT_COLOR
 from apps.elements.packsync import (
     LicenseMismatch,
     SyncOptions,
@@ -52,7 +53,7 @@ def test_a_pack_is_synced_with_licence_attribution_tags_and_recolourable_artwork
     home = row.elements.get(key="home")
     assert (home.name, home.kind, home.style, home.width, home.height) == ("Home", "icon", "outline", 24, 24)
     assert home.tags[:2] == ["house", "building"] and "home" in home.tags
-    assert home.colors == ["#e11d48"] and home.is_recolorable
+    assert home.colors == [DEFAULT_COLOR] and home.is_recolorable
     assert row.elements.filter(is_recolorable=False).count() == 0
 
 
