@@ -1,4 +1,4 @@
-import { FolderPlus, LayoutGrid, List, Plus, Search, X } from 'lucide-react'
+import { FolderPlus, LayoutGrid, List, Plus, Search, Star, X } from 'lucide-react'
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { BulkBar } from '@/features/dashboard/BulkBar'
@@ -28,7 +28,8 @@ function isSort(value: string | null): value is NonNullable<DesignQuery['orderin
   return SORTS.some((sort) => sort.value === value)
 }
 
-export default function DesignsPage() {
+/** All designs, a folder's designs, or (`starred`) the starred ones from every folder. */
+export default function DesignsPage({ starred = false }: { starred?: boolean }) {
   const { folderId } = useParams()
   const [params, setParams] = useSearchParams()
   const { toast } = useToast()
@@ -43,9 +44,12 @@ export default function DesignsPage() {
 
   const folders = useFolders()
   const currentFolder = folderId ? folders.data?.find((folder) => folder.id === folderId) : undefined
-  usePageTitle(currentFolder?.name ?? 'Designs')
+  usePageTitle(starred ? 'Starred' : (currentFolder?.name ?? 'Designs'))
 
-  const query: DesignQuery = useMemo(() => ({ q: q || undefined, folder: q ? undefined : (folderId ?? 'root'), ordering }), [q, folderId, ordering])
+  const query: DesignQuery = useMemo(
+    () => (starred ? { q: q || undefined, starred: true, ordering } : { q: q || undefined, folder: q ? undefined : (folderId ?? 'root'), ordering }),
+    [q, folderId, ordering, starred],
+  )
   const list = useDesignsList(query)
   const designs = flattenPages(list.data)
   const actions = useDesignActions()
@@ -53,7 +57,7 @@ export default function DesignsPage() {
   const renameFolder = useRenameFolder()
   const deleteFolder = useDeleteFolder()
 
-  const subfolders = useMemo(() => (q ? [] : (folders.data ?? []).filter((folder) => folder.parent === (folderId ?? null)).sort((a, b) => a.name.localeCompare(b.name))), [folders.data, folderId, q])
+  const subfolders = useMemo(() => (q || starred ? [] : (folders.data ?? []).filter((folder) => folder.parent === (folderId ?? null)).sort((a, b) => a.name.localeCompare(b.name))), [folders.data, folderId, q, starred])
   const crumbs = useMemo(() => {
     const chain: FolderT[] = []
     let cursor = currentFolder
@@ -67,7 +71,7 @@ export default function DesignsPage() {
   }, [currentFolder, folders.data])
 
   // A new view (folder, search, sort) starts with nothing selected.
-  const viewKey = `${folderId ?? 'root'}|${q}|${ordering}`
+  const viewKey = `${starred ? 'starred' : (folderId ?? 'root')}|${q}|${ordering}`
   const [selection, setSelection] = useState<{ key: string; ids: ReadonlySet<string> }>({ key: viewKey, ids: EMPTY_SELECTION })
   const selected = selection.key === viewKey ? selection.ids : EMPTY_SELECTION
   const setSelected = (next: ReadonlySet<string> | ((current: ReadonlySet<string>) => ReadonlySet<string>)) =>
@@ -123,7 +127,7 @@ export default function DesignsPage() {
     <div className={styles.page}>
       <header className={styles.header}>
         <div className={styles.heading}>
-          <nav aria-label="Breadcrumb" className={styles.crumbs}>
+          <nav aria-label="Breadcrumb" className={styles.crumbs} hidden={starred}>
             <Link to="/dashboard/designs">All designs</Link>
             {crumbs.map((crumb, index) => (
               <span key={crumb.id}>
@@ -131,7 +135,7 @@ export default function DesignsPage() {
               </span>
             ))}
           </nav>
-          <h1 className={styles.title}>{q ? `Results for “${q}”` : (currentFolder?.name ?? 'Your designs')}</h1>
+          <h1 className={styles.title}>{q ? `Results for “${q}”` : starred ? 'Starred' : (currentFolder?.name ?? 'Your designs')}</h1>
         </div>
         <div className={styles.tools}>
           {q ? (
@@ -149,9 +153,11 @@ export default function DesignsPage() {
               { value: 'list', label: <List size={16} />, ariaLabel: 'List view' },
             ]}
           />
-          <Button variant="secondary" leftIcon={<FolderPlus size={16} />} onClick={() => setNewFolderOpen(true)}>
-            New folder
-          </Button>
+          {starred ? null : (
+            <Button variant="secondary" leftIcon={<FolderPlus size={16} />} onClick={() => setNewFolderOpen(true)}>
+              New folder
+            </Button>
+          )}
         </div>
       </header>
 
@@ -187,6 +193,8 @@ export default function DesignsPage() {
         ) : empty ? (
           q ? (
             <EmptyState icon={<Search size={28} />} title={`No designs match “${q}”`} description="Check the spelling, or try a shorter search." action={<Button variant="secondary" onClick={() => setParam('q', null)}>Clear search</Button>} />
+          ) : starred ? (
+            <EmptyState icon={<Star size={28} />} title="Nothing starred yet" description="Star a design from its menu or its card to keep it here, whatever folder it is in." />
           ) : folderId ? (
             <EmptyState icon={<FolderPlus size={28} />} title="This folder is empty" description="Drag designs onto a folder, or use “Move to folder” in a design’s menu." action={<LinkButton to="/dashboard/designs" variant="secondary">Back to all designs</LinkButton>} />
           ) : subfolders.length > 0 ? null : (

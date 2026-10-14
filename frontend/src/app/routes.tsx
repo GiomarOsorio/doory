@@ -74,6 +74,7 @@ export const routes: RouteObject[] = [
               { path: 'dashboard', element: <DashboardHomePage /> },
               { path: 'dashboard/designs', element: <DesignsPage /> },
               { path: 'dashboard/designs/folder/:folderId', element: <DesignsPage /> },
+              { path: 'dashboard/starred', element: <DesignsPage starred /> },
               { path: 'dashboard/templates', element: <DashboardTemplatesPage /> },
               { path: 'dashboard/brand', element: <BrandPage /> },
               { path: 'dashboard/uploads', element: <UploadsPage /> },
