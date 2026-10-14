@@ -38,7 +38,7 @@ can run the whole thing on your own server.**
 
 <br />
 
-## 💜 Why people pick Doory
+## 💜 What you get
 
 <table>
   <tr>

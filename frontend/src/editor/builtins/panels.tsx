@@ -49,7 +49,9 @@ export function registerBuiltinPanels(): void {
     readOnly: true,
     component: CommentsPanel,
     preload: () => void Promise.all([CommentsPanel.preload(), LazyCommentPins.preload()]),
-    requires: ({ editor, state }) => state.mode !== 'shared-view' && (!!editor.adapter.services.comments || state.mode === 'guest' || state.mode === 'shared-comment'),
+    // Only where someone can actually comment: an account with the comments service, or a comment link. A guest's design has
+    // no Comments button (it would only lead to the sign-up dialog); signing up brings it.
+    requires: ({ editor, state }) => state.mode !== 'shared-view' && (!!editor.adapter.services.comments || state.mode === 'shared-comment'),
   })
 }
 

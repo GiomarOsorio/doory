@@ -120,11 +120,9 @@ test.describe('[layout] comments', () => {
     await expect(page.getByTestId('comment-thread')).toHaveCount(1)
   })
 
-  test('guests see a sign-up prompt instead of the thread list', async ({ page }) => {
+  test('guests get no Comments button: commenting needs an account', async ({ page }) => {
     await openEditor(page, 'doc=blank')
-    await page.getByTestId('ed-end-comments').click()
-    await expect(page.getByTestId('comments-gate')).toBeVisible()
-    await page.getByTestId('comments-signup').click()
-    await expect.poll(() => page.evaluate(() => window.__doory!.accountRequests)).toContain('comment')
+    await expect(page.getByTestId('ed-topbar')).toBeVisible()
+    await expect(page.getByTestId('ed-end-comments')).toHaveCount(0)
   })
 })

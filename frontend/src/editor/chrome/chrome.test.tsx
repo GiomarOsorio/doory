@@ -94,6 +94,11 @@ describe('editor chrome', () => {
     expect(text).toHaveFocus()
   })
 
+  it('shows no Comments button on a guest design, where commenting would only ask to sign up', async () => {
+    engine = await mount('guest')
+    expect(screen.queryByTestId('ed-end-comments')).not.toBeInTheDocument()
+  })
+
   it('puts the design commands in File and View menus at the left of the bar', async () => {
     engine = await mount()
     await userEvent.click(screen.getByRole('button', { name: t.topbar.file }))
