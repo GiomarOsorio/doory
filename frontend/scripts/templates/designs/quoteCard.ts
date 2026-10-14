@@ -1,31 +1,40 @@
 import { DocBuilder } from '../kit'
 import type { TemplateDesign } from '../registry'
 
-// Quiet and neutral: beige paper, one serif, one accent, and room to breathe.
-const BEIGE = '#ede4d8'
-const INK = '#2b2420'
-const MUTED = '#6e6259'
-const ACCENT = '#a4502f'
+// After the best-loved minimalist quote sets: one solid colour, the quote centred in a narrow serif with a word in
+// capitals and a word in italics for stress, and a tiny spaced handle at the foot.
+const BLACK = '#0e0e0e'
+const WHITE = '#f7f5f1'
+const GREY = '#a7a39c'
 
 export const quoteCard: TemplateDesign = {
   slug: 'serif-quote-card',
   title: 'Serif quote card',
   category: 'social-media',
-  tags: ['quote', 'instagram', 'minimal', 'neutral', 'typography'],
-  description: 'A calm, neutral quote post: an oversized quotation mark, a serif quote with plenty of space and a small author line.',
+  tags: ['quote', 'instagram', 'minimal', 'black', 'typography', 'inspiration'],
+  description: 'A minimalist quote post: black, a centred serif quote with one word in capitals and one in italics, and a small handle at the foot.',
   preset: 'instagram-post',
   build() {
     const doc = new DocBuilder(this.slug, { width: 1080, height: 1080, unit: 'px', presetId: 'instagram-post' })
-    const p = doc.page('Quote', { type: 'solid', color: BEIGE })
+    const p = doc.page('Quote', { type: 'solid', color: BLACK })
 
-    p.text({ name: 'Quotation mark', x: 92, y: 120, w: 300, text: '“', font: 'lora', bold: true, size: 360, color: ACCENT, on: BEIGE, lh: 1, decorative: true, lines: 1 })
-    p.text({ name: 'Quote', x: 110, y: 370, w: 860, text: 'Have nothing in your house that you do not know to be useful, or believe to be beautiful.', font: 'lora', italic: true, size: 60, color: INK, on: BEIGE, lh: 1.25, lines: 4 })
-
-    p.line({ name: 'Rule', x1: 112, y1: 760, x2: 196, y2: 760, color: ACCENT, width: 4 })
-    p.text({ name: 'Author', x: 110, y: 790, w: 700, text: 'William Morris', font: 'archivo', bold: true, size: 30, color: INK, on: BEIGE, spacing: 160, upper: true, lines: 1 })
-    p.text({ name: 'Role', x: 110, y: 836, w: 700, text: 'The Beauty of Life, 1880', font: 'archivo', size: 26, color: MUTED, on: BEIGE, lines: 1 })
-
-    p.text({ name: 'Handle', x: 560, y: 980, w: 410, text: '@yourstudio', font: 'archivo', size: 24, color: MUTED, on: BEIGE, align: 'right', spacing: 60, lines: 1 })
+    p.text({
+      name: 'Quote',
+      x: 150,
+      y: 330,
+      w: 780,
+      text: 'Have nothing in your house that you do not know to be USEFUL, or believe to be beautiful.',
+      font: 'crimson',
+      size: 66,
+      color: WHITE,
+      on: BLACK,
+      align: 'center',
+      lh: 1.1,
+      emphasis: [{ text: 'beautiful', italic: true }],
+      lines: 4,
+    })
+    p.text({ name: 'Author', x: 0, y: 740, w: 1080, text: 'William Morris', font: 'crimson', size: 24, color: GREY, on: BLACK, align: 'center', upper: true, spacing: 300, lines: 1 })
+    p.text({ name: 'Handle', x: 0, y: 980, w: 1080, text: '#yourbrandhere', font: 'crimson', size: 18, color: GREY, on: BLACK, align: 'center', upper: true, spacing: 400, lines: 1 })
     return doc
   },
 }
