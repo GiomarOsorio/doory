@@ -73,11 +73,30 @@ in the admin site.
 ```bash
 cp .env.example .env     # set DJANGO_SECRET_KEY (openssl rand -base64 48) and POSTGRES_PASSWORD
 docker compose up -d --build
-docker compose exec api python manage.py createsuperuser
+docker compose exec api python manage.py createsuperuser   # your admin account; nothing creates one for you
 ```
 
 Open <http://localhost:8080> and start designing. The `web` container serves the app and forwards `/api` and
 `/ws` to the backend, so the browser only ever talks to one address.
+
+<details>
+<summary><b>The admin site</b> (templates, users, content)</summary>
+
+<br />
+
+The admin site is at `/admin/` on your domain, e.g. <http://localhost:8080/admin/>. Log in with the account made
+by `createsuperuser`; accounts that only signed up on the site cannot open it. There you add and edit templates and
+their categories, manage users, designs and uploads, and look after fonts, element packs and audio.
+
+| To | Run |
+|----|-----|
+| Make an admin account | `docker compose exec api python manage.py createsuperuser` |
+| Reset an admin's password | `docker compose exec api python manage.py changepassword you@example.com` |
+| Make an existing account an admin | `docker compose exec api python manage.py shell -c "from django.contrib.auth import get_user_model as g; u = g().objects.get(email='you@example.com'); u.is_staff = u.is_superuser = True; u.save()"` |
+
+Without Docker, run the same `manage.py` commands with the `manage` helper from the guide below.
+
+</details>
 
 <details>
 <summary><b>Add the starter content</b> (templates, icons, fonts, audio)</summary>
