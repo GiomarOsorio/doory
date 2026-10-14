@@ -140,7 +140,7 @@ describe('the save pill and the banner while live', () => {
     [{ status: 'read-only' as const, canWrite: false }, /Watching live/],
     [{ status: 'connecting' as const, synced: false, canWrite: false }, /Connecting…/],
     [{ status: 'offline' as const, attempt: 1 }, /Reconnecting…/],
-    [{ status: 'offline' as const, attempt: 4 }, /Offline — changes will sync/],
+    [{ status: 'offline' as const, attempt: 4 }, /Offline. Changes will sync/],
     [{ status: 'busy' as const }, /Server busy/],
     [{ status: 'signed-out' as const }, /Signed out/],
     [{ status: 'forbidden' as const }, /No access/],

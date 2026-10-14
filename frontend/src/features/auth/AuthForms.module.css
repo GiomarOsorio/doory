@@ -40,9 +40,3 @@
   height: 1px;
   background: var(--color-border);
 }
-
-.fineprint {
-  font-size: var(--text-sm);
-  color: var(--color-text-muted);
-  text-align: center;
-}

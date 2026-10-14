@@ -13,35 +13,18 @@
 }
 
 .item {
-  border: 2px solid var(--ink);
+  border: 1px solid var(--color-border);
   border-radius: var(--radius-xl);
-  background: var(--paper);
-  box-shadow: 3px 3px 0 rgb(43 28 23 / 0.12);
+  background: var(--color-surface);
   transition:
     background-color var(--duration-base) var(--ease-out),
     box-shadow var(--duration-base) var(--ease-out),
     transform var(--duration-base) var(--ease-out);
 }
 
-.item:nth-child(4n + 1)[data-open] {
-  background: var(--pastel-butter);
-}
-
-.item:nth-child(4n + 2)[data-open] {
-  background: var(--pastel-pink);
-}
-
-.item:nth-child(4n + 3)[data-open] {
-  background: var(--pastel-mint);
-}
-
-.item:nth-child(4n + 4)[data-open] {
-  background: var(--violet-100);
-}
-
 .item[data-open] {
-  box-shadow: 5px 5px 0 var(--ink);
-  transform: translate(-2px, -2px) rotate(-0.4deg);
+  background: var(--color-brand-soft);
+  box-shadow: var(--shadow-sm);
 }
 
 .question {

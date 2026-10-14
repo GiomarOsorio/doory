@@ -54,28 +54,28 @@
 }
 
 .button[data-variant='primary'] {
-  --offset: 3px;
   background: var(--color-cta);
   color: var(--color-on-cta);
   font-weight: 800;
-  box-shadow: var(--offset) var(--offset) 0 var(--color-cta-shadow);
-}
-
-.button[data-variant='primary'][data-size='sm'] {
-  --offset: 2px;
-}
-
-.button[data-variant='primary'][data-size='lg'] {
-  --offset: 5px;
 }
 
 .button[data-variant='primary']:hover:not(:disabled) {
   background: var(--color-cta-hover);
+}
+
+/* The big calls to action (the landing page, an empty dashboard) keep the drawn offset shadow; buttons inside forms,
+   dialogs and toolbars stay flat, so the shadow still means "start here" and does not decorate every action. */
+.button[data-variant='primary'][data-size='lg'] {
+  --offset: 5px;
+  box-shadow: var(--offset) var(--offset) 0 var(--color-cta-shadow);
+}
+
+.button[data-variant='primary'][data-size='lg']:hover:not(:disabled) {
   transform: translate(-1px, -1px);
   box-shadow: calc(var(--offset) + 1px) calc(var(--offset) + 1px) 0 var(--color-cta-shadow);
 }
 
-.button[data-variant='primary']:active:not(:disabled):not([data-loading]) {
+.button[data-variant='primary'][data-size='lg']:active:not(:disabled):not([data-loading]) {
   transform: translate(1px, 1px);
   box-shadow: calc(var(--offset) - 2px) calc(var(--offset) - 2px) 0 var(--color-cta-shadow);
 }

@@ -10,7 +10,7 @@
   text-decoration: none;
 }
 
-/* a polaroid: white frame, soft shadow; it tilts and gets a pastel shadow on hover */
+/* a white frame with a soft shadow; on hover it lifts a little */
 .thumb {
   padding: 6px;
   border: 1px solid rgb(43 28 23 / 0.08);
@@ -22,15 +22,10 @@
     box-shadow var(--duration-slow) var(--ease-out);
 }
 
-.card:nth-child(even) .thumb,
-:nth-child(even) > .card .thumb {
-  --tilt: 1deg;
-}
-
 .card:hover .thumb,
 .card:focus-visible .thumb {
-  transform: rotate(var(--tilt, -1deg)) translateY(-4px);
-  box-shadow: 4px 4px 0 var(--pastel-pink), var(--shadow-md);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
 }
 
 .meta {

@@ -79,7 +79,7 @@ export default function UploadsPage() {
             q || filter !== 'all' ? (
               <EmptyState icon={<Search size={28} />} title="No uploads match" description="Try another search or filter." />
             ) : (
-              <EmptyState icon={<Upload size={28} />} title="No uploads yet" description="Drop images above to build your library. They’ll show up in the editor’s Uploads panel too." />
+              <EmptyState icon={<Upload size={28} />} title="No uploads yet" description="Drop images above to build your library. They’ll show up in the editor’s Images panel too." />
             )
           ) : (
             <ul className={uploadStyles.grid}>

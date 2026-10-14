@@ -97,17 +97,14 @@
 
 .wayAction {
   margin-top: var(--space-2);
-  border: 2px solid var(--ink);
-  background: var(--paper);
+  border: 1px solid var(--color-border-strong);
+  background: var(--color-surface);
   color: var(--ink);
-  font-weight: 800;
-  box-shadow: 3px 3px 0 var(--ink);
+  font-weight: 700;
 }
 
 .wayAction:hover {
-  background: var(--paper);
-  transform: translate(-1px, -1px);
-  box-shadow: 4px 4px 0 var(--ink);
+  background: var(--color-bg-muted);
 }
 
 /* Leave a note */
@@ -117,12 +114,10 @@
   gap: var(--space-10);
   margin-top: var(--space-16);
   padding: var(--space-10);
-  border: 2px solid var(--ink);
+  border: 1px solid var(--color-border);
   border-radius: var(--radius-xl);
-  background-color: var(--paper);
-  /* lined notepaper */
-  background-image: repeating-linear-gradient(transparent 0 31px, rgb(43 28 23 / 0.07) 31px 32px);
-  box-shadow: 6px 6px 0 var(--pastel-pink);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-sm);
 }
 
 .noteHead {

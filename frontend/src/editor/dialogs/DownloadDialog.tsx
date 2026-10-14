@@ -71,7 +71,6 @@ export function DownloadDialog({ props }: { props?: Record<string, unknown> } = 
     <label key={f.id} className={`${styles.formatCard} ${f.id === format?.id ? styles.formatOn : ''}`}>
       <input type="radio" name="export-format" checked={f.id === format?.id} onChange={() => setFormatId(f.id)} />
       <strong>{f.label}</strong>
-      <small>{f.description}</small>
     </label>
   )
 
@@ -162,6 +161,11 @@ export function DownloadDialog({ props }: { props?: Record<string, unknown> } = 
                 {videoFormats.map(formatCard)}
               </div>
             </>
+          ) : null}
+          {format?.description ? (
+            <small className={styles.formatNote} data-testid="download-format-note">
+              {format.description}
+            </small>
           ) : null}
         </fieldset>
 

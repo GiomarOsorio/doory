@@ -22,19 +22,19 @@ export function HeroCards() {
       </svg>
       <ul className={styles.art}>
         <li className={styles.left}>
-          <Link to="/templates" className={styles.link} aria-label="A birthday card — browse templates">
+          <Link to="/templates" className={styles.link} aria-label="A birthday card. Browse templates">
             <BirthdayCard />
             <span className={styles.caption}>a birthday card</span>
           </Link>
         </li>
         <li className={styles.middle}>
-          <Link to="/templates" className={styles.link} aria-label="An invitation — browse templates">
+          <Link to="/templates" className={styles.link} aria-label="An invitation. Browse templates">
             <InvitationCard />
             <span className={styles.caption}>an invitation</span>
           </Link>
         </li>
         <li className={styles.right}>
-          <Link to="/templates" className={styles.link} aria-label="A thank-you card — browse templates">
+          <Link to="/templates" className={styles.link} aria-label="A thank-you card. Browse templates">
             <ThankYouCard />
             <span className={styles.caption}>a thank-you card</span>
           </Link>

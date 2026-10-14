@@ -81,7 +81,7 @@ export function LoginForm({ onSuccess, onNavigate, autoFocus = true, lockedEmail
             </Link>
           }
         />
-        <Button type="submit" size="lg" fullWidth loading={busy}>
+        <Button type="submit" fullWidth loading={busy}>
           Log in
         </Button>
       </form>

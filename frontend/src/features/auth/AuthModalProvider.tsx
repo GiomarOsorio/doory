@@ -22,7 +22,7 @@ interface AuthModalContextValue {
 const AuthModalContext = createContext<AuthModalContextValue | null>(null)
 
 const COPY: Record<AuthModalReason, { title: string; description: string }> = {
-  save: { title: 'Create a free account to keep this design', description: 'Your work is stored in this browser right now. Sign up and we’ll move it — images included — to your account.' },
+  save: { title: 'Create a free account to keep this design', description: 'Your work is stored in this browser right now. Sign up and we’ll move it to your account, images included.' },
   share: { title: 'Sign in to share your design', description: 'Share links and comments live in your account. Your design and images come along.' },
   'brand-kit': { title: 'Sign in to use brand kits', description: 'Save your colours, fonts and logos once and apply them to every design.' },
   'version-history': { title: 'Sign in to see version history', description: 'Accounts keep snapshots of your design so you can go back in time.' },

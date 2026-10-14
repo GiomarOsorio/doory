@@ -19,7 +19,7 @@ test('after a lost connection the editor keeps working, shows it, and merges wit
   await Promise.all([whenLive(owner.page), whenLive(bo.page)])
 
   await network.down(bo.page)
-  await expect(bo.page.getByTestId('collab-status')).toContainText('Offline — changes will sync')
+  await expect(bo.page.getByTestId('collab-status')).toContainText('Offline. Changes will sync')
   expect(['offline', 'connecting']).toContain(await status(bo.page))
 
   // Bo keeps editing; Ada edits something else at the same time.

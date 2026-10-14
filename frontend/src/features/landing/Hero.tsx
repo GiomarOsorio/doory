@@ -39,7 +39,7 @@ export function Hero() {
         today.
       </h1>
       <p className={styles.lead}>
-        Cards, posts, slides, posters and little logos — drawn up right in your browser. Free, and no sign-up to start.
+        Cards, posts, slides, posters and little logos, made right in your browser. Free, and no sign-up to start.
       </p>
 
       <HeroCards />

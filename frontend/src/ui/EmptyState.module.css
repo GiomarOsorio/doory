@@ -19,12 +19,9 @@
   width: 4rem;
   height: 4rem;
   margin-bottom: var(--space-2);
-  border: 2px solid var(--ink);
   border-radius: 50%;
-  background: var(--pastel-butter);
-  color: var(--ink);
-  box-shadow: 4px 4px 0 var(--pastel-pink);
-  transform: rotate(-6deg);
+  background: var(--color-brand-soft);
+  color: var(--accent-lilac);
 }
 
 .title {

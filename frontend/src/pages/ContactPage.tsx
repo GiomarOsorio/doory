@@ -19,7 +19,7 @@ const WAYS = [
     tone: 'pink',
     icon: Bug,
     title: 'Found a bug?',
-    text: 'Tell us what you did and what went wrong — a screenshot helps a lot.',
+    text: 'Tell us what you did and what went wrong. A screenshot helps a lot.',
     action: 'Report a bug',
     href: newIssueUrl('Bug: ', 'What I did:\n\nWhat I expected:\n\nWhat happened instead:\n'),
   },
@@ -120,7 +120,7 @@ function NoteForm() {
           required
         />
         <Textarea label="Your note" value={message} onChange={(event) => setMessage(event.target.value)} rows={5} maxLength={4000} />
-        <Button type="submit" size="lg" rightIcon={<Send size={17} aria-hidden="true" />} className={styles.send}>
+        <Button type="submit" rightIcon={<Send size={17} aria-hidden="true" />} className={styles.send}>
           Continue on GitHub
         </Button>
       </form>

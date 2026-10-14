@@ -70,7 +70,6 @@ export function ResizeDialog({ props }: { props?: Record<string, unknown> }) {
   return (
     <Dialog
       title={t.dialog.resizeTitle}
-      description={t.dialog.resizeHint}
       onClose={() => editor.closeDialog()}
       width={720}
       footer={

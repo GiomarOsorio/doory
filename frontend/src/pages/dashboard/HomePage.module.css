@@ -27,10 +27,10 @@
 }
 
 .chip:hover {
-  border-color: var(--ink);
-  box-shadow: 3px 3px 0 var(--pastel-pink);
+  border-color: var(--color-border-strong);
+  box-shadow: var(--shadow-md);
   text-decoration: none;
-  transform: translate(-1px, -2px) rotate(-0.6deg);
+  transform: translateY(-1px);
 }
 
 .chipIcon {
@@ -39,26 +39,9 @@
   flex: none;
   width: 2.5rem;
   height: 2.5rem;
-  border: 1.5px solid var(--ink);
-  border-radius: 50%;
-  background: var(--pastel-butter);
-  color: var(--ink);
-}
-
-.chips > li:nth-child(5n + 2) .chipIcon {
-  background: var(--pastel-pink);
-}
-
-.chips > li:nth-child(5n + 3) .chipIcon {
-  background: var(--pastel-mint);
-}
-
-.chips > li:nth-child(5n + 4) .chipIcon {
-  background: var(--violet-100);
-}
-
-.chips > li:nth-child(5n + 5) .chipIcon {
-  background: var(--pastel-sky);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-muted);
+  color: var(--color-text);
 }
 
 .chipText {

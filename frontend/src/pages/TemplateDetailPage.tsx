@@ -106,7 +106,7 @@ export default function TemplateDetailPage() {
             <Button size="lg" leftIcon={<Sparkles size={18} />} loading={use.isPending} onClick={startFromTemplate}>
               Use this template
             </Button>
-            <p className={styles.hint}>{status === 'authenticated' ? 'We’ll add a copy to your designs.' : 'No account needed — it opens right in your browser.'}</p>
+            <p className={styles.hint}>{status === 'authenticated' ? 'We’ll add a copy to your designs.' : 'No account needed. It opens right in your browser.'}</p>
           </div>
         </div>
       </div>

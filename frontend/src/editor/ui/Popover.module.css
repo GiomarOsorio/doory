@@ -7,11 +7,11 @@
   max-height: calc(100vh - 16px);
   overflow: auto;
   padding: var(--space-3);
-  border: 1.5px solid var(--ink);
+  border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
   background: var(--color-surface-raised);
   color: var(--color-text);
-  box-shadow: 4px 4px 0 var(--pastel-butter), var(--shadow-md);
+  box-shadow: var(--shadow-md);
   animation: pop-in var(--duration-base) var(--ease-out);
   overscroll-behavior: contain;
 }
@@ -20,7 +20,7 @@
 .plain {
   padding: 0;
   border-radius: 14px;
-  box-shadow: 4px 4px 0 var(--pastel-butter), 0 16px 40px rgb(43 28 23 / 0.12);
+  box-shadow: 0 16px 40px rgb(43 28 23 / 0.12);
   animation: pop-in 140ms var(--ease-out);
 }
 

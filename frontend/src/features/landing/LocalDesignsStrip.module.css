@@ -2,16 +2,14 @@
   padding: var(--space-4) var(--space-4) var(--space-16);
 }
 
-/* a sheet of notepaper with the guest's designs taped onto it */
 .panel {
   max-width: 68rem;
   margin: 0 auto;
   padding: var(--space-10);
-  border: 2px solid var(--ink);
+  border: 1px solid var(--color-border);
   border-radius: var(--radius-xl);
-  background-color: var(--paper);
-  background-image: repeating-linear-gradient(transparent 0 31px, rgb(43 28 23 / 0.07) 31px 32px);
-  box-shadow: 6px 6px 0 var(--pastel-butter);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-sm);
 }
 
 .header {
@@ -157,11 +155,11 @@
   place-items: center;
   width: 2rem;
   height: 2rem;
-  border: 2px solid var(--ink);
+  border: 1px solid var(--color-border-strong);
   border-radius: 50%;
-  background: var(--paper);
+  background: var(--color-surface);
   color: var(--ink);
-  box-shadow: 2px 2px 0 var(--pastel-pink);
+  box-shadow: var(--shadow-sm);
   opacity: 0;
   transition:
     opacity var(--duration-fast) var(--ease-out),
@@ -169,7 +167,7 @@
 }
 
 .delete:hover {
-  transform: rotate(-8deg) scale(1.05);
+  background: var(--color-bg-muted);
 }
 
 .card:hover .delete,

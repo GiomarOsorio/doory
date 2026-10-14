@@ -9,8 +9,8 @@
   font-weight: 600;
   line-height: 1;
   white-space: nowrap;
-  background: var(--pastel-butter);
-  color: #5c4513;
+  background: var(--color-bg-muted);
+  color: var(--color-text-muted);
 }
 
 .badge[data-tone='brand'] {

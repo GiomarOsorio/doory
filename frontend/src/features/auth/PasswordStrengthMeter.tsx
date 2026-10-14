@@ -1,9 +1,11 @@
-import { Check, Circle } from 'lucide-react'
 import { evaluatePassword } from './password'
 import styles from './PasswordStrengthMeter.module.css'
 
+/** A strength bar and one line under it: the rule before typing, then how strong it is and what is still missing. */
 export function PasswordStrengthMeter({ password }: { password: string }) {
   const strength = evaluatePassword(password)
+  const missing = strength.checks.find((check) => !check.passed)
+  const line = !password ? 'At least 8 characters, and not only numbers.' : missing ? `${strength.label}. Still needs: ${missing.label.toLowerCase()}.` : `${strength.label}.`
   return (
     <div className={styles.root}>
       <div className={styles.bar} role="meter" aria-label="Password strength" aria-valuemin={0} aria-valuemax={4} aria-valuenow={strength.score} aria-valuetext={password ? strength.label : 'Empty'} data-score={strength.score}>
@@ -12,17 +14,8 @@ export function PasswordStrengthMeter({ password }: { password: string }) {
         ))}
       </div>
       <p className={styles.label} aria-live="polite">
-        {password ? strength.label : 'Use 8+ characters with a mix of letters, numbers or symbols.'}
+        {line}
       </p>
-      <ul className={styles.rules}>
-        {strength.checks.map((check) => (
-          <li key={check.id} className={styles.rule} data-passed={check.passed || undefined}>
-            {check.passed ? <Check size={14} aria-hidden="true" /> : <Circle size={14} aria-hidden="true" />}
-            <span>{check.label}</span>
-            <span className={styles.srOnly}>{check.passed ? ' (done)' : ' (not yet)'}</span>
-          </li>
-        ))}
-      </ul>
     </div>
   )
 }

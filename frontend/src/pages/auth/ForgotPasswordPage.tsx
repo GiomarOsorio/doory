@@ -56,7 +56,7 @@ export default function ForgotPasswordPage() {
       </div>
       <form className={formStyles.form} onSubmit={submit} noValidate>
         <Input label="Email" type="email" name="email" autoComplete="email" inputMode="email" autoFocus value={email} onChange={(event) => setEmail(event.target.value)} error={error} required />
-        <Button type="submit" size="lg" fullWidth loading={busy}>
+        <Button type="submit" fullWidth loading={busy}>
           Send reset link
         </Button>
       </form>

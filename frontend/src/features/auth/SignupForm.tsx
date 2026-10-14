@@ -65,13 +65,12 @@ export function SignupForm({ onSuccess, autoFocus = true, showName = true }: Sig
             {formError}
           </div>
         ) : null}
-        {showName ? <Input label="Name" hint="Optional — shown on designs you share." name="name" autoComplete="name" autoFocus={autoFocus} value={name} onChange={(event) => setName(event.target.value)} error={fieldErrors.display_name} maxLength={80} /> : null}
+        {showName ? <Input label="Name" hint="Optional. Shown on designs you share." name="name" autoComplete="name" autoFocus={autoFocus} value={name} onChange={(event) => setName(event.target.value)} error={fieldErrors.display_name} maxLength={80} /> : null}
         <Input label="Email" type="email" name="email" autoComplete="email" inputMode="email" autoFocus={autoFocus && !showName} value={email} onChange={(event) => setEmail(event.target.value)} error={fieldErrors.email} required />
         <PasswordInput label="Password" name="new-password" autoComplete="new-password" value={password} onChange={(event) => setPassword(event.target.value)} error={fieldErrors.password} showStrength required />
-        <Button type="submit" size="lg" fullWidth loading={busy}>
+        <Button type="submit" fullWidth loading={busy}>
           Create free account
         </Button>
-        <p className={styles.fineprint}>Doory is free and open source. We’ll only email you about your account.</p>
       </form>
       <GoogleDivider />
       <GoogleButton onCredential={handleGoogle} text="signup_with" />

@@ -75,12 +75,9 @@
   background: var(--color-cta);
   color: var(--color-on-cta);
   font-weight: 800;
-  box-shadow: 2px 2px 0 var(--color-cta-shadow);
 }
 .primary:hover:not(:disabled) {
   background: var(--color-cta-hover);
-  box-shadow: 3px 3px 0 var(--color-cta-shadow);
-  transform: translate(-1px, -1px);
 }
 .primary:active:not(:disabled) {
   background: var(--color-brand-active);

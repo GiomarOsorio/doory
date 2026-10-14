@@ -79,7 +79,7 @@ export function CustomSizeForm({ onSubmit, submitLabel = 'Create design' }: Cust
         <Select label="Unit" value={unit} onChange={(event) => changeUnit(event.target.value as CustomUnit)} options={CUSTOM_UNITS.map((value) => ({ value, label: value }))} />
       </div>
       <p className={styles.hint}>{maxHint}</p>
-      <Button type="submit" size="lg">
+      <Button type="submit">
         {submitLabel}
       </Button>
     </form>

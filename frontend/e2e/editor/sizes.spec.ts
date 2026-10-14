@@ -252,7 +252,7 @@ test.describe('[engine] pages of different sizes', () => {
     // The design already mixes sizes: the safe choice, this page, is selected.
     await expect(dialog.getByRole('radio', { name: 'This page only' })).toBeChecked()
     await expect(dialog.getByTestId('resize-preview')).toBeVisible()
-    await dialog.getByRole('radio', { name: 'Magic resize' }).check()
+    await dialog.getByRole('radio', { name: 'Rearrange to fit' }).check()
     await dialog.getByRole('textbox', { name: 'Width' }).fill('400')
     await dialog.getByRole('textbox', { name: 'Width' }).press('Tab')
     await expect(dialog.getByTestId('resize-preview-after').locator('img')).toBeVisible()
@@ -347,7 +347,7 @@ test.describe('[layout] screenshots of a mixed design', () => {
       await page.getByTestId('ed-canvas-size').click()
       await page.getByTestId('ed-all-sizes').click()
       const dialog = page.getByRole('dialog', { name: 'Resize design' })
-      await dialog.getByRole('radio', { name: 'Magic resize' }).check()
+      await dialog.getByRole('radio', { name: 'Rearrange to fit' }).check()
       await dialog.getByRole('textbox', { name: 'Width' }).fill('1200')
       await dialog.getByRole('textbox', { name: 'Width' }).press('Tab')
       await expect(dialog.getByTestId('resize-preview-after').locator('img')).toBeVisible()

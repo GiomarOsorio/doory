@@ -1,12 +1,5 @@
-import { Layers, Share2, Sparkles } from 'lucide-react'
 import bunny from '@/assets/bunny-sticker.webp'
 import styles from './AuthBrandPanel.module.css'
-
-const POINTS = [
-  { icon: <Sparkles size={18} />, text: 'Start instantly — no account needed' },
-  { icon: <Layers size={18} />, text: 'Templates, fonts and elements, all free' },
-  { icon: <Share2 size={18} />, text: 'Share, comment and export anywhere' },
-]
 
 /** Decorative brand side of the auth screens: the bunny with a taped-down card. Hidden below 960px. */
 export function AuthBrandPanel() {
@@ -37,14 +30,6 @@ export function AuthBrandPanel() {
       </div>
       <div className={styles.copy}>
         <h2 className={styles.headline}>Make something you’re proud of.</h2>
-        <ul className={styles.points}>
-          {POINTS.map((point) => (
-            <li key={point.text}>
-              {point.icon}
-              <span>{point.text}</span>
-            </li>
-          ))}
-        </ul>
       </div>
     </aside>
   )

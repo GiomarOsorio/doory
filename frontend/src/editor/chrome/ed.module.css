@@ -47,13 +47,12 @@
   background: var(--color-cta);
   color: var(--color-on-cta);
   font-weight: 800;
-  box-shadow: 2px 2px 0 var(--color-cta-shadow);
+
 }
 .primary:hover:not(:disabled) {
   background: var(--color-cta-hover);
   color: var(--color-on-cta);
-  box-shadow: 3px 3px 0 var(--color-cta-shadow);
-  transform: translate(-1px, -1px);
+
 }
 .ghost:hover:not(:disabled) {
   color: var(--ed-text);
@@ -371,9 +370,7 @@
 .propLabel {
   margin-bottom: 8px;
   color: var(--ed-text-dim);
-  font: 700 10px / 1.2 var(--font-sans);
-  text-transform: uppercase;
-  letter-spacing: 0.8px;
+  font: 600 12px / 1.3 var(--font-sans);
 }
 .propLabelRow {
   display: flex;
@@ -529,10 +526,8 @@
   transition: all var(--ed-dur) var(--ed-ease);
 }
 .presetBtn:hover {
-  border-color: var(--ink);
+  border-color: var(--accent-lilac);
   background: var(--ed-accent-glow);
-  box-shadow: 3px 3px 0 var(--pastel-lilac);
-  transform: translate(-1px, -1px);
 }
 .presetBtn:active {
   transform: translateY(0);
@@ -545,9 +540,7 @@
   display: block;
   margin-bottom: 4px;
   color: var(--ed-text-dim);
-  font: 600 10px / 1.2 var(--font-sans);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+  font: 600 12px / 1.3 var(--font-sans);
 }
 .presetHeading {
   font-size: 20px;

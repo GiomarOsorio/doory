@@ -139,7 +139,7 @@ describe('features, FAQ and contact pages', () => {
     const features = renderApp('/features')
     expect(await screen.findByRole('heading', { level: 1 })).toHaveTextContent('All the tools. None of the paywalls.')
     expect(screen.getByRole('heading', { name: 'Brand kits' })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: /Step 3: Keep it forever/ })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /Step 3: Save it to an account/ })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Create a design' })).toHaveAttribute('href', '/create')
     features.unmount()
 

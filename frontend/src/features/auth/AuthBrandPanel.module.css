@@ -163,31 +163,6 @@
   color: var(--ink);
 }
 
-.points {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  margin-top: var(--space-6);
-}
-
-.points li {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  font-weight: 700;
-  color: #4a3a4a;
-}
-
-.points li svg {
-  flex: none;
-  padding: 5px;
-  box-sizing: content-box;
-  border-radius: 50%;
-  background: var(--paper);
-  color: var(--violet-700);
-  border: 1.5px solid var(--ink);
-}
-
 @keyframes float {
   50% {
     transform: translateY(-10px) rotate(-7deg);

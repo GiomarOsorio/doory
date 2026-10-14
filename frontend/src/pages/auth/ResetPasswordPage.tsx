@@ -71,7 +71,7 @@ export default function ResetPasswordPage() {
           </div>
         ) : null}
         <PasswordInput label="New password" name="new-password" autoComplete="new-password" autoFocus value={password} onChange={(event) => setPassword(event.target.value)} error={error} showStrength required />
-        <Button type="submit" size="lg" fullWidth loading={busy}>
+        <Button type="submit" fullWidth loading={busy}>
           Update password
         </Button>
       </form>

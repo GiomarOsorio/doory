@@ -3,18 +3,13 @@
   gap: var(--space-5);
   padding: var(--space-6);
   background: var(--color-surface);
-  border: 1.5px solid var(--ink);
+  border: 1px solid var(--color-border);
   border-radius: var(--radius-xl);
-  box-shadow: 4px 4px 0 var(--pastel-butter);
-}
-
-.card:nth-child(even) {
-  box-shadow: 4px 4px 0 var(--pastel-mint);
+  box-shadow: var(--shadow-sm);
 }
 
 .card[data-tone='danger'] {
   border-color: var(--color-danger);
-  box-shadow: 4px 4px 0 var(--pastel-pink);
 }
 
 .cardHeader {

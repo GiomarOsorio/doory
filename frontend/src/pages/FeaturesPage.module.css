@@ -38,104 +38,45 @@
   letter-spacing: -0.03em;
 }
 
-/* Features: taped-down sticky notes in the bunny's pastels */
+/* Features: plain cards, one per feature */
 .notes {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(14.5rem, 1fr));
-  gap: var(--space-10) var(--space-6);
+  gap: var(--space-4);
   width: 100%;
   text-align: left;
 }
 
 .note {
-  position: relative;
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
-  padding: var(--space-8) var(--space-5) var(--space-6);
+  gap: var(--space-2);
+  padding: var(--space-6) var(--space-5);
+  border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
-  background: var(--tone);
-  box-shadow:
-    0 1px 0 rgb(43 28 23 / 0.06),
-    0 18px 30px -18px rgb(43 28 23 / 0.35);
-  transform: rotate(var(--tilt));
-  transition: transform var(--duration-slow) var(--ease-out);
-}
-
-.note:nth-child(odd) {
-  --tilt: -1.4deg;
-}
-
-.note:nth-child(even) {
-  --tilt: 1.2deg;
-}
-
-.note:nth-child(3n) {
-  --tilt: -0.6deg;
-}
-
-.note:hover {
-  transform: rotate(0deg) translateY(-4px);
-}
-
-/* washi tape */
-.note::before {
-  content: '';
-  position: absolute;
-  top: -0.7rem;
-  left: 50%;
-  width: 4.75rem;
-  height: 1.4rem;
-  margin-left: -2.375rem;
-  background:
-    repeating-linear-gradient(45deg, rgb(255 255 255 / 0.5) 0 6px, transparent 6px 12px),
-    var(--tape);
-  opacity: 0.9;
-  transform: rotate(-3deg);
-}
-
-.note[data-tone='butter'] {
-  --tone: var(--pastel-butter);
-  --tape: var(--pastel-pink);
-}
-
-.note[data-tone='pink'] {
-  --tone: var(--pastel-pink);
-  --tape: var(--pastel-mint);
-}
-
-.note[data-tone='mint'] {
-  --tone: var(--pastel-mint);
-  --tape: var(--pastel-butter);
-}
-
-.note[data-tone='lilac'] {
-  --tone: var(--violet-100);
-  --tape: var(--pastel-blush);
+  background: var(--color-surface);
 }
 
 .icon {
   display: grid;
   place-items: center;
-  width: 2.75rem;
-  height: 2.75rem;
-  border: 2px solid var(--ink);
-  border-radius: 50%;
-  background: var(--paper);
-  color: var(--ink);
-  box-shadow: 2px 2px 0 rgb(43 28 23 / 0.15);
+  width: 2.5rem;
+  height: 2.5rem;
+  margin-bottom: var(--space-1);
+  border-radius: var(--radius-md);
+  background: var(--color-brand-soft);
+  color: var(--accent-lilac);
 }
 
 .noteTitle {
   color: var(--ink);
-  font-size: 1.3rem;
+  font-size: 1.1rem;
   font-weight: 700;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.01em;
 }
 
 .noteText {
-  color: #4a3b3f;
-  font-weight: 600;
+  color: var(--color-text-muted);
 }
 
 /* How it works */
@@ -175,26 +116,14 @@
   place-items: center;
   width: 4rem;
   height: 4rem;
-  border: 2.5px solid var(--ink);
   border-radius: 50%;
-  background: var(--pastel-butter);
-  box-shadow: 4px 4px 0 var(--pastel-pink);
-  color: var(--ink);
+  background: var(--color-brand-soft);
+  color: var(--accent-lilac);
   font-family: var(--font-display);
   font-size: 1.9rem;
   font-style: italic;
   font-weight: 700;
   line-height: 1;
-}
-
-.step:nth-child(2) .number {
-  background: var(--pastel-pink);
-  box-shadow: 4px 4px 0 var(--pastel-mint);
-}
-
-.step:nth-child(3) .number {
-  background: var(--pastel-mint);
-  box-shadow: 4px 4px 0 var(--pastel-butter);
 }
 
 .stepTitle {

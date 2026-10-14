@@ -49,7 +49,6 @@ export default function HomePage() {
           {greeting()}
           {firstName ? `, ${firstName}` : ''}
         </h1>
-        <p className={styles.lead}>What will you make today?</p>
       </header>
 
       <section aria-labelledby="quick-create" className={styles.section}>

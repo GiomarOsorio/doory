@@ -28,13 +28,13 @@
   --pastel-mint: #c4ecd9;
   --pastel-sky: #cfe1ff;
 
-  /* Semantic — light. The accent is the bunny's ink with butter highlights; violet is kept for the canvas
-     selection handles and as a drawn accent (--accent-lilac), never for whole surfaces. */
+  /* Semantic — light. The accent is the bunny's ink; selected and hovered things get a pale lilac wash, and violet is
+     kept for the canvas selection handles and as a drawn accent (--accent-lilac), never for whole surfaces. */
   --color-brand: var(--ink);
   --color-brand-hover: #4a3530;
   --color-brand-active: #160e0b;
-  --color-brand-soft: #fff4cf;
-  --color-brand-soft-hover: var(--pastel-butter);
+  --color-brand-soft: #f1edff;
+  --color-brand-soft-hover: #e4ddff;
   --color-on-brand: var(--paper);
   --accent-lilac: #7a64e0;
 
@@ -69,7 +69,7 @@
   --color-info: #1d4ed8;
   --color-info-soft: #dbeafe;
 
-  --focus-ring: 0 0 0 3px rgb(255 169 185 / 0.75);
+  --focus-ring: 0 0 0 3px rgb(122 100 224 / 0.35);
   --selection-color: #6a52d9; /* canvas selection handles & guides */
   --guide-color: #ec5f98;
 

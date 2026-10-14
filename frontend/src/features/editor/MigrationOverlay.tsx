@@ -17,7 +17,7 @@ function describe(progress: MigrationProgress | null): { text: string; value: nu
 export function MigrationOverlay({ open, progress }: { open: boolean; progress: MigrationProgress | null }) {
   const { text, value } = describe(progress)
   return (
-    <Dialog open={open} onClose={() => undefined} dismissible={false} size="sm" title="Saving to your account" description="Keep this tab open — we’re moving your design and images over.">
+    <Dialog open={open} onClose={() => undefined} dismissible={false} size="sm" title="Saving to your account" description="Keep this tab open while we move your design and images over.">
       <div className={styles.body} role="status">
         <div className={styles.row}>
           <Spinner size={18} />

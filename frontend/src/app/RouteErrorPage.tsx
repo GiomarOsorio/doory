@@ -16,7 +16,7 @@ export function RouteErrorPage() {
           missing
             ? 'The link may be broken, or the page may have moved.'
             : chunkFailed
-              ? 'A part of Doory couldn’t be loaded — most likely your connection dropped or a new version was released. Reload to continue. Your work is saved.'
+              ? 'A part of Doory couldn’t be loaded. Your connection may have dropped, or a new version was released. Reload to continue. Your work is saved.'
               : 'Doory hit an unexpected problem. Reloading usually fixes it, and your saved work is safe.'
         }
         role="alert"

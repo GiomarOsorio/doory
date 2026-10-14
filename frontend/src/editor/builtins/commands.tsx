@@ -55,7 +55,7 @@ function toggleUnderline(e: EditorEngine): void {
 
 export function registerBuiltinCommands(): void {
   const nudge = (id: string, key: string, dx: number, dy: number): void => {
-    registerCommand({ id, label: t.cmd.nudge(key), shortcut: key, group: t.cmdGroup.move, run: (e) => e.arrange.nudge(dx, dy), enabled: ({ state }) => state.selection.ids.length > 0 && !state.selection.editing })
+    registerCommand({ id, label: t.cmd.nudge(Math.abs(dx || dy)), shortcut: key, group: t.cmdGroup.move, run: (e) => e.arrange.nudge(dx, dy), enabled: ({ state }) => state.selection.ids.length > 0 && !state.selection.editing })
   }
   nudge('move.left', 'ArrowLeft', -1, 0)
   nudge('move.right', 'ArrowRight', 1, 0)

@@ -14,7 +14,7 @@ const FAQ_ITEMS: FaqItem[] = [
   { question: 'Is Doory really free?', answer: 'Yes. There are no plans, no paywalls and no ads. Every feature you see is available to everyone.' },
   { question: 'Where are my designs stored?', answer: 'Guest designs and the images you upload live in your browser’s own storage on this device. Signed-in designs are stored in your Doory account, so you can open them anywhere.' },
   { question: 'What happens to my guest design when I sign up?', answer: 'We upload the images it uses, create the design in your account, and only then remove the local copy. If anything goes wrong along the way, your original stays untouched and you can try again.' },
-  { question: 'Can I download my designs?', answer: 'Yes — export as PNG, JPG, SVG or PDF. Exporting happens in your browser, so it works for guests too.' },
+  { question: 'Can I download my designs?', answer: 'Yes. Export as PNG, JPG, SVG or PDF. Exporting happens in your browser, so it works for guests too.' },
   { question: 'Can I run Doory myself?', answer: 'Yes. Doory is open source and self-hostable. The code and setup notes are on GitHub.' },
 ]
 

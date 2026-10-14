@@ -15,11 +15,11 @@
   flex-direction: column;
   width: 100%;
   max-height: calc(100vh - 32px);
-  border: 2px solid var(--ink);
+  border: 1px solid var(--color-border);
   border-radius: var(--radius-xl);
   background: var(--color-surface-raised);
   color: var(--color-text);
-  box-shadow: 6px 6px 0 var(--pastel-lilac), var(--shadow-lg);
+  box-shadow: var(--shadow-lg);
   animation: rise var(--duration-slow) var(--ease-out);
 }
 

@@ -80,16 +80,16 @@ small.error {
 }
 
 .formats {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-  gap: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
 }
 .formatCard {
   position: relative;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 12px;
+  display: inline-flex;
+  align-items: center;
+  height: 34px;
+  padding: 0 14px;
   border: 1px solid var(--color-border-strong);
   border-radius: var(--radius-md);
   background: var(--color-surface);
@@ -104,22 +104,24 @@ small.error {
   cursor: pointer;
 }
 .formatCard strong {
-  font: 700 var(--text-sm) / 1 var(--font-sans);
-}
-.formatCard small {
-  color: var(--color-text-muted);
-  font: 400 11px / 1.3 var(--font-sans);
+  font: 600 var(--text-sm) / 1 var(--font-sans);
 }
 .formatCard:hover {
-  border-color: var(--color-brand);
+  border-color: var(--color-text-subtle);
 }
 .formatOn {
-  border-color: var(--color-brand);
+  border-color: var(--accent-lilac);
   background: var(--color-brand-soft);
-  box-shadow: 0 0 0 1px var(--color-brand);
 }
 .formatCard:has(input:focus-visible) {
   box-shadow: var(--focus-ring);
+}
+/* One line about the chosen type, instead of a description under every option. */
+.formatNote {
+  display: block;
+  margin-top: 8px;
+  color: var(--color-text-muted);
+  font: 400 var(--text-xs) / 1.4 var(--font-sans);
 }
 
 .shortcutGrid {
@@ -131,9 +133,7 @@ small.error {
 .shortcutGroup h3 {
   margin: 0 0 var(--space-2);
   color: var(--color-text-muted);
-  font: 700 11px / 1 var(--font-sans);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  font: 600 12px / 1.3 var(--font-sans);
 }
 .shortcutGroup dl {
   margin: 0;
@@ -184,9 +184,11 @@ small.error {
 .groupTitle {
   margin: 0 0 8px;
   color: var(--color-text-muted);
-  font: 700 11px / 1 var(--font-sans);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  font: 600 12px / 1.3 var(--font-sans);
+}
+.formats + .groupTitle {
+  display: block;
+  margin: 12px 0 6px;
 }
 .presetList {
   display: grid;
