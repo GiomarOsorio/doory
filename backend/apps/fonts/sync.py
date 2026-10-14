@@ -48,6 +48,13 @@ Log = Callable[[str], None]
 Triple = tuple[int, str, str]  # weight, style, subset
 
 
+#: `--subsets auto`: every subset a family offers except these. Chinese, Japanese and Korean faces are
+#: hundreds of files each; name those subsets on purpose to install them.
+AUTO_SKIPPED_SUBSETS = frozenset(
+    {"japanese", "korean", "chinese-simplified", "chinese-traditional", "chinese-hongkong", "math", "symbols"}
+)
+
+
 @dataclass(frozen=True)
 class SyncOptions:
     subsets: tuple[str, ...] = ("latin",)
@@ -164,9 +171,18 @@ def store_variant(
     )
 
 
+def _subsets_for(meta: FamilyMeta, options: SyncOptions) -> list[str]:
+    """The subsets to fetch for one family: those asked for, `auto` being every one it offers but CJK."""
+    wanted: list[str] = []
+    for subset in options.subsets:
+        names = [s for s in meta.subsets if s not in AUTO_SKIPPED_SUBSETS] if subset == "auto" else [subset]
+        wanted.extend(name for name in names if name not in wanted)
+    return sorted(wanted, key=subset_sort_key)
+
+
 def _plan(meta: FamilyMeta, options: SyncOptions) -> list[Triple]:
     plan = []
-    for subset in options.subsets:
+    for subset in _subsets_for(meta, options):
         if subset not in meta.subsets:
             continue
         for weight in options.weights:

@@ -2,7 +2,7 @@ from pathlib import Path
 
 from django.core.management.base import BaseCommand, CommandError
 
-from apps.fonts.catalog import EDITOR_FONTS, curated_fonts
+from apps.fonts.catalog import EDITOR_FONTS, SCRIPT_FONTS, curated_fonts
 from apps.fonts.sources import FontSource, FontsourceSource, SourceError
 from apps.fonts.sync import SyncOptions, import_font_directory, resolve_ids, sync_families
 
@@ -44,14 +44,20 @@ class Command(BaseCommand):
             "--popular",
             type=int,
             metavar="N",
-            help="The N most popular families (curated list), plus the fonts the editor uses by default.",
+            help="The N most popular families (curated list), plus the editor's default fonts and one or two "
+            "fonts for each of the main non-Latin scripts.",
         )
         which.add_argument(
             "--from-dir",
             metavar="DIR",
             help="Import already-downloaded <id>-<subset>-<weight>-<style>.woff2 files.",
         )
-        parser.add_argument("--subsets", default="latin", help="Comma-separated subsets (default: latin).")
+        parser.add_argument(
+            "--subsets",
+            default="auto",
+            help="Comma-separated subsets, or auto (default): every script a family has (Arabic, Cyrillic, "
+            "Devanagari, Hebrew…) except Chinese, Japanese and Korean.",
+        )
         parser.add_argument(
             "--weights", default="400,700", help="Comma-separated weights (default: 400,700)."
         )
@@ -114,7 +120,7 @@ class Command(BaseCommand):
             ids = [font.id for font in curated[:popular]]
             by_family = {font.family: font.id for font in curated}
             # The editor's own default faces come along whatever N is (see EDITOR_FONTS).
-            extra = [by_family[name] for name in EDITOR_FONTS if name in by_family]
+            extra = [by_family[name] for name in (*EDITOR_FONTS, *SCRIPT_FONTS) if name in by_family]
             return ids + [font_id for font_id in extra if font_id not in ids]
         if all_:
             try:

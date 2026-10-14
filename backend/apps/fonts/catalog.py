@@ -37,6 +37,20 @@ EDITOR_FONTS = (
     "Cormorant Garamond",
 )
 
+#: Fonts for the main scripts a Latin font does not cover, so a default install sets Arabic, Hebrew, Bangla,
+#: Hindi and Thai in a real typeface, not the browser's fallback. `sync_fonts --popular N` always adds them.
+SCRIPT_FONTS = (
+    "Cairo",
+    "Noto Sans Arabic",
+    "Amiri",
+    "Heebo",
+    "Noto Sans Hebrew",
+    "Hind Siliguri",
+    "Noto Sans Bengali",
+    "Noto Sans Devanagari",
+    "Noto Sans Thai",
+)
+
 
 @dataclass(frozen=True)
 class CuratedFont:

@@ -5,7 +5,7 @@ import pytest
 from django.core.files.storage import default_storage
 from django.core.management import CommandError, call_command
 
-from apps.fonts.catalog import EDITOR_FONTS, curated_fonts
+from apps.fonts.catalog import EDITOR_FONTS, SCRIPT_FONTS, curated_fonts
 from apps.fonts.management.commands.sync_fonts import Command
 from apps.fonts.models import FontFamily, FontVariant
 from apps.fonts.sources import SourceError, SourceUnavailable
@@ -318,7 +318,7 @@ def catalog_source():
 
 def editor_font_ids(exclude=()):
     by_family = {font.family: font.id for font in curated_fonts()}
-    return [by_family[name] for name in EDITOR_FONTS if by_family[name] not in exclude]
+    return [by_family[name] for name in (*EDITOR_FONTS, *SCRIPT_FONTS) if by_family[name] not in exclude]
 
 
 def test_command_popular_n_uses_the_curated_list_without_listing_the_source():
@@ -328,8 +328,9 @@ def test_command_popular_n_uses_the_curated_list_without_listing_the_source():
     assert source.metadata_calls[:3] == top
     total = 3 + len(editor_font_ids(exclude=top))
     assert f"Syncing {total} families" in out
-    # Of the editor's fonts the fake source only has Lato: four fonts are stored, the others are skipped.
-    assert "Done: 16 files downloaded" in out
+    # Of the extra fonts the fake source only has Lato. Every family offers latin, latin-ext and cyrillic, and
+    # `auto` (the default) takes all three: 4 families x 3 subsets x 2 weights x 2 styles.
+    assert "Done: 48 files downloaded" in out
 
 
 def test_command_popular_n_always_brings_the_fonts_the_editor_uses_by_default():
@@ -345,7 +346,7 @@ def test_command_popular_n_always_brings_the_fonts_the_editor_uses_by_default():
 
 def test_command_named_families_accept_names_and_ids():
     source = catalog_source()
-    command(source, "Open Sans", "lato", weights="400", styles="normal")
+    command(source, "Open Sans", "lato", subsets="latin", weights="400", styles="normal")
     assert sorted(FontFamily.objects.values_list("slug", flat=True)) == ["lato", "open-sans"]
     assert FontVariant.objects.count() == 2
 
@@ -354,6 +355,21 @@ def test_command_all_walks_the_whole_source_in_popularity_order():
     source = FakeSource(meta("zzz-new", "Zzz New"), meta("lato", "Lato"), meta("roboto", "Roboto"))
     command(source, all=True, weights="400", styles="normal")
     assert source.metadata_calls == ["roboto", "lato", "zzz-new"]
+
+
+def test_auto_subsets_take_every_script_a_family_has_but_cjk():
+    source = FakeSource(
+        meta("noto-sans", "Noto Sans", subsets=("latin", "arabic", "japanese", "devanagari", "math"))
+    )
+    command(source, "noto-sans", weights="400", styles="normal")
+    assert sorted(subset for _, subset, _, _ in source.fetched) == ["arabic", "devanagari", "latin"]
+
+
+def test_the_script_fonts_are_ones_the_curated_list_knows():
+    known = {font.family for font in curated_fonts()}
+    assert set(SCRIPT_FONTS) <= known
+    scripts = {s for font in curated_fonts() if font.family in SCRIPT_FONTS for s in font.scripts}
+    assert {"arabic", "hebrew", "bengali", "devanagari", "thai"} <= scripts
 
 
 def test_command_options_are_applied():
@@ -372,10 +388,10 @@ def test_command_reports_failures_with_a_nonzero_exit():
     source = catalog_source()
     source.failures = {("lato", "latin", 400, "normal"): SourceError("HTTP 500")}
     with pytest.raises(CommandError, match=r"1 file.*failed.*again"):
-        command(source, "lato", weights="400", styles="normal")
+        command(source, "lato", subsets="latin", weights="400", styles="normal")
     assert not FontVariant.objects.exists()
     source.failures.clear()
-    command(source, "lato", weights="400", styles="normal")
+    command(source, "lato", subsets="latin", weights="400", styles="normal")
     assert FontVariant.objects.count() == 1
 
 
