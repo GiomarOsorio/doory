@@ -4,6 +4,7 @@ import type { FontCategory, FontFamily } from '@/types/api'
 import { useEditor, useEditorStateShallow } from '../context'
 import { SYSTEM_FONTS } from '../engine/fonts'
 import { fontStack, primaryFamily } from '../engine/text/fontStack'
+import { SCRIPTS, scriptById, scriptOf } from '../engine/text/scripts'
 import { useUserFonts, useUserFontsStore } from '../fonts/userFonts'
 import { useFontUploadEntry } from '../fonts/useFontUploadEntry'
 import { useAsyncList } from '../hooks/useAsyncList'
@@ -50,6 +51,8 @@ interface FontPickerProps {
   onPick: (stack: string, family: string) => void
   /** The picker was left without a choice (the "Upload a font" row opens a dialog): restore and close the popover. */
   onClose: () => void
+  /** The selected text: when it is written in a non-Latin script, the list opens on fonts that have its letters. */
+  sample?: string
 }
 
 /**
@@ -59,7 +62,7 @@ interface FontPickerProps {
  * The user's own fonts are the first group ("Your fonts"); an "Upload a font" row above the list opens the upload
  * dialog (guests are asked to sign up instead).
  */
-export function FontPicker({ current, onPreview, onPick, onClose }: FontPickerProps) {
+export function FontPicker({ current, onPreview, onPick, onClose, sample = '' }: FontPickerProps) {
   const editor = useEditor()
   const userStore = useUserFontsStore()
   const mine = useUserFonts()
@@ -67,13 +70,15 @@ export function FontPicker({ current, onPreview, onPick, onClose }: FontPickerPr
   const recent = useEditorStateShallow((s) => s.recentFonts)
   const [query, setQuery] = useState('')
   const [category, setCategory] = useState<FontCategory | 'all'>('all')
+  const [script, setScript] = useState<string>(() => scriptOf(sample)?.id ?? 'all')
+  const scriptInfo = scriptById(script)
   const [scroll, setScroll] = useState(0)
   const [highlight, setHighlight] = useState(-1)
   const scroller = useRef<HTMLDivElement>(null)
   const q = useDebounced(query.trim(), 200)
   const list = useAsyncList<FontFamily>(
-    (page) => editor.adapter.services.fonts.list({ q: q || undefined, category: category === 'all' ? undefined : category, page, page_size: 40 }),
-    `${q}|${category}`,
+    (page) => editor.adapter.services.fonts.list({ q: q || undefined, category: category === 'all' ? undefined : category, script: scriptInfo?.id, page, page_size: 40 }),
+    `${q}|${category}|${script}`,
   )
 
   useEffect(() => {
@@ -93,14 +98,15 @@ export function FontPicker({ current, onPreview, onPick, onClose }: FontPickerPr
     }
     const own = mine.source === 'shared' ? 'shared' : 'mine'
     for (const f of mine.families) if (matches(f.family, f.category)) push({ family: f.family, category: f.category, group: own })
-    for (const family of recent) {
+    // With a script chosen, only the catalogue says which fonts have its letters: recent and system fonts are left out.
+    for (const family of scriptInfo ? [] : recent) {
       const cat = mine.families.find((f) => f.family === family)?.category ?? list.items.find((f) => f.family === family)?.category ?? SYSTEM_FONTS.find((f) => f.family === family)?.category ?? 'sans-serif'
       if (matches(family, cat)) push({ family, category: cat, group: 'recent' })
     }
     for (const f of list.items) push({ family: f.family, category: f.category, group: 'catalog' })
-    for (const f of SYSTEM_FONTS) if (matches(f.family, f.category)) push({ family: f.family, category: f.category, group: 'system' })
+    if (!scriptInfo) for (const f of SYSTEM_FONTS) if (matches(f.family, f.category)) push({ family: f.family, category: f.category, group: 'system' })
     return out
-  }, [q, category, recent, list.items, mine.families, mine.source])
+  }, [q, category, recent, list.items, mine.families, mine.source, scriptInfo])
 
   // Headings are rows of their own, so every row has a known height and the list can be windowed.
   const rows = useMemo(() => {
@@ -122,8 +128,8 @@ export function FontPicker({ current, onPreview, onPick, onClose }: FontPickerPr
 
   // Load only the fonts that are actually on screen, so previews render in their own face.
   useEffect(() => {
-    for (const r of visible) if (r.type === 'font' && r.entry.group !== 'system') void editor.fonts.load(r.entry.family, 400, 'normal', r.entry.family)
-  }, [editor, visible])
+    for (const r of visible) if (r.type === 'font' && r.entry.group !== 'system') void editor.fonts.load(r.entry.family, 400, 'normal', `${r.entry.family}${scriptInfo ? ` ${scriptInfo.sample}` : ''}`)
+  }, [editor, visible, scriptInfo])
 
   useEffect(() => {
     if (scroll + VIEW >= rows.height - ROW * 2 && list.hasMore && !list.loading && !list.error) list.loadMore()
@@ -188,6 +194,17 @@ export function FontPicker({ current, onPreview, onPick, onClose }: FontPickerPr
           data-testid="font-search"
         />
       </div>
+      <label className={styles.script}>
+        <span>{t.fonts.language}</span>
+        <select value={script} data-testid="font-script" onChange={(e) => setScript(e.target.value)}>
+          <option value="all">{t.fonts.anyLanguage}</option>
+          {SCRIPTS.map((s) => (
+            <option key={s.id} value={s.id}>
+              {s.label}
+            </option>
+          ))}
+        </select>
+      </label>
       <div className={styles.chips} role="group" aria-label={t.fonts.categories}>
         {CATEGORIES.map((c) => (
           <button key={c.id} type="button" className={`${styles.chip} ${category === c.id ? styles.chipOn : ''}`} aria-pressed={category === c.id} onClick={() => setCategory(c.id)}>
@@ -248,6 +265,7 @@ export function FontPicker({ current, onPreview, onPick, onClose }: FontPickerPr
                 onClick={() => onPick(fontStack(r.entry.family, r.entry.category), r.entry.family)}
               >
                 {r.entry.family}
+                {scriptInfo ? <span className={styles.sample}>{scriptInfo.sample}</span> : null}
               </button>
             ),
           )}

@@ -1,3 +1,4 @@
+import { PilcrowLeft, PilcrowRight } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ColorTool } from '../../chrome/ColorTool'
 import { I } from '../../chrome/icons'
@@ -21,6 +22,12 @@ const ALIGN = [
   { id: 'center', label: t.toolbar.alignCenter, icon: I.alignCenter },
   { id: 'right', label: t.toolbar.alignRight, icon: I.alignRight },
   { id: 'justify', label: t.toolbar.justify, icon: I.alignJustify },
+] as const
+
+const DIRECTIONS = [
+  { id: 'auto', label: t.toolbar.directionAuto, hint: t.toolbar.directionAutoHint },
+  { id: 'ltr', label: t.toolbar.directionLtr },
+  { id: 'rtl', label: t.toolbar.directionRtl },
 ] as const
 
 const CASES = [
@@ -50,7 +57,7 @@ function useHasItalic(family: string): boolean {
 }
 
 /** The font pill and its searchable list. */
-function FontTool({ family, stack }: { family: string; stack: string }) {
+function FontTool({ family, stack, sample }: { family: string; stack: string; sample: string }) {
   const editor = useEditor()
   const ref = useRef<HTMLButtonElement>(null)
   const [open, setOpen] = useState(false)
@@ -70,6 +77,7 @@ function FontTool({ family, stack }: { family: string; stack: string }) {
       <Popover open={open} onClose={close} anchorRef={ref} label={t.toolbar.font} placement="bottom" variant="plain" cover>
         <FontPicker
           current={family}
+          sample={sample}
           onPreview={preview.preview}
           onPick={(next) => {
             preview.commit()
@@ -101,10 +109,12 @@ export function TextSection() {
   const spacing = Math.round(Number(obj.charSpacing ?? 0))
   const curve = typeof obj.curveAmount === 'number' ? obj.curveAmount : 0
   const multiline = String(obj.text ?? '').includes('\n')
+  const rtl = obj.direction === 'rtl'
+  const dirChoice = obj.textDir === 'ltr' || obj.textDir === 'rtl' ? obj.textDir : 'auto'
 
   return (
     <>
-      <FontTool family={family} stack={stack} />
+      <FontTool family={family} stack={stack} sample={String(obj.text ?? '')} />
       <Stepper label={t.ctx.sizeInput} value={size} limit={FONT_SIZE} testId="ed-font-size" onChange={(n, key) => editor.style.text({ fontSize: n }, t.history.changeFontSize, key === 'step' ? 'size-step' : 'font-size')} />
       <ColorTool label={t.toolbar.textColor} value={fill} allowGradient testId="ed-text-color" onChange={(f, key) => editor.style.text({ fill: f }, t.history.changeTextColor, key ?? 'text-color')} />
 
@@ -135,6 +145,30 @@ export function TextSection() {
             </ToolButton>
           ))
         }
+      </PopoverTool>
+
+      <PopoverTool label={t.toolbar.directionTitle} trigger={rtl ? <PilcrowLeft size={18} aria-hidden="true" /> : <PilcrowRight size={18} aria-hidden="true" />} flush testId="ed-text-direction">
+        {(close) => (
+          <div className={ed.menuList} role="menu">
+            {DIRECTIONS.map((d) => (
+              <button
+                key={d.id}
+                type="button"
+                role="menuitemradio"
+                aria-checked={dirChoice === d.id}
+                className={ed.menuItem}
+                data-testid={`ed-direction-${d.id}`}
+                onClick={() => {
+                  editor.style.text({ direction: d.id }, t.history.textDirection)
+                  close()
+                }}
+              >
+                {d.label}
+                {'hint' in d ? <span>{d.hint}</span> : null}
+              </button>
+            ))}
+          </div>
+        )}
       </PopoverTool>
 
       <PopoverTool label={t.toolbar.lineHeight} trigger={I.lineHeight} width={180} testId="ed-line-height">
