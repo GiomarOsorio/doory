@@ -1,22 +1,14 @@
-import { ArrowRight, Plus } from 'lucide-react'
+import { ArrowRight } from 'lucide-react'
 import { Link } from 'react-router-dom'
-import { useAuth } from '@/features/auth/AuthProvider'
 import { DesignTile } from '@/features/dashboard/DesignTile'
-import { createUrl, getPreset, QUICK_PRESET_IDS } from '@/features/presets'
+import bunny from '@/assets/bunny-sticker.webp'
+import { createUrl, getPreset, presetParts, QUICK_PRESET_IDS } from '@/features/presets'
 import { TemplateCard } from '@/features/templates/TemplateCard'
 import { useDesignsList, useTemplatesList } from '@/lib/api/hooks'
 import { usePageTitle } from '@/lib/usePageTitle'
-import { Button, EmptyState, LinkButton, Skeleton } from '@/ui'
+import { Button, EmptyState, Skeleton } from '@/ui'
 import styles from './pageStyles.module.css'
 import homeStyles from './HomePage.module.css'
-
-function greeting(date = new Date()): string {
-  const hour = date.getHours()
-  if (hour < 5) return 'Working late'
-  if (hour < 12) return 'Good morning'
-  if (hour < 18) return 'Good afternoon'
-  return 'Good evening'
-}
 
 function TileSkeletons({ count }: { count: number }) {
   return (
@@ -33,49 +25,45 @@ function TileSkeletons({ count }: { count: number }) {
 
 export default function HomePage() {
   usePageTitle('Home')
-  const { user } = useAuth()
-  const firstName = (user?.display_name || user?.name || '').trim().split(/\s+/)[0]
   const recent = useDesignsList({ ordering: '-updated_at', page_size: 8 })
   const starred = useDesignsList({ starred: true, ordering: '-updated_at', page_size: 4 })
-  const templates = useTemplatesList({ page_size: 4 })
+  const templates = useTemplatesList({ page_size: 8 })
   const recentItems = recent.data?.pages[0]?.results ?? []
   const starredItems = starred.data?.pages[0]?.results ?? []
   const templateItems = templates.data?.pages[0]?.results ?? []
 
   return (
     <div className={styles.page}>
-      <header className={styles.heading}>
-        <h1 className={styles.title}>
-          {greeting()}
-          {firstName ? `, ${firstName}` : ''}
-        </h1>
-      </header>
-
-      <section aria-labelledby="quick-create" className={styles.section}>
-        <h2 id="quick-create" className={styles.sectionTitle}>
-          Create a design
-        </h2>
+      <section aria-labelledby="quick-create" className={homeStyles.hero}>
+        <div className={homeStyles.heroHead}>
+          <h1 id="quick-create" className={homeStyles.heroTitle}>
+            Create a design
+          </h1>
+          <div className={homeStyles.heroLinks}>
+            <Link to="/create">Custom size</Link>
+            <Link to="/dashboard/templates">Start from a template</Link>
+          </div>
+        </div>
         <ul className={homeStyles.chips}>
           {QUICK_PRESET_IDS.map((id) => {
             const preset = getPreset(id)
             if (!preset) return null
+            const { name, detail } = presetParts(preset)
+            const wide = preset.width >= preset.height
             return (
               <li key={id}>
                 <Link to={createUrl({ presetId: id })} className={homeStyles.chip}>
-                  <span className={homeStyles.chipIcon} aria-hidden="true">
-                    <preset.icon size={18} />
+                  <span className={homeStyles.shapeBox} aria-hidden="true">
+                    <span className={homeStyles.shape} style={{ aspectRatio: `${preset.width} / ${preset.height}`, ...(wide ? { width: '100%' } : { height: '100%' }) }} />
                   </span>
-                  <span className={homeStyles.chipText}>
-                    <span>{preset.label}</span>
-                    <span className={homeStyles.chipSize}>
-                      {preset.width} × {preset.height}
-                    </span>
-                  </span>
+                  <span className={homeStyles.chipName}>{name}</span>
+                  <span className={homeStyles.chipSize}>{detail}</span>
                 </Link>
               </li>
             )
           })}
         </ul>
+        <img className={homeStyles.bunny} src={bunny} alt="" width={523} height={713} draggable={false} />
       </section>
 
       <section aria-labelledby="recent" className={styles.section}>
@@ -90,9 +78,9 @@ export default function HomePage() {
         ) : recent.isError ? (
           <EmptyState compact title="Your designs didn’t load" role="alert" action={<Button onClick={() => void recent.refetch()}>Try again</Button>} />
         ) : recentItems.length === 0 ? (
-          <EmptyState icon={<Plus size={28} />} title="Make your first design" description="Pick a size or a template and you’ll be designing in seconds." action={<><LinkButton to="/create">Start designing</LinkButton><LinkButton to="/dashboard/templates" variant="secondary">Browse templates</LinkButton></>} />
+          <p className={homeStyles.none}>Designs you make show up here.</p>
         ) : (
-          <ul className={styles.grid}>
+          <ul className={`${styles.grid} ${styles.row}`}>
             {recentItems.map((design) => (
               <li key={design.id}>
                 <DesignTile design={design} />
@@ -127,10 +115,10 @@ export default function HomePage() {
               Browse templates <ArrowRight size={14} aria-hidden="true" />
             </Link>
           </div>
-          <ul className={styles.grid}>
+          <ul className={`${styles.grid} ${styles.row}`}>
             {templateItems.map((template) => (
               <li key={template.id}>
-                <TemplateCard template={template} />
+                <TemplateCard template={template} frame={4 / 3} />
               </li>
             ))}
           </ul>

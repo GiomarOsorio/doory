@@ -194,12 +194,13 @@ describe('settings: sign out and account deletion', () => {
 })
 
 describe('dashboard home and navigation', () => {
-  it('greets the user, offers quick-create chips and links to sections', async () => {
+  it('opens on the sizes to create, without a greeting, and links to sections', async () => {
     renderApp('/dashboard', {
       user: makeUser(),
       handlers: [http.get('*/api/v1/designs/', ({ request }) => HttpResponse.json(page(new URL(request.url).searchParams.get('starred') ? [] : [makeDesign('d1', { title: 'Recent one' })])))],
     })
-    expect(await screen.findByRole('heading', { level: 1, name: /Ada/ })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { level: 1, name: 'Create a design' })).toBeInTheDocument()
+    expect(screen.queryByText(/Good (morning|afternoon|evening)|Working late/)).not.toBeInTheDocument()
     expect(screen.getByRole('link', { name: /Instagram Post/ })).toHaveAttribute('href', '/create?preset=instagram-post')
     expect(await screen.findByRole('link', { name: /Recent one/ })).toHaveAttribute('href', '/design/d1')
     const nav = screen.getByRole('navigation', { name: 'Dashboard' })
@@ -209,7 +210,7 @@ describe('dashboard home and navigation', () => {
 
   it('shows a first-run state for new accounts', async () => {
     renderApp('/dashboard', { user: makeUser() })
-    expect(await screen.findByText('Make your first design')).toBeInTheDocument()
+    expect(await screen.findByText('Designs you make show up here.')).toBeInTheDocument()
   })
 
   it('the create menu offers presets and the full size picker', async () => {

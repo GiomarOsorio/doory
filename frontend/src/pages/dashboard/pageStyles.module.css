@@ -41,6 +41,17 @@
   gap: var(--space-6);
 }
 
+/* One row of cards, as many as fit: the rest are left out rather than wrapping into a ragged second row. */
+.row {
+  grid-template-rows: auto;
+  grid-auto-rows: 0;
+  row-gap: 0;
+  overflow: hidden;
+  /* Room above and beside the cards for their hover lift; none below, where the hidden row starts. */
+  margin: -8px -8px 0;
+  padding: 8px 8px 0;
+}
+
 .list {
   display: flex;
   flex-direction: column;
@@ -71,7 +82,7 @@
 }
 
 .sectionTitle {
-  font-size: var(--text-xl);
+  font-size: var(--text-lg);
 }
 
 .crumbs {
