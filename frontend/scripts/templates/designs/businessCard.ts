@@ -2,47 +2,48 @@ import { DocBuilder } from '../kit'
 import type { IconName } from '../icons'
 import type { TemplateDesign } from '../registry'
 
-// Type-first and minimal: off-white and ink with one accent, and a giant initial on the back.
+// After the best-selling "black luxe" cards: a charcoal front with the first name in a huge, faint script behind the
+// name in spaced serif capitals; on the back the name again on white, and a charcoal band with the contacts and a QR
+// code to book.
 const W = 336
 const H = 192
-const PAPER = '#f4f1ea'
-const INK = '#141414'
-const MUTED = '#55504a'
-const ACCENT = '#ff5a1f'
-const GREY = '#bdb7ae'
+const CHARCOAL = '#2e2d2b'
+const SCRIPT = '#3d3c39'
+const WHITE = '#ffffff'
+const PALE = '#e9e6e0'
+const GREY = '#b9b5ad'
+const INK = '#222120'
 
 export const businessCard: TemplateDesign = {
   slug: 'clean-business-card',
   title: 'Clean business card',
   category: 'business',
-  tags: ['business card', 'contact', 'print', 'minimal', 'personal brand'],
-  description: 'A type-first two-sided business card: your name large on the front with the contact details, and a giant initial with a QR code on the back.',
+  tags: ['business card', 'contact', 'print', 'elegant', 'luxury', 'black', 'qr code'],
+  description: 'An elegant two-sided business card: a charcoal front with a faint script name behind your name in spaced capitals, and a back with your contacts and a QR code.',
   preset: 'business-card',
   async build() {
     const doc = new DocBuilder(this.slug, { width: W, height: H, unit: 'px', presetId: 'business-card' })
 
     // Front.
-    const front = doc.page('Front', { type: 'solid', color: PAPER })
-    front.rect({ name: 'Accent', x: 24, y: 26, w: 22, h: 6, fill: ACCENT })
-    front.text({ name: 'Name', x: 22, y: 40, w: 290, text: 'Jordan Ellis', font: 'oswald', bold: true, size: 30, color: INK, on: PAPER, upper: true, lh: 1.1, lines: 1 })
-    front.text({ name: 'Role', x: 24, y: 80, w: 290, text: 'Product designer', font: 'archivo', bold: true, size: 9, color: MUTED, on: PAPER, spacing: 260, upper: true, lines: 1 })
-    const rows: { icon: IconName; text: string }[] = [
-      { icon: 'phone', text: '+1 555 0142' },
-      { icon: 'mail', text: 'jordan@yourcompany.example' },
-      { icon: 'globe', text: 'yourcompany.example' },
-    ]
-    rows.forEach((row, i) => {
-      const y = 116 + i * 18
-      front.icon({ name: `${row.text} icon`, icon: row.icon, x: 24, y: y + 1, size: 10, color: ACCENT, width: 2.2 })
-      front.text({ name: row.text, x: 40, y, w: 270, text: row.text, font: 'archivo', size: 9, color: INK, on: PAPER, lines: 1 })
-    })
+    const front = doc.page('Front', { type: 'solid', color: CHARCOAL })
+    front.text({ name: 'Script name', x: 0, y: 20, w: W, text: 'Jordan', font: 'greatVibes', size: 128, color: SCRIPT, on: CHARCOAL, align: 'center', lh: 1, decorative: true, lines: 1 })
+    front.text({ name: 'Name', x: 0, y: 80, w: W, text: 'Jordan Ellis', font: 'crimson', size: 20, color: PALE, on: CHARCOAL, align: 'center', upper: true, spacing: 300, lines: 1 })
+    front.text({ name: 'Role', x: 0, y: 110, w: W, text: 'Owner of your studio name', font: 'crimson', size: 8, color: GREY, on: CHARCOAL, align: 'center', upper: true, spacing: 300, lines: 1 })
 
     // Back.
-    const back = doc.page('Back', { type: 'solid', color: INK })
-    back.text({ name: 'Initial', x: 6, y: -34, w: 220, text: 'J', font: 'oswald', bold: true, size: 250, color: ACCENT, on: INK, lh: 1, decorative: true, lines: 1 })
-    back.text({ name: 'Company', x: 150, y: 28, w: 162, text: 'Your Company', font: 'oswald', bold: true, size: 16, color: PAPER, on: INK, upper: true, align: 'right', spacing: 60, lines: 1 })
-    back.text({ name: 'Website', x: 150, y: 50, w: 162, text: 'yourcompany.example', font: 'archivo', size: 9, color: GREY, on: INK, align: 'right', lines: 1 })
-    await back.qr({ name: 'QR code', x: 252, y: 108, size: 60, spec: { text: 'https://example.com/', fg: INK, bg: PAPER } })
+    const back = doc.page('Back', { type: 'solid', color: WHITE })
+    back.text({ name: 'Name', x: 0, y: 30, w: W, text: 'Jordan Ellis', font: 'crimson', size: 18, color: INK, on: WHITE, align: 'center', upper: true, spacing: 300, lines: 1 })
+    back.text({ name: 'Role', x: 0, y: 58, w: W, text: 'Owner of your studio name', font: 'crimson', size: 8, color: '#5d5a54', on: WHITE, align: 'center', upper: true, spacing: 300, lines: 1 })
+    back.rect({ name: 'Band', x: 0, y: 92, w: W, h: H - 92, fill: CHARCOAL })
+    back.text({ name: 'Find us', x: 24, y: 104, w: 190, text: 'Find us online', font: 'crimson', size: 8, color: GREY, on: CHARCOAL, align: 'center', upper: true, spacing: 300, lines: 1 })
+    const icons: IconName[] = ['heart', 'globe', 'mail']
+    icons.forEach((icon, i) => back.icon({ name: `Social ${i + 1}`, icon, x: 99 + i * 18, y: 118, size: 10, color: PALE, width: 2 }))
+    const rows = ['+1 555 0142', 'hello@yourstudio.example', 'yourstudio.example']
+    rows.forEach((row, i) => {
+      back.text({ name: row, x: 24, y: 138 + i * 14, w: 190, text: row, font: 'inter', size: 8, color: PALE, on: CHARCOAL, align: 'center', lines: 1 })
+    })
+    await back.qr({ name: 'QR code', x: 240, y: 102, size: 58, spec: { text: 'https://example.com/', fg: INK, bg: WHITE } })
+    back.text({ name: 'Scan', x: 214, y: 166, w: 110, text: 'Scan to book', font: 'crimson', size: 8, color: GREY, on: CHARCOAL, align: 'center', upper: true, spacing: 160, lines: 1 })
     return doc
   },
 }
