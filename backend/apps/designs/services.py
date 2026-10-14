@@ -76,7 +76,13 @@ def _check_design_limit(owner) -> None:
 
 
 def create_design(
-    owner, *, title: str, document: dict, folder: Folder | None = None, template_id: object = None
+    owner,
+    *,
+    title: str,
+    document: dict,
+    folder: Folder | None = None,
+    template_id: object = None,
+    thumbnail: ContentFile | None = None,
 ) -> Design:
     """Persist a validated document as a new design; the document decides size, pages and preset."""
     info = describe_document(document)
@@ -84,6 +90,8 @@ def create_design(
         _check_design_limit(owner)
         design = Design(owner=owner, title=title, folder=folder)
         _apply_document(design, document, info)
+        if thumbnail:
+            design.thumbnail.save(f"{design.id}.webp", thumbnail, save=False)
         design.save()
         if template_id is not None:
             template_model = apps.get_model("gallery", "Template")
@@ -102,8 +110,15 @@ def create_from_template(owner, slug: str, *, title: str | None, folder: Folder 
     if template.preset and not describe_document(document).preset:
         meta = document.get("meta") if isinstance(document.get("meta"), dict) else {}
         document = {**document, "meta": {**meta, "presetId": template.preset}}
+    # The template's picture is the copy's thumbnail until the editor saves one of its own, so a design opened
+    # from a template never shows up blank on the dashboard.
     return create_design(
-        owner, title=title or template.title[:200], document=document, folder=folder, template_id=template.pk
+        owner,
+        title=title or template.title[:200],
+        document=document,
+        folder=folder,
+        template_id=template.pk,
+        thumbnail=_thumbnail_copy(template.thumbnail),
     )
 
 

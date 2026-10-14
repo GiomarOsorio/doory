@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 from django.apps import apps
+from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
 from django.utils import timezone
 from PIL import Image
@@ -195,6 +196,23 @@ class TestCreateFromTemplate:
         api.post(URL, {"template": "summer-sale", "title": "Mine"}, format="json")
         template.refresh_from_db()
         assert template.use_count == 2
+
+    def test_the_copy_starts_with_the_templates_picture_as_its_thumbnail(self, api, template_model):
+        template = self.make_template(template_model)
+        template.thumbnail.save("summer-sale.webp", ContentFile(b"RIFF-template-picture"), save=True)
+        res = api.post(URL, {"template": "summer-sale"}, format="json")
+        assert res.status_code == 201
+        design = Design.objects.get(pk=res.json()["id"])
+        assert design.thumbnail.name.startswith(f"designs/{design.owner_id}/")
+        with design.thumbnail.open("rb") as handle:
+            assert handle.read() == b"RIFF-template-picture"
+        assert res.json()["thumbnail_url"]
+
+    def test_a_template_without_a_picture_gives_a_copy_without_one(self, api, template_model):
+        self.make_template(template_model)
+        res = api.post(URL, {"template": "summer-sale"}, format="json")
+        assert res.status_code == 201
+        assert not Design.objects.get(pk=res.json()["id"]).thumbnail
 
     def test_unpublished_or_unknown_template_is_404(self, api, template_model):
         self.make_template(template_model, slug="draft", is_published=False)
