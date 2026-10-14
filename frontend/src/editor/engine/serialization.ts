@@ -57,6 +57,8 @@ export const EXTRA_PROPS: readonly string[] = [
   'textCase',
   'caseSource',
   'listStyle',
+  /** Text direction picked by hand (absent: the content decides). */
+  'textDir',
   /** Parametric shape descriptors. */
   'shapeKind',
   'shapeId',

@@ -28,7 +28,7 @@ import { refitCurve } from './objects/curvedText'
 import { customizeControls } from './objects/controls'
 import { anchorFrames, carriedPictures, clampSlotImage, followFrames, type FrameAnchor, slotOf, strokeSlotOutline } from './objects/slot'
 import { applyLock, asDory, ensureId } from './objects/dory'
-import { reapplyCase } from './objects/textStyle'
+import { reapplyCase, syncDirection } from './objects/textStyle'
 import { type CanvasTheme, applyThemeToCanvas, selectionStyle } from './objects/theme'
 import { type Deferred, mergeObject, planPage } from './remoteSync'
 import { type LoadContext, deserializeObjects, serializePage } from './serialization'
@@ -801,6 +801,8 @@ export class PageCanvas {
   }
 
   private afterTextInput(t: IText): void {
+    // Typing the first Arabic or Hebrew letter turns the box right-to-left at once, so the caret moves the right way.
+    syncDirection(t)
     const d = asDory(t)
     if (d.listStyle === 'bullet' || d.listStyle === 'number') {
       const caret = t.selectionStart

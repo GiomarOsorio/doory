@@ -1,4 +1,4 @@
-import { FabricImage } from 'fabric'
+import { FabricImage, type IText } from 'fabric'
 import { createBlankDocument } from '@/lib/document'
 import { createMemoryAdapter } from '../dev/memoryAdapter'
 import { installImageStub } from '../test/imageStub'
@@ -259,6 +259,35 @@ describe('EditorEngine', () => {
     expect(o.fontSize).toBe(40)
     expect(o.text).toBe('HELLO WORLD')
     expect(o.textCase).toBe('upper')
+    engine.dispose()
+  })
+
+  it('turns a text right-to-left when it is written in Arabic, and back, unless a direction was picked', async () => {
+    const { engine, view } = await setup()
+    await engine.insert.text('body')
+    const text = view.canvas.getActiveObject() as IText
+    text.set({ text: 'مرحبا Doory', textAlign: 'left' })
+    view.canvas.fire('text:changed', { target: text })
+    expect(text.direction).toBe('rtl')
+    expect(text.textAlign).toBe('right')
+    text.set('text', 'Doory مرحبا')
+    view.canvas.fire('text:changed', { target: text })
+    expect(text.direction).toBe('ltr')
+    expect(text.textAlign).toBe('left')
+
+    engine.style.text({ direction: 'rtl' })
+    await new Promise((r) => setTimeout(r, 0))
+    text.set('text', 'Still English first')
+    view.canvas.fire('text:changed', { target: text })
+    expect(text.direction).toBe('rtl')
+    const saved = objectsOf(engine)[0]
+    expect(saved.direction).toBe('rtl')
+    expect(saved.textDir).toBe('rtl')
+
+    engine.style.text({ direction: 'auto' })
+    await new Promise((r) => setTimeout(r, 0))
+    expect(text.direction).toBe('ltr')
+    expect(objectsOf(engine)[0].textDir).toBeUndefined()
     engine.dispose()
   })
 

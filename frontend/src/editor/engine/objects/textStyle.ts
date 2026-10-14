@@ -7,6 +7,7 @@ import type { IText, TextStyleDeclaration } from 'fabric'
 import type { ListStyle, TextCase } from '@/types/document'
 import { CHAR_SPACING_RANGE, FONT_SIZE_RANGE, LINE_HEIGHT_RANGE, clampOrUndefined, isFiniteNumber } from '../numbers'
 import { applyCase, toggleCase } from '../text/case'
+import { type TextDirection, alignmentForDirection, detectDirection } from '../text/direction'
 import { applyListStyle, detectListStyle } from '../text/lists'
 import { asDory } from './dory'
 import { applyCurve, refitCurve } from './curvedText'
@@ -26,6 +27,8 @@ export interface TextPatch {
   textCase?: TextCase
   listStyle?: ListStyle
   curveAmount?: number
+  /** `auto` lets the content decide (the first letter); `ltr` / `rtl` fix it. */
+  direction?: TextDirection | 'auto'
 }
 
 /**
@@ -95,6 +98,12 @@ export function applyTextPatch(t: IText, patch: TextPatch): boolean {
     }
   }
 
+  if (patch.direction !== undefined) {
+    const d = asDory(t)
+    if (patch.direction === 'auto') delete d.textDir
+    else d.textDir = patch.direction
+    syncDirection(t)
+  }
   if (patch.textAlign !== undefined) t.set('textAlign', patch.textAlign)
   if (patch.lineHeight !== undefined) t.set('lineHeight', patch.lineHeight)
   if (patch.charSpacing !== undefined) t.set('charSpacing', patch.charSpacing)
@@ -128,6 +137,22 @@ export function applyTextPatch(t: IText, patch: TextPatch): boolean {
   t.setCoords()
   t.set('dirty', true)
   return textChanged
+}
+
+/**
+ * Gives `t` the direction it should have: the one picked in the toolbar, or else the one its first letter asks for (a text
+ * without letters keeps its direction). A text that changes direction keeps hugging the start of its lines, so "left"
+ * becomes "right" and back. Returns true when something changed.
+ */
+export function syncDirection(t: IText): boolean {
+  const from = (t.direction === 'rtl' ? 'rtl' : 'ltr') as TextDirection
+  const to = asDory(t).textDir ?? detectDirection(t.text) ?? from
+  if (to === from) return false
+  t.set({ direction: to, textAlign: alignmentForDirection(t.textAlign, from, to) })
+  t.initDimensions()
+  t.setCoords()
+  t.set('dirty', true)
+  return true
 }
 
 /** Re-applies the active case after the user edited the characters. */

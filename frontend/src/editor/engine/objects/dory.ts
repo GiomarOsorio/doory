@@ -46,6 +46,8 @@ export interface DoryProps {
   textCase?: TextCase
   caseSource?: string
   listStyle?: ListStyle
+  /** Text direction picked in the toolbar; absent, the text's first letter decides (see text/direction.ts). */
+  textDir?: 'ltr' | 'rtl'
   shapeKind?: ShapeKind
   shapeId?: string
   sides?: number
