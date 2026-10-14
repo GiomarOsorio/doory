@@ -1,51 +1,46 @@
 import { DocBuilder } from '../kit'
 import type { TemplateDesign } from '../registry'
 
-// One big coffee photo on top, the name and the news on cream underneath, the details in one row: the way café flyers
-// that people actually pin up are built. One caramel sticker carries the offer.
+// After the most-reviewed grand opening template: white paper, a sweeping script "Grand" over a spaced serif "Opening",
+// a script "please join us", one line in capitals and the details in three columns split by fine rules, the day as a
+// big script numeral in the middle.
 const W = 816
 const H = 1056
-const CREAM = '#f4ece1'
-const BROWN = '#3b2418'
-const MUTED = '#6f5546'
-const CARAMEL = '#dc9459'
+const PAPER = '#ffffff'
+const INK = '#1c1a17'
+const SOFT = '#55504a'
 
 export const grandOpeningFlyer: TemplateDesign = {
   slug: 'grand-opening-flyer',
   title: 'Grand opening flyer',
   category: 'flyers',
-  tags: ['flyer', 'opening', 'cafe', 'coffee', 'shop', 'print', 'minimal'],
-  description: 'A café opening flyer for US Letter: a large coffee photo, the café name and "Grand Opening" in a serif, an opening-day offer and the details in one row.',
+  tags: ['flyer', 'opening', 'invitation', 'cafe', 'boutique', 'shop', 'print', 'minimal', 'elegant'],
+  description: 'An elegant grand opening flyer for US Letter: a sweeping script "Grand" over a spaced serif "Opening", and the time, day and place in three columns.',
   preset: 'letter',
-  async build() {
+  build() {
     const doc = new DocBuilder(this.slug, { width: W, height: H, unit: 'in', presetId: 'letter' })
-    const p = doc.page('Flyer', { type: 'solid', color: CREAM })
+    const p = doc.page('Flyer', { type: 'solid', color: PAPER })
 
-    await p.photo({ name: 'Photo', file: 'cafe-latte.webp', x: 0, y: 0, w: W, h: 560, focusX: 0.45, focusY: 0.42 })
+    p.text({ name: 'Business name', x: 0, y: 112, w: W, text: 'Corner Bloom Café', font: 'crimson', size: 20, color: INK, on: PAPER, align: 'center', upper: true, spacing: 360, lines: 1 })
+    p.text({ name: 'Grand', x: 0, y: 170, w: W, text: 'Grand', font: 'pinyon', size: 250, color: INK, on: PAPER, align: 'center', lh: 1, lines: 1 })
+    p.text({ name: 'Opening', x: 0, y: 452, w: W, text: 'Opening', font: 'crimson', size: 52, color: INK, on: PAPER, align: 'center', upper: true, spacing: 420, lines: 1 })
 
-    // The offer sticker on the photo's lower edge.
-    p.circle({ name: 'Offer sticker', cx: 668, cy: 556, r: 86, fill: CARAMEL, angle: 8 })
-    p.text({ name: 'Offer value', x: 592, y: 510, w: 152, text: 'Free', font: 'playfair', bold: true, size: 42, color: BROWN, on: CARAMEL, align: 'center', angle: 8, lines: 1 })
-    p.text({ name: 'Offer terms', x: 592, y: 560, w: 152, text: 'coffee for the first 100 guests', font: 'archivo', bold: true, size: 13, color: BROWN, on: CARAMEL, align: 'center', lh: 1.2, angle: 8, lines: 2 })
+    // "please join us" between two fine strokes.
+    p.line({ name: 'Stroke left', x1: 252, y1: 572, x2: 320, y2: 572, color: INK, width: 1 })
+    p.text({ name: 'Join us', x: 0, y: 540, w: W, text: 'please join us', font: 'greatVibes', size: 44, color: INK, on: PAPER, align: 'center', lines: 1 })
+    p.line({ name: 'Stroke right', x1: 496, y1: 572, x2: 564, y2: 572, color: INK, width: 1 })
+    p.text({ name: 'Invitation', x: 158, y: 626, w: 500, text: 'For a morning of coffee and pastries celebrating the opening of our new café', font: 'crimson', size: 17, color: SOFT, on: PAPER, align: 'center', upper: true, spacing: 120, lh: 1.5, lines: 2 })
 
-    // Name and headline.
-    p.text({ name: 'Name', x: 64, y: 604, w: 520, text: 'Corner Bloom Café', font: 'playfair', italic: true, size: 30, color: MUTED, on: CREAM, lines: 1 })
-    p.text({ name: 'Headline', x: 60, y: 646, w: 700, text: 'Grand Opening', font: 'playfair', bold: true, size: 84, color: BROWN, on: CREAM, lh: 1, lines: 1 })
-    p.text({ name: 'Tagline', x: 64, y: 752, w: 470, text: 'Fresh coffee, warm pastries and a seat by the window. Come and say hello.', font: 'archivo', size: 18, color: MUTED, on: CREAM, lh: 1.5, lines: 2 })
+    // Time, day and place.
+    p.line({ name: 'Rule left', x1: 300, y1: 776, x2: 300, y2: 920, color: INK, width: 1 })
+    p.line({ name: 'Rule right', x1: 516, y1: 776, x2: 516, y2: 920, color: INK, width: 1 })
+    p.text({ name: 'Time', x: 96, y: 822, w: 190, text: 'From 8:00\nuntil 14:00', font: 'crimson', size: 17, color: INK, on: PAPER, align: 'right', upper: true, spacing: 100, lh: 1.5, lines: 2 })
+    p.text({ name: 'Weekday', x: 300, y: 776, w: 216, text: 'Saturday', font: 'crimson', size: 17, color: INK, on: PAPER, align: 'center', upper: true, spacing: 260, lines: 1 })
+    p.text({ name: 'Day', x: 300, y: 790, w: 216, text: '12th', font: 'greatVibes', size: 84, color: INK, on: PAPER, align: 'center', lh: 1.1, lines: 1 })
+    p.text({ name: 'Month', x: 300, y: 892, w: 216, text: 'July', font: 'crimson', size: 17, color: INK, on: PAPER, align: 'center', upper: true, spacing: 260, lines: 1 })
+    p.text({ name: 'Place', x: 530, y: 822, w: 190, text: '24 Orchard Lane\nRiverside', font: 'crimson', size: 17, color: INK, on: PAPER, align: 'left', upper: true, spacing: 100, lh: 1.5, lines: 2 })
 
-    // Details in one row.
-    p.line({ name: 'Details rule', x1: 64, y1: 860, x2: 752, y2: 860, color: BROWN, width: 1.2 })
-    const columns = [
-      { icon: 'calendar' as const, text: 'Saturday 12 July' },
-      { icon: 'clock' as const, text: '8 AM to 6 PM' },
-      { icon: 'pin' as const, text: '24 Orchard Lane' },
-    ]
-    columns.forEach((col, i) => {
-      const x = 64 + i * 232
-      p.icon({ name: `${col.text} icon`, icon: col.icon, x, y: 892, size: 20, color: CARAMEL, width: 2 })
-      p.text({ name: col.text, x: x + 30, y: 893, w: 194, text: col.text, font: 'archivo', bold: true, size: 15, color: BROWN, on: CREAM, lines: 1 })
-    })
-    p.text({ name: 'Website', x: 64, y: 980, w: 688, text: 'cornerbloom.example  ·  @cornerbloomcafe', font: 'archivo', size: 13, color: MUTED, on: CREAM, lines: 1 })
+    p.text({ name: 'Website', x: 0, y: 988, w: W, text: 'cornerbloom.example', font: 'crimson', size: 15, color: SOFT, on: PAPER, align: 'center', spacing: 200, upper: true, lines: 1 })
     return doc
   },
 }
