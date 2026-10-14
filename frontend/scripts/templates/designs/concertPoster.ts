@@ -1,62 +1,61 @@
-import { DocBuilder, circlePath } from '../kit'
+import { DocBuilder } from '../kit'
 import type { TemplateDesign } from '../registry'
 
-// Type-led gig poster: the headliner dominates, the support acts and details follow in a clear hierarchy,
-// with a halftone sun for texture. Near-black, cream and one acid accent.
+// After the tour posters people buy most right now: near-black, tiny repeated words in the corners, the act in huge
+// heavy type with a warm gradient between two outlined words, the city, venue and dates in condensed capitals on a
+// gradient band, and the special guest on a band of its own.
 const W = 1728
 const H = 2304
-const NIGHT = '#111014'
-const CREAM = '#f2ece0'
-const ACID = '#d7ff3d'
-const GREY = '#a9a39a'
-
-/** Dots on a grid inside a circle, growing towards its lower right: one path, so it moves as one shape. */
-function halftone(cx: number, cy: number, r: number, step: number): string {
-  const parts: string[] = []
-  for (let y = cy - r; y <= cy + r; y += step) {
-    for (let x = cx - r; x <= cx + r; x += step) {
-      const d = Math.hypot(x - cx, y - cy)
-      if (d > r) continue
-      const t = Math.min(1, Math.max(0, ((x - cx) + (y - cy)) / (2 * r) + 0.5))
-      const dot = step * (0.08 + 0.42 * t)
-      parts.push(circlePath(x, y, dot))
-    }
-  }
-  return parts.join(' ')
-}
+const NIGHT = '#151410'
+const SMALL = '#cfc7ae'
+const INK = '#151410'
+const GOLD = ['#ffe27a', '#f4a640'] as const
+const BAND = ['#f2a33a', '#e8cf55'] as const
+const SKY = ['#9fb4ff', '#d3dcff'] as const
 
 export const concertPoster: TemplateDesign = {
   slug: 'night-bloom-concert-poster',
   title: 'Night Bloom concert poster',
   category: 'posters',
-  tags: ['poster', 'concert', 'festival', 'music', 'gig', 'event', 'print'],
-  description: 'A type-led gig poster for 18 x 24 in print: the headliner huge, the support acts and details in a clear hierarchy, and a halftone sun.',
+  tags: ['poster', 'concert', 'tour', 'festival', 'music', 'gig', 'event', 'print'],
+  description: 'A tour poster for 18 x 24 in print: the act in huge gradient type between two outlined words, the city, venue and date on a warm band, and the special guest below.',
   preset: '',
   featured: true,
   build() {
     const doc = new DocBuilder(this.slug, { width: W, height: H, unit: 'in' })
     const p = doc.page('Poster', { type: 'solid', color: NIGHT })
 
-    // Texture first, so everything else sits on top of it.
-    p.path({ name: 'Halftone sun', d: halftone(1200, 1390, 470, 36), fill: ACID, locked: true })
+    // Tiny repeated words in the corners.
+    const corner = (name: string, x: number, y: number, text: string, align: 'left' | 'right', lines: number): void => {
+      p.text({ name, x, y, w: 420, text, font: 'archivo', bold: true, size: 34, color: SMALL, on: NIGHT, align, upper: true, lh: 1.1, lines })
+    }
+    corner('Corner top left', 96, 96, 'Night Bloom\nNight Bloom', 'left', 2)
+    corner('Corner top right', W - 516, 96, 'Night Bloom\nNight Bloom', 'right', 2)
+    corner('Tour left', 96, 210, 'Tour\n2027', 'left', 2)
+    corner('Tour right', W - 516, 210, 'Tour\n2027', 'right', 2)
+    corner('Live left', 96, 860, 'Live\nLive\nLive\nLive', 'left', 4)
+    corner('Live right', W - 516, 860, 'Live\nLive\nLive\nLive', 'right', 4)
 
-    // Top line.
-    p.text({ name: 'Festival', x: 110, y: 110, w: 900, text: 'Night Bloom Festival', font: 'archivo', bold: true, size: 46, color: CREAM, on: NIGHT, spacing: 240, upper: true, lines: 1 })
-    p.text({ name: 'Edition', x: 1018, y: 110, w: 600, text: 'Vol. 04', font: 'archivo', size: 46, color: CREAM, on: NIGHT, spacing: 240, upper: true, align: 'right', lines: 1 })
-    p.line({ name: 'Top rule', x1: 110, y1: 190, x2: 1618, y2: 190, color: CREAM, width: 4 })
+    // The act, between two outlined words.
+    const outlined = { font: 'archivo' as const, bold: true, size: 130, color: '#00000000', on: NIGHT, align: 'center' as const, upper: true, outline: { color: SKY[0], width: 3 }, decorative: true, lines: 1 }
+    p.text({ name: 'Outlined word above', x: 0, y: 330, w: W, text: 'Night Bloom', ...outlined })
+    p.text({ name: 'Act', x: 80, y: 530, w: W - 160, text: 'Marlow &\nthe Echoes', font: 'archivo', bold: true, size: 186, color: { angle: 90, stops: [[0, GOLD[0]], [1, GOLD[1]]] }, on: NIGHT, align: 'center', upper: true, lh: 0.95, spacing: -20, lines: 2 })
+    p.text({ name: 'Outlined word below', x: 0, y: 960, w: W, text: 'Night Bloom', ...outlined })
 
-    // Headliner.
-    p.text({ name: 'Headliner', x: 96, y: 240, w: 1540, text: 'Marlow & the Echoes', font: 'anton', size: 330, color: CREAM, on: NIGHT, lh: 0.92, upper: true, lines: 2 })
+    // City, venue and date on the band.
+    p.rect({ name: 'Band', x: 120, y: 1190, w: W - 240, h: 640, fill: { angle: 90, stops: [[0, BAND[0]], [1, BAND[1]]] } })
+    const band = (name: string, y: number, text: string, size: number): void => {
+      p.text({ name, x: 150, y, w: W - 300, text, font: 'oswald', bold: true, size, color: INK, on: [BAND[0], BAND[1]], align: 'center', upper: true, lh: 1, spacing: 40, lines: 1 })
+    }
+    band('City', 1226, 'Riverside Park', 150)
+    band('Venue', 1396, 'The Open Air Stage', 104)
+    band('Night', 1524, 'Night 07/18', 150)
+    band('Date', 1690, 'Sat 13 June 2027', 112)
 
-    // Support acts.
-    p.text({ name: 'With', x: 110, y: 930, w: 900, text: 'with', font: 'lora', italic: true, size: 70, color: ACID, on: NIGHT, lines: 1 })
-    p.text({ name: 'Support acts', x: 110, y: 1020, w: 1000, text: 'Paper Tigers\nNeon Orchard\nVelvet Static', font: 'archivo', bold: true, size: 96, color: CREAM, on: NIGHT, lh: 1.08, upper: true, lines: 3 })
-
-    // Dates and details.
-    p.line({ name: 'Bottom rule', x1: 110, y1: 1880, x2: 1618, y2: 1880, color: CREAM, width: 4 })
-    p.text({ name: 'Dates', x: 96, y: 1920, w: 900, text: '13–15.06', font: 'anton', size: 250, color: ACID, on: NIGHT, lh: 1, lines: 1 })
-    p.text({ name: 'Details', x: 1018, y: 1940, w: 600, text: 'Riverside Park\nGates 4 PM\nTickets from $45', font: 'archivo', bold: true, size: 50, color: CREAM, on: NIGHT, lh: 1.3, align: 'right', lines: 3 })
-    p.text({ name: 'Website', x: 1018, y: 2160, w: 600, text: 'nightbloom.example', font: 'archivo', size: 40, color: GREY, on: NIGHT, align: 'right', lines: 1 })
+    // Special guest.
+    p.text({ name: 'Guest intro', x: 0, y: 1872, w: W, text: 'with very special guest', font: 'greatVibes', size: 72, color: SMALL, on: NIGHT, align: 'center', lines: 1 })
+    p.rect({ name: 'Guest band', x: 120, y: 1990, w: W - 240, h: 200, fill: { angle: 0, stops: [[0, SKY[0]], [1, SKY[1]]] } })
+    p.text({ name: 'Guest', x: 150, y: 2014, w: W - 300, text: 'Paper Tigers', font: 'oswald', bold: true, size: 132, color: INK, on: [SKY[0], SKY[1]], align: 'center', upper: true, lh: 1, spacing: 300, lines: 1 })
     return doc
   },
 }
