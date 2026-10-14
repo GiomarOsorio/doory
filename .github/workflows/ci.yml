@@ -1,10 +1,14 @@
 name: CI
 
+# Only when started by hand (Actions > CI > Run workflow): runs on every push and pull request used up the monthly
+# Actions minutes. Test what a change touches locally (`make test`, `make lint`) before pushing.
 on:
-  push:
-    branches: [main]
-  pull_request:
   workflow_dispatch:
+    inputs:
+      e2e:
+        description: Also run the end-to-end browser tests (about 30 minutes over six jobs)
+        type: boolean
+        default: false
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -156,8 +160,8 @@ jobs:
     name: End-to-end (${{ matrix.name }})
     runs-on: ubuntu-latest
     needs: [backend, frontend]
-    # About 30 minutes, so only when started by hand (Actions > CI > Run workflow), never on a push or pull request.
-    if: github.event_name == 'workflow_dispatch'
+    # About 30 minutes over six jobs: only when asked for with the `e2e` input.
+    if: inputs.e2e
     timeout-minutes: 45
     strategy:
       fail-fast: false
