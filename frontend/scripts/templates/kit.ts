@@ -220,6 +220,8 @@ export interface TextOptions {
   lines?: number
   /** Skip the contrast check (decorative glyphs). */
   decorative?: boolean
+  /** Words set in italic or bold inside the text (every occurrence), the way a quote stresses a word. */
+  emphasis?: readonly { text: string; italic?: boolean; bold?: boolean }[]
 }
 
 export interface PlacedText {
@@ -447,6 +449,17 @@ export class PageBuilder {
       editable: true,
       strokeUniform: true,
     })
+    for (const e of o.emphasis ?? []) {
+      if (e.italic && !('italic' in pick && pick.italic)) throw new Error(`${pick.family} has no italic face in the palette`)
+      if (e.bold && !(pick.weights as readonly number[]).includes(700)) throw new Error(`${pick.family} has no weight 700`)
+      const style = { ...(e.italic ? { fontStyle: 'italic' } : {}), ...(e.bold ? { fontWeight: 700 } : {}) }
+      let at = shown.indexOf(e.text)
+      if (at < 0) throw new Error(`"${o.name}": "${e.text}" is not in the text`)
+      while (at >= 0) {
+        box.setSelectionStyles(style, at, at + e.text.length)
+        at = shown.indexOf(e.text, at + e.text.length)
+      }
+    }
     if (o.angle) box.set({ angle: o.angle })
     if (o.opacity !== undefined) box.set({ opacity: o.opacity })
     if (o.shadow || o.outline) applyEffects(box, { ...(o.shadow ? { shadow: o.shadow } : {}), ...(o.outline ? { outline: o.outline } : {}) })
