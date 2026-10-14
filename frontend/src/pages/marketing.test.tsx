@@ -24,8 +24,12 @@ describe('landing page', () => {
     expect(screen.getByText(/Free, and no sign-up to start\./)).toBeInTheDocument()
     const cta = screen.getByRole('link', { name: 'Create a design' })
     expect(cta).toHaveAttribute('href', '/create')
-    for (const name of [/birthday card/, /invitation/, /thank-you card/]) {
-      expect(screen.getByRole('link', { name })).toHaveAttribute('href', '/templates')
+    for (const [name, slug] of [
+      [/sale post template/, 'bold-sale-announcement'],
+      [/event story template/, 'rooftop-event-story'],
+      [/tour poster template/, 'night-bloom-concert-poster'],
+    ] as const) {
+      expect(screen.getByRole('link', { name })).toHaveAttribute('href', `/templates/${slug}`)
     }
   })
 
