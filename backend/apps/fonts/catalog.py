@@ -17,6 +17,27 @@ POPULAR_FONTS_PATH = DATA_DIR / "popular_fonts.json"
 UNICODE_RANGES_PATH = DATA_DIR / "unicode_ranges.json"
 
 
+#: Families the editor uses without being asked: the default heading and body fonts
+#: (frontend/src/editor/engine/objects/factories.ts) and the faces of the Text tool's font pairings
+#: (frontend/src/editor/drawers/pairings.ts). `sync_fonts --popular N` always installs them, so a new
+#: heading never falls back to the browser's font because its family ranks below N.
+EDITOR_FONTS = (
+    "Plus Jakarta Sans",
+    "Inter",
+    "Playfair Display",
+    "DM Sans",
+    "Montserrat",
+    "Open Sans",
+    "Lora",
+    "Lato",
+    "Pacifico",
+    "Poppins",
+    "Bebas Neue",
+    "Roboto",
+    "Cormorant Garamond",
+)
+
+
 @dataclass(frozen=True)
 class CuratedFont:
     id: str

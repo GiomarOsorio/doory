@@ -2,7 +2,7 @@ from pathlib import Path
 
 from django.core.management.base import BaseCommand, CommandError
 
-from apps.fonts.catalog import curated_fonts
+from apps.fonts.catalog import EDITOR_FONTS, curated_fonts
 from apps.fonts.sources import FontSource, FontsourceSource, SourceError
 from apps.fonts.sync import SyncOptions, import_font_directory, resolve_ids, sync_families
 
@@ -41,7 +41,10 @@ class Command(BaseCommand):
             "--all", action="store_true", help="Every Google-sourced family Fontsource offers."
         )
         which.add_argument(
-            "--popular", type=int, metavar="N", help="The N most popular families (curated list)."
+            "--popular",
+            type=int,
+            metavar="N",
+            help="The N most popular families (curated list), plus the fonts the editor uses by default.",
         )
         which.add_argument(
             "--from-dir",
@@ -107,7 +110,12 @@ class Command(BaseCommand):
 
     def _select(self, source: FontSource, families, all_: bool, popular: int | None) -> list[str]:
         if popular:
-            return [font.id for font in curated_fonts()[:popular]]
+            curated = curated_fonts()
+            ids = [font.id for font in curated[:popular]]
+            by_family = {font.family: font.id for font in curated}
+            # The editor's own default faces come along whatever N is (see EDITOR_FONTS).
+            extra = [by_family[name] for name in EDITOR_FONTS if name in by_family]
+            return ids + [font_id for font_id in extra if font_id not in ids]
         if all_:
             try:
                 available = source.list_ids()

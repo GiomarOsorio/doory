@@ -5,6 +5,7 @@ import pytest
 from django.core.files.storage import default_storage
 from django.core.management import CommandError, call_command
 
+from apps.fonts.catalog import EDITOR_FONTS, curated_fonts
 from apps.fonts.management.commands.sync_fonts import Command
 from apps.fonts.models import FontFamily, FontVariant
 from apps.fonts.sources import SourceError, SourceUnavailable
@@ -315,12 +316,31 @@ def catalog_source():
     )
 
 
+def editor_font_ids(exclude=()):
+    by_family = {font.family: font.id for font in curated_fonts()}
+    return [by_family[name] for name in EDITOR_FONTS if by_family[name] not in exclude]
+
+
 def test_command_popular_n_uses_the_curated_list_without_listing_the_source():
     source = catalog_source()
     out = command(source, popular=3)
-    assert source.metadata_calls == ["roboto", "open-sans", "noto-sans"]
-    assert "Syncing 3 families" in out and "[1/3] roboto" in out and "[3/3] noto-sans" in out
-    assert "Done: 12 files downloaded" in out
+    top = ["roboto", "open-sans", "noto-sans"]
+    assert source.metadata_calls[:3] == top
+    total = 3 + len(editor_font_ids(exclude=top))
+    assert f"Syncing {total} families" in out
+    # Of the editor's fonts the fake source only has Lato: four fonts are stored, the others are skipped.
+    assert "Done: 16 files downloaded" in out
+
+
+def test_command_popular_n_always_brings_the_fonts_the_editor_uses_by_default():
+    source = catalog_source()
+    command(source, popular=1)
+    by_family = {font.family: font for font in curated_fonts()}
+    assert by_family["Plus Jakarta Sans"].popularity > 100, (
+        "the default heading font ranks below the Docker cut"
+    )
+    assert source.metadata_calls == ["roboto", *editor_font_ids(exclude=["roboto"])]
+    assert "plus-jakarta-sans" in source.metadata_calls
 
 
 def test_command_named_families_accept_names_and_ids():

@@ -304,6 +304,8 @@ export const t = {
   },
   toolbar: {
     label: 'Formatting',
+    scrollBack: 'Show the earlier tools',
+    scrollMore: 'Show more tools',
     font: 'Font',
     fontSize: 'Font size',
     textColor: 'Text color',

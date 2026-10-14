@@ -66,27 +66,74 @@
 }
 
 /* ── Contextual strip ── */
+/* The strip sits above the workspace only (beside the rail and an open panel), so it sizes itself from its own width. */
 .strip {
+  position: relative;
   flex: none;
-  display: flex;
-  align-items: center;
   height: 58px;
-  padding: 0 18px;
   background: var(--ed-surface-2);
   border-bottom: 1px solid var(--ed-border);
   z-index: 80;
+  container: strip / inline-size;
+  animation: strip-reveal 140ms var(--ed-ease);
+}
+/* The scroller: when the tools still do not fit, the row scrolls sideways and the arrows show there is more. */
+.stripInner {
+  display: flex;
+  align-items: center;
+  justify-content: safe center;
+  height: 100%;
+  padding: 0 18px;
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: none;
-  animation: strip-reveal 140ms var(--ed-ease);
+  scroll-behavior: smooth;
 }
-.strip::-webkit-scrollbar {
+.stripInner::-webkit-scrollbar {
   display: none;
 }
-.stripInner {
-  width: 100%;
+.stripArrow {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 1;
   display: flex;
-  justify-content: safe center;
+  align-items: center;
+  width: 44px;
+  padding: 0 6px;
+  border: none;
+  color: var(--ed-text);
+  cursor: pointer;
+}
+.stripArrow[data-side='start'] {
+  left: 0;
+  justify-content: flex-start;
+  background: linear-gradient(to right, var(--ed-surface-2) 55%, transparent);
+}
+.stripArrow[data-side='end'] {
+  right: 0;
+  justify-content: flex-end;
+  background: linear-gradient(to left, var(--ed-surface-2) 55%, transparent);
+}
+.stripArrow span {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--ed-border);
+  border-radius: 999px;
+  background: var(--ed-surface);
+  box-shadow: var(--shadow-sm);
+}
+.stripArrow:hover span {
+  border-color: var(--ed-text-dim);
+}
+.stripArrow:focus-visible {
+  outline: none;
+}
+.stripArrow:focus-visible span {
+  box-shadow: var(--focus-ring);
 }
 .row {
   display: flex;
@@ -484,7 +531,7 @@
 .presetBtn:hover {
   border-color: var(--ink);
   background: var(--ed-accent-glow);
-  box-shadow: 3px 3px 0 var(--pastel-pink);
+  box-shadow: 3px 3px 0 var(--pastel-lilac);
   transform: translate(-1px, -1px);
 }
 .presetBtn:active {
@@ -782,7 +829,7 @@
 }
 
 /* ── Narrower workspaces: a tighter row (the strip scrolls sideways when it still does not fit) ── */
-@media (max-width: 1180px) {
+@container strip (max-width: 1080px) {
   .row {
     gap: 2px;
   }
@@ -802,12 +849,12 @@
   .strip {
     order: 2;
     height: 52px;
-    padding: 0 8px;
     border-top: 1px solid var(--ed-border);
     border-bottom: none;
   }
   .stripInner {
     justify-content: flex-start;
+    padding: 0 8px;
   }
   .row {
     gap: 4px;

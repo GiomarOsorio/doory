@@ -53,6 +53,21 @@ describe('EditorEngine', () => {
     engine.dispose()
   })
 
+  it('steps each new insert down and to the right of the last one instead of stacking them (tools stay open)', async () => {
+    const { engine, view } = await setup()
+    await engine.insert.shape('rect')
+    await engine.insert.shape('ellipse')
+    await engine.insert.shape('star')
+    const centres = view.canvas.getObjects().map((o) => o.getCenterPoint())
+    const step = Math.round(600 * 0.04)
+    expect(centres.map((c) => [Math.round(c.x), Math.round(c.y)])).toEqual([
+      [400, 300],
+      [400 + step, 300 + step],
+      [400 + 2 * step, 300 + 2 * step],
+    ])
+    engine.dispose()
+  })
+
   it('leaves no canvas elements behind when a page is unmounted', async () => {
     const { engine, host, pageId } = await setup()
     expect(host.querySelectorAll('canvas').length).toBeGreaterThanOrEqual(3)

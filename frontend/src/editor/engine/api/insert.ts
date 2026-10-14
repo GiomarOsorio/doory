@@ -59,19 +59,24 @@ const MAX_SVG_BYTES = 2 * 1024 * 1024
 export class InsertApi {
   constructor(private readonly engine: EditorEngine) {}
 
-  /** Centre of the active page, nudged so repeated inserts do not stack exactly. */
-  private center(): { x: number; y: number } {
+  /**
+   * Where the next insert goes: the centre of the active page, or the first spot down and to the right of it that nothing
+   * is centred on yet. Tools stay open while several things are added, so each one lands a step from the last instead of
+   * exactly on top of it. The step follows the page size (4 % of its shorter side), so it reads the same on any page.
+   */
+  center(): { x: number; y: number } {
     const page = this.engine.pageSizeOf(this.engine.state.activePageId)
     const view = this.engine.activeView()
     const cx = page.width / 2
     const cy = page.height / 2
     if (!view) return { x: cx, y: cy }
-    const stacked = view.canvas.getObjects().filter((o) => {
-      const c = o.getCenterPoint()
-      return Math.abs(c.x - cx) < 12 && Math.abs(c.y - cy) < 12
-    }).length
-    const off = Math.min(stacked, 8) * 24
-    return { x: cx + off, y: cy + off }
+    const step = Math.max(16, Math.round(Math.min(page.width, page.height) * 0.04))
+    const centres = view.canvas.getObjects().map((o) => o.getCenterPoint())
+    // A little under a step either way: a font pairing sits its two lines just above and below the spot it was given.
+    const taken = (x: number, y: number): boolean => centres.some((c) => Math.abs(c.x - x) < step * 0.8 && Math.abs(c.y - y) < step * 0.8)
+    let i = 0
+    while (i < 8 && taken(cx + i * step, cy + i * step)) i++
+    return { x: cx + i * step, y: cy + i * step }
   }
 
   /** Adds already-built Fabric objects to the active page. */
