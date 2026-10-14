@@ -17,6 +17,7 @@
 import { classRegistry, type FabricObject, Group, Rect, type StaticCanvas } from 'fabric'
 import { type DocObject, type DocPage } from '@/types/document'
 import './objects/builtinKinds'
+import './objects/complexText'
 import { type KindLoadContext, kindOfDoc, kindOfLive, objectKinds } from './objects/kinds'
 import { applyLock, asDory, ensureId } from './objects/dory'
 import { type FontUse, fontsInObjects } from './docOps'
