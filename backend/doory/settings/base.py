@@ -293,3 +293,9 @@ REALTIME_CONNECTS_PER_MINUTE = env.int("REALTIME_CONNECTS_PER_MINUTE", default=6
 # as an attack: the room's live state is dropped and rebuilt from the store and the sender is blocked a while.
 REALTIME_SLOW_APPLY_SECONDS = env.float("REALTIME_SLOW_APPLY_SECONDS", default=2.0)
 REALTIME_BLOCK_SECONDS = env.int("REALTIME_BLOCK_SECONDS", default=600)
+
+# ---- MCP server for AI agents (apps.mcp; served by `uvicorn doory.mcp_asgi:application`) ----
+MCP_ENABLED = env.bool("MCP_ENABLED", default=False)  # opt-in; Docker also needs `COMPOSE_PROFILES=mcp`
+MCP_PATH = "/mcp"
+MCP_CALLS_PER_MINUTE = env.int("MCP_CALLS_PER_MINUTE", default=120)  # per user; 0 = unlimited
+MCP_MAX_REQUEST_BYTES = env.int("MCP_MAX_REQUEST_BYTES", default=4 * 1024 * 1024)
