@@ -118,6 +118,57 @@ docker compose exec api python manage.py sync_audio           # music and sound 
 </details>
 
 <details>
+<summary><b>Your own size presets</b> (sizes for creating and resizing designs)</summary>
+
+<br />
+
+The sizes offered in the Create and Resize dialogs come from the server. A new site has the built-in ones
+(social posts, presentations, paper and print sizes, video); add your own, or offer only yours, in any of three ways:
+
+| Way | How |
+|-----|-----|
+| Admin site | **Size presets** in the admin: groups (nested to any depth) and presets, drag to reorder, switch them on or off |
+| A JSON file, once | `docker compose exec api python manage.py import_size_presets sizes.json` (a folder imports every `.json` in it; `--dry-run` only checks) |
+| A JSON file, on every start | Mount the file into the API container and set `DOORY_SIZE_PRESETS_FILE` in `.env` (see `docker-compose.yml`). The file stays out of the image and the repository. |
+
+`--mode extend` (the default, and `DOORY_SIZE_PRESETS_MODE=extend`) adds to the built-in sizes; a preset with the
+same slug replaces the built-in one. `replace` offers only the file's sizes and switches the others off (they are
+kept, not deleted). Importing is idempotent on the slug, so the same file can be imported again after editing.
+
+```json
+{
+  "version": 1,
+  "groups": [
+    {
+      "slug": "social", "label": "Social media",
+      "children": [
+        {
+          "slug": "platform-a", "label": "Platform A",
+          "presets": [
+            { "slug": "platform-a-portrait", "label": "Portrait post", "width": 1000, "height": 1250, "unit": "px",
+              "tags": ["4:5"], "is_quick": true, "meta": { "safe_zone": { "top": 0.1, "bottom": 0.2 } } }
+          ]
+        }
+      ]
+    },
+    {
+      "slug": "print", "label": "Print",
+      "presets": [{ "slug": "flyer-a6", "label": "Flyer (A6)", "width": 105, "height": 148, "unit": "mm" }]
+    }
+  ]
+}
+```
+
+A preset needs `slug`, `label`, `width` and `height`; `unit` is `px` (default), `mm`, `cm` or `in`. Optional: `icon`
+(a [Lucide](https://lucide.dev/icons) name), `tags` (searchable, shown as filters), `aliases` (old slugs that still
+mean this preset), `is_quick` (a chip on the home page), `is_active`, `order` and `meta` (`safe_zone` holds the
+fractions of the page to keep clear on each side). Groups take `slug`, `label`, `icon`, `order`, `is_active`,
+`children` and `presets`. `GET /api/v1/size-presets/` returns the current catalogue in the same format, so it can be
+saved, edited and imported again. `manage.py seed_size_presets --update` resets the built-in sizes.
+
+</details>
+
+<details>
 <summary><b>Settings worth knowing</b> (<code>.env</code>)</summary>
 
 <br />
@@ -133,6 +184,7 @@ docker compose exec api python manage.py sync_audio           # music and sound 
 | `GOOGLE_CLIENT_ID` | Turns on "Sign in with Google" |
 | `UNSPLASH_ACCESS_KEY`, `PEXELS_API_KEY` | Turn on stock photo search |
 | `USE_S3` and `AWS_*` | Store uploads in S3-compatible storage instead of a local volume |
+| `DOORY_SIZE_PRESETS_FILE`, `DOORY_SIZE_PRESETS_MODE` | Import your own size presets from a JSON file on every start (see above) |
 
 </details>
 

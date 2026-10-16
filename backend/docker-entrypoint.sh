@@ -83,6 +83,17 @@ seed_templates() {
     python manage.py seed_templates || echo "Template seeding failed; the server starts anyway. Run 'manage.py seed_templates' again later." >&2
 }
 
+import_size_presets() {
+    if ! python manage.py help import_size_presets >/dev/null 2>&1; then
+        return 0
+    fi
+    mode="${DOORY_SIZE_PRESETS_MODE:-extend}"
+    echo "Importing size presets from ${DOORY_SIZE_PRESETS_FILE} (${mode})..."
+    if ! python manage.py import_size_presets "$DOORY_SIZE_PRESETS_FILE" --mode "$mode"; then
+        echo "Size preset import failed; the server starts anyway with the presets it had. Fix the file and restart." >&2
+    fi
+}
+
 if [ "${1:-}" = "gunicorn" ]; then
     wait_for_database
     python manage.py migrate --noinput
@@ -102,6 +113,9 @@ if [ "${1:-}" = "gunicorn" ]; then
     fi
     if [ "${DOORY_SEED_TEMPLATES:-false}" = "true" ]; then
         seed_templates
+    fi
+    if [ -n "${DOORY_SIZE_PRESETS_FILE:-}" ]; then
+        import_size_presets
     fi
 fi
 
