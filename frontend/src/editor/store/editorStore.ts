@@ -84,6 +84,8 @@ export interface UiState {
   guides: boolean
   snapping: boolean
   bleed: boolean
+  /** Safe-zone guides of the design's size preset (a platform's overlays), where it has some. */
+  safeZone: boolean
   dialog: { id: DialogId; props?: Record<string, unknown> } | null
   contextMenu: ContextMenuState | null
   cropping: CropState | null
@@ -158,6 +160,7 @@ interface StoredPrefs {
   guides?: boolean
   snapping?: boolean
   bleed?: boolean
+  safeZone?: boolean
   panelId?: string | null
   recentColors?: string[]
   recentFonts?: string[]
@@ -182,6 +185,7 @@ export function writePrefs(state: EditorState): void {
       guides: state.ui.guides,
       snapping: state.ui.snapping,
       bleed: state.ui.bleed,
+      safeZone: state.ui.safeZone,
       panelId: state.ui.panelId,
       recentColors: state.recentColors,
       recentFonts: state.recentFonts,
@@ -229,6 +233,7 @@ export function createEditorStore(init: StoreInit): EditorStore {
       guides: prefs.guides ?? true,
       snapping: prefs.snapping ?? true,
       bleed: prefs.bleed ?? false,
+      safeZone: prefs.safeZone ?? true,
       dialog: null,
       contextMenu: null,
       cropping: null,

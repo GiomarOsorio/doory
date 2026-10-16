@@ -40,7 +40,8 @@ export function sizePresetsReady(timeoutMs = WAIT_MS): Promise<SizePresetCatalog
   return Promise.race([loadSizePresets(), new Promise<SizePresetCatalogue>((resolve) => setTimeout(() => resolve(current), timeoutMs))])
 }
 
-function subscribe(listener: () => void): () => void {
+/** Calls `listener` whenever the catalogue changes (the server's arrives); returns the unsubscribe function. */
+export function subscribeSizePresets(listener: () => void): () => void {
   listeners.add(listener)
   return () => listeners.delete(listener)
 }
@@ -50,7 +51,7 @@ export function useSizePresets(): SizePresetCatalogue {
   useEffect(() => {
     void loadSizePresets()
   }, [])
-  return useSyncExternalStore(subscribe, getSizePresets, getSizePresets)
+  return useSyncExternalStore(subscribeSizePresets, getSizePresets, getSizePresets)
 }
 
 /** Tests: use `catalogue` (or the built-in one) and treat it as loaded, so nothing is fetched. */

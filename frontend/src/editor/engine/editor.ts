@@ -7,6 +7,7 @@
 import { ActiveSelection, type FabricObject } from 'fabric'
 import type { EditorAdapter, EditorMeta } from '@/types/adapter'
 import type { DocObject, DocPage, DoryDocument } from '@/types/document'
+import { getSizePresets, loadSizePresets, subscribeSizePresets, type SafeZone } from '@/lib/sizePresets'
 import { migrateDocument } from './migrations'
 import { AnimationApi } from './api/animation'
 import { AudioApi } from './api/audio'
@@ -134,6 +135,7 @@ export class EditorEngine implements PageCanvasHost {
   private disposers: (() => void)[] = []
   private liveRaf = 0
   private disposed = false
+  private readonly unsubscribePresets: () => void
   private live: LiveSession | null = null
   private liveReadOnly = false
   private editLocks: ReadonlyMap<string, ReadonlySet<string>> = new Map()
@@ -165,6 +167,11 @@ export class EditorEngine implements PageCanvasHost {
     this.crop = new CropApi(this)
     this.view = new ViewApi(this)
     this.persistence = new PersistenceController(this)
+    // Safe zones come from the size preset catalogue, which may arrive after the pages are drawn.
+    this.unsubscribePresets = subscribeSizePresets(() => {
+      for (const v of this.allViews()) v.invalidateOverlay()
+    })
+    void loadSizePresets()
 
   }
 
@@ -197,6 +204,14 @@ export class EditorEngine implements PageCanvasHost {
   }
   get showRulerGuides(): boolean {
     return this.state.ui.rulers
+  }
+  get showSafeZone(): boolean {
+    return this.state.ui.safeZone
+  }
+  safeZoneFor(width: number, height: number): SafeZone | null {
+    const preset = getSizePresets().byId.get(this.state.doc.meta?.presetId ?? '')
+    // Only a page still at the preset's size: once resized, the platform's overlays no longer line up.
+    return preset?.safeZone && preset.width === width && preset.height === height ? preset.safeZone : null
   }
   get bleedPx(): number {
     return this.state.doc.meta?.bleedPx ?? 24
@@ -708,7 +723,7 @@ export class EditorEngine implements PageCanvasHost {
     const tool = state.ui.spaceDown ? 'hand' : state.ui.tool
     const prevTool = prev.ui.spaceDown ? 'hand' : prev.ui.tool
     if (tool !== prevTool) for (const v of this.allViews()) v.setCursor(this.cursorFor(tool))
-    if (state.ui.grid !== prev.ui.grid || state.ui.bleed !== prev.ui.bleed || state.ui.guides !== prev.ui.guides || state.ui.rulers !== prev.ui.rulers) {
+    if (state.ui.grid !== prev.ui.grid || state.ui.bleed !== prev.ui.bleed || state.ui.safeZone !== prev.ui.safeZone || state.ui.guides !== prev.ui.guides || state.ui.rulers !== prev.ui.rulers) {
       for (const v of this.allViews()) v.invalidateOverlay()
     }
   }
@@ -823,7 +838,7 @@ export class EditorEngine implements PageCanvasHost {
     this.disposers.push(
       this.store.subscribe((state, prev) => {
         if (state.ui !== prev.ui) this.syncUi(state, prev)
-        if (state.ui.panelId !== prev.ui.panelId || state.ui.rulers !== prev.ui.rulers || state.ui.grid !== prev.ui.grid || state.ui.guides !== prev.ui.guides || state.ui.snapping !== prev.ui.snapping || state.ui.bleed !== prev.ui.bleed || state.recentColors !== prev.recentColors || state.recentFonts !== prev.recentFonts) {
+        if (state.ui.panelId !== prev.ui.panelId || state.ui.rulers !== prev.ui.rulers || state.ui.grid !== prev.ui.grid || state.ui.guides !== prev.ui.guides || state.ui.snapping !== prev.ui.snapping || state.ui.bleed !== prev.ui.bleed || state.ui.safeZone !== prev.ui.safeZone || state.recentColors !== prev.recentColors || state.recentFonts !== prev.recentFonts) {
           writePrefs(state)
         }
       }),
@@ -850,6 +865,7 @@ export class EditorEngine implements PageCanvasHost {
     if (this.disposed) return
     this.stop()
     this.disposed = true
+    this.unsubscribePresets()
     for (const v of this.views.values()) v.dispose()
     this.views.clear()
     this.snapshots.dispose()

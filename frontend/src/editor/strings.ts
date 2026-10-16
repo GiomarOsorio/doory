@@ -51,6 +51,7 @@ export const t = {
     guides: 'Show smart guides',
     snapping: 'Snap to guides',
     bleed: 'Show print margins',
+    safeZone: 'Show safe zone',
   },
   save: {
     saving: 'Saving…',
