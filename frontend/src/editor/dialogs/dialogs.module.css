@@ -181,6 +181,19 @@ small.error {
   overflow: auto;
   padding-right: 4px;
 }
+.presetSearch {
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg);
+  color: var(--color-text);
+  font: 400 var(--text-sm) / 1.3 var(--font-sans);
+}
+.presetSearch:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
 .groupTitle {
   margin: 0 0 8px;
   color: var(--color-text-muted);

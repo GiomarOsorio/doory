@@ -1,11 +1,11 @@
 import { Lock, LockOpen } from 'lucide-react'
 import { useState } from 'react'
+import { filterPresets, useSizePresets } from '@/lib/sizePresets'
 import type { DocUnit } from '@/types/document'
 import { useDocument, useEditor } from '../context'
 import type { ResizeScope } from '../engine/api/pages'
 import type { ResizeMode } from '../engine/magicResize'
 import { getPageSize, isUniform, pageSizes, sameSize } from '../engine/pageSizes'
-import { SIZE_PRESETS } from '../engine/presets'
 import { pxToUnit, unitDecimals, unitToPx } from '../engine/units'
 import { t } from '../strings'
 import { Button, IconButton } from '../ui/Button'
@@ -41,6 +41,8 @@ export function ResizeDialog({ props }: { props?: Record<string, unknown> }) {
   const [h, setH] = useState(initH)
   const [lock, setLock] = useState(false)
   const [mode, setMode] = useState<ResizeMode>('scale')
+  const [query, setQuery] = useState('')
+  const catalogue = useSizePresets()
   const [scope, setScope] = useState<ResizeScope>(!multiple ? 'all' : props?.scope === 'page' || props?.scope === 'all' ? props.scope : isUniform(doc) ? 'all' : 'page')
   const ratio = current.width / current.height
   const dec = unitDecimals(unit)
@@ -65,7 +67,7 @@ export function ResizeDialog({ props }: { props?: Record<string, unknown> }) {
     editor.closeDialog()
   }
 
-  const groups = [...new Set(SIZE_PRESETS.map((p) => p.group))]
+  const sections = filterPresets(catalogue, { query })
 
   return (
     <Dialog
@@ -83,11 +85,13 @@ export function ResizeDialog({ props }: { props?: Record<string, unknown> }) {
     >
       <div className={styles.resize}>
         <div className={styles.presets}>
-          {groups.map((g) => (
-            <section key={g}>
-              <h3 className={styles.groupTitle}>{t.sizeGroups[g]}</h3>
+          <input type="search" className={styles.presetSearch} placeholder={t.dialog.resizeSearch} aria-label={t.dialog.resizeSearch} value={query} onChange={(e) => setQuery(e.target.value)} />
+          {sections.length === 0 ? <p className={styles.muted}>{t.dialog.resizeNoMatch}</p> : null}
+          {sections.map(({ path, presets }) => (
+            <section key={path.map((g) => g.slug).join('/')}>
+              <h3 className={styles.groupTitle}>{path.map((g) => g.label).join(' › ')}</h3>
               <div className={styles.presetList}>
-                {SIZE_PRESETS.filter((p) => p.group === g).map((p) => (
+                {presets.map((p) => (
                   <button key={p.id} type="button" className={`${styles.preset} ${Math.round(w) === p.width && Math.round(h) === p.height ? styles.presetOn : ''}`} onClick={() => { setW(p.width); setH(p.height) }}>
                     <span>{p.label}</span>
                     <small>

@@ -5,7 +5,7 @@
 import type { DocUnit } from '@/types/document'
 import type { PageSize } from '../../engine/docOps'
 import { MAX_BLEED_MM } from '../../engine/export/printGeometry'
-import { findPreset } from '../../engine/presets'
+import { findPresetBySize, getSizePresets } from '@/lib/sizePresets'
 import { formatUnit, mmToPx, pxToUnit } from '../../engine/units'
 import { t } from '../../strings'
 
@@ -95,8 +95,10 @@ const MAX_LISTED_SIZES = 4
 
 /** "1080×1080" in the design's unit, or the name of the paper size it is (A4, US Letter…); orientation does not matter. */
 export function sizeLabel(size: PageSize, unit: DocUnit): string {
-  const preset = findPreset(size.width, size.height) ?? findPreset(size.height, size.width)
-  if (preset?.group === 'print') return t.print.paper[preset.id] ?? preset.label
+  const catalogue = getSizePresets()
+  const preset = findPresetBySize(catalogue, size.width, size.height) ?? findPresetBySize(catalogue, size.height, size.width)
+  // Sizes defined in millimetres or inches are paper sizes; pixel sizes (screens, social posts) are written as numbers.
+  if (preset && preset.sourceUnit !== 'px') return t.print.paper[preset.id] ?? preset.label.replace(/\s*\(.*\)$/, '')
   const suffix = unit === 'px' ? '' : ` ${unit}`
   return `${formatUnit(size.width, unit)}×${formatUnit(size.height, unit)}${suffix}`
 }

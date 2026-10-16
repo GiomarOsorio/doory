@@ -1,13 +1,11 @@
+import { getSizePresets, quickPresets } from '@/lib/sizePresets'
 import {
   CUSTOM_UNITS,
-  SIZE_PRESETS,
-  QUICK_PRESET_IDS,
   createUrl,
   formatUnitValue,
   getPreset,
   lockedCounterpart,
   parseCustomSize,
-  presetsByCategory,
   pxToUnit,
   resolveCreateSpec,
   unitToPx,
@@ -35,9 +33,10 @@ describe('unit conversion at 96 dpi', () => {
 
 describe('size presets', () => {
   it('has unique ids, positive in-range sizes and covers the documented sizes', () => {
-    const ids = SIZE_PRESETS.map((p) => p.id)
+    const presets = getSizePresets().presets
+    const ids = presets.map((p) => p.id)
     expect(new Set(ids).size).toBe(ids.length)
-    for (const preset of SIZE_PRESETS) {
+    for (const preset of presets) {
       expect(preset.width).toBeGreaterThan(0)
       expect(preset.height).toBeGreaterThan(0)
       expect(Math.max(preset.width, preset.height)).toBeLessThanOrEqual(20000)
@@ -52,10 +51,14 @@ describe('size presets', () => {
     expect(getPreset('video-4k')).toMatchObject({ width: 3840, height: 2160 })
   })
 
-  it('groups presets by category and every quick preset exists', () => {
-    const groups = presetsByCategory()
-    expect(groups.map((g) => g.category.id)).toEqual(['social', 'presentation', 'print', 'documents', 'video', 'etc'])
-    for (const id of QUICK_PRESET_IDS) expect(getPreset(id)).toBeDefined()
+  it('resolves the slugs of the editor\'s old list too', () => {
+    expect(getPreset('twitter-post')?.id).toBe('x-post')
+    expect(getPreset('instagram-portrait')).toMatchObject({ width: 1080, height: 1350 })
+    expect(getPreset('web-banner')).toMatchObject({ width: 728, height: 90 })
+  })
+
+  it('offers the same quick sizes as before, in the same order', () => {
+    expect(quickPresets(getSizePresets()).map((p) => p.id)).toEqual(['instagram-post', 'presentation', 'poster', 'a4', 'youtube-thumbnail', 'instagram-story', 'logo'])
   })
 })
 
