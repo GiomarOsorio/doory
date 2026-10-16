@@ -20,6 +20,12 @@ _NON_DELIVERING_EMAIL_BACKENDS = {
     "django.core.mail.backends.locmem.EmailBackend",
 }
 
+
+def email_delivers() -> bool:
+    """Whether verification emails reach anyone, so users can be asked to verify their address."""
+    return settings.EMAIL_BACKEND not in _NON_DELIVERING_EMAIL_BACKENDS
+
+
 _CONFIG_SCHEMA = inline_serializer(
     "AppConfig",
     {
@@ -93,7 +99,6 @@ def health(request):
 @cache_control(public=True, max_age=60)
 def config(request):
     """Public runtime configuration: optional integrations, size limits and the models to download."""
-    email_delivers = settings.EMAIL_BACKEND not in _NON_DELIVERING_EMAIL_BACKENDS
     background_removal = background_removal_model()
     return Response(
         {
@@ -102,7 +107,7 @@ def config(request):
                 "stock_photos": bool(settings.UNSPLASH_ACCESS_KEY or settings.PEXELS_API_KEY),
                 "server_pdf": settings.SERVER_PDF_ENABLED,
                 "google_login": bool(settings.GOOGLE_CLIENT_ID),
-                "email_verification": email_delivers,
+                "email_verification": email_delivers(),
                 "background_removal": background_removal is not None,
                 "realtime": realtime_enabled(),
             },

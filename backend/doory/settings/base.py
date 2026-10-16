@@ -41,6 +41,8 @@ INSTALLED_APPS = [
     "apps.exports",
     "apps.collab",
     "apps.presets",
+    "apps.apitokens",
+    "apps.mcp",
 ]
 
 MIDDLEWARE = [
@@ -122,6 +124,7 @@ MAX_UPLOAD_BYTES = 25 * 1024 * 1024  # per asset
 MAX_DESIGN_DOCUMENT_BYTES = 12 * 1024 * 1024
 USER_STORAGE_QUOTA_BYTES = env.int("USER_STORAGE_QUOTA_BYTES", default=2 * 1024**3)
 MAX_DESIGNS_PER_USER = env.int("MAX_DESIGNS_PER_USER", default=5000)
+MAX_API_TOKENS_PER_USER = env.int("MAX_API_TOKENS_PER_USER", default=20)
 MAX_DESIGN_PAGES = 100
 MAX_AVATAR_BYTES = 5 * 1024 * 1024
 
