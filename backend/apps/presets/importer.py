@@ -43,6 +43,8 @@ PRESET_KEYS = {
     "aliases",
     "meta",
 }
+# (file key, model field) an existing group keeps when the file leaves the key out.
+GROUP_KEPT_FIELDS = (("icon", "icon"), ("order", "sort_order"))
 # What the API adds to each preset; accepted (and ignored) so a served catalogue imports as it is.
 DERIVED_PRESET_KEYS = {"width_px", "height_px"}
 
@@ -134,6 +136,9 @@ def _parse_groups(items: Any, *, parent: str | None, where: str, depth: int, int
                 "icon": _icon(item, at),
                 "sort_order": _order(item, index, at),
                 "is_active": _flag(item, "is_active", True, at),
+                # An existing group keeps the icon and order the file leaves out: a file that adds presets to
+                # a built-in group ("social") should not reset how that group looks or where it sits.
+                "unset": {field for key, field in GROUP_KEPT_FIELDS if key not in item},
             }
         )
         for p_index, preset in enumerate(_list(item, "presets", at)):
@@ -242,9 +247,9 @@ def write(
     report = Report()
     groups: dict[str, Any] = {}
     for row in catalogue.groups:
-        values = {key: value for key, value in row.items() if key not in ("slug", "parent")}
+        values = {key: value for key, value in row.items() if key not in ("slug", "parent", "unset")}
         values["parent"] = groups[row["parent"]] if row["parent"] else None
-        groups[row["slug"]] = _upsert(group_model, row["slug"], values, overwrite, report)
+        groups[row["slug"]] = _upsert(group_model, row["slug"], values, overwrite, report, keep=row["unset"])
     for row in catalogue.presets:
         values = {key: value for key, value in row.items() if key != "slug"}
         values["group"] = groups[row["group"]]
@@ -259,12 +264,13 @@ def write(
     return report
 
 
-def _upsert(model, slug: str, values: dict, overwrite: bool, report: Report):
+def _upsert(model, slug: str, values: dict, overwrite: bool, report: Report, keep: set[str] = frozenset()):
+    """Create the row, or update it (when `overwrite`) except for the fields in `keep`."""
     obj = model.objects.filter(slug=slug).first()
     if obj is None:
         report.created += 1
         return model.objects.create(slug=slug, **values)
-    changed = [key for key, value in values.items() if getattr(obj, key) != value]
+    changed = [key for key, value in values.items() if key not in keep and getattr(obj, key) != value]
     if overwrite and changed:
         for key in changed:
             setattr(obj, key, values[key])

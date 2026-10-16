@@ -210,6 +210,24 @@ def test_import_extends_and_overrides_built_ins_by_slug(tmp_path):
     assert "Size presets:" in out and "created" in out
 
 
+def test_naming_a_built_in_group_keeps_its_icon_and_place_unless_the_file_sets_them(tmp_path):
+    social = SizePresetGroup.objects.get(slug="social")
+    path = write_json(
+        tmp_path / "c.json", catalogue({"slug": "social", "label": "Social media", "presets": [preset("p1")]})
+    )
+    run("import_size_presets", str(path))
+    after = SizePresetGroup.objects.get(slug="social")
+    assert (after.icon, after.sort_order) == (social.icon, social.sort_order)
+
+    path = write_json(
+        tmp_path / "c.json",
+        catalogue({"slug": "social", "label": "Social", "icon": "", "order": 999, "presets": [preset("p1")]}),
+    )
+    run("import_size_presets", str(path))
+    after = SizePresetGroup.objects.get(slug="social")
+    assert (after.label, after.icon, after.sort_order) == ("Social", "", 999)
+
+
 def test_import_is_idempotent(tmp_path):
     path = write_json(
         tmp_path / "c.json", catalogue({"slug": "ours", "label": "Ours", "presets": [preset("p1")]})
