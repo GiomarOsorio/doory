@@ -1,0 +1,431 @@
+"""The server-side document toolkit (apps.designs.doc): builders, operations, geometry and summaries."""
+
+from __future__ import annotations
+
+import pytest
+from django.conf import settings
+from pydantic import TypeAdapter, ValidationError
+
+from apps.designs.doc import builders, contract
+from apps.designs.doc.builders import Page
+from apps.designs.doc.kinds import object_kind
+from apps.designs.doc.ops import EditError, ImageSource, Operation, apply_ops, box, place
+from apps.designs.doc.summary import summarize_document
+from apps.designs.validators import validate_document
+
+from .helpers import make_doc
+
+OPS = TypeAdapter(list[Operation])
+PAGE = Page(800, 600)
+
+
+class Resolver:
+    def __init__(self):
+        self.images = {
+            "asset-1": ImageSource("/media/assets/u/asset-1.png", 400, 200, asset_id="asset-1", name="Logo")
+        }
+
+    def image(self, *, asset_id, element_id):
+        key = asset_id or element_id
+        if key not in self.images:
+            raise LookupError(f"There is no picture {key}.")
+        return self.images[key]
+
+    def font_category(self, family):
+        return {"Playfair Display": "serif"}.get(family)
+
+
+def run(document, *ops):
+    return apply_ops(document, OPS.validate_python(list(ops)), Resolver())
+
+
+def valid(document):
+    validate_document(document, max_bytes=settings.MAX_DESIGN_DOCUMENT_BYTES)
+    return document
+
+
+# ---------------------------------------------------------------------------------------------
+# Builders
+# ---------------------------------------------------------------------------------------------
+
+
+def test_text_presets_scale_with_the_page_like_the_editor():
+    heading = builders.build_text(PAGE, text="Hello world", preset="heading")
+    # createTextbox(page 800 x 600, heading): width 72 % of the page, 36 px x textScale(600 / 559) → 39.
+    assert heading["width"] == 576
+    assert heading["fontSize"] == 39
+    assert heading["fontWeight"] == 700
+    assert heading["height"] == pytest.approx(44.07)  # one line: 39 x 1.13
+    assert (heading["left"], heading["top"]) == (400, 300)  # centred by default
+
+
+def test_text_height_counts_wrapped_lines():
+    one = builders.build_text(PAGE, text="Hi", width=300, font_size=20)
+    many = builders.build_text(PAGE, text="word " * 60, width=300, font_size=20)
+    assert many["height"] > one["height"] * 5
+    assert builders.estimate_text_lines("a\nb\nc", 1000, 20) == 3
+    assert builders.estimate_text_lines("x" * 200, 100, 20) > 10  # an unbreakable word still wraps
+
+
+def test_fonts_become_stacks_with_a_generic_fallback():
+    assert builders.font_stack("Playfair Display", "serif") == '"Playfair Display", serif'
+    assert builders.font_stack('"Caveat", cursive', "handwriting") == '"Caveat", cursive'
+    assert builders.font_stack("Inter") == '"Inter", sans-serif'
+
+
+def test_polygon_points_match_the_editor():
+    # The editor's createPolygon(at, 100, 6) and createStar(at, 100, 5, 0.45).
+    assert builders.regular_polygon_points(6) == [
+        {"x": 50, "y": 0},
+        {"x": 100, "y": 25},
+        {"x": 100, "y": 75},
+        {"x": 50, "y": 100},
+        {"x": 0, "y": 75},
+        {"x": 0, "y": 25},
+    ]
+    assert builders.star_points(5, 0.45)[1] == {"x": 63.906, "y": 35.154}
+
+
+def test_lines_run_between_their_end_points():
+    line = builders.build_line(x1=100, y1=100, x2=100, y2=300)
+    assert (line["left"], line["top"], line["width"], line["angle"]) == (100, 200, 200, 90)
+
+
+def test_images_fit_their_box_and_keep_their_proportions():
+    image = builders.build_image(
+        PAGE, src="/media/a.png", natural_width=400, natural_height=200, width=100, height=100
+    )
+    assert box(image) == {"x": 350, "y": 275, "width": 100, "height": 50}
+    assert image["width"] == 400 and image["scaleX"] == image["scaleY"] == 0.25
+
+
+def test_every_builder_makes_a_document_the_server_accepts():
+    objects = [case["object"] for case in contract.build_fixture()]
+    valid(make_doc(width=800, height=600, objects=objects))
+    assert [object_kind(obj) for obj in objects] == [case["kind"] for case in contract.build_fixture()]
+
+
+def test_the_frontend_fixture_is_up_to_date():
+    if not contract.FIXTURE.exists():
+        pytest.skip("the frontend sources are not part of this checkout")
+    assert contract.FIXTURE.read_text() == contract.render_fixture(), (
+        "Regenerate it: python -m apps.designs.doc.contract > " + str(contract.FIXTURE)
+    )
+
+
+# ---------------------------------------------------------------------------------------------
+# Geometry
+# ---------------------------------------------------------------------------------------------
+
+
+def test_box_and_place_respect_the_origin():
+    left_top = {"left": 10, "top": 20, "width": 100, "height": 50}
+    centred = {
+        "left": 60,
+        "top": 45,
+        "width": 50,
+        "height": 25,
+        "scaleX": 2,
+        "scaleY": 2,
+        "originX": "center",
+        "originY": "center",
+    }
+    assert box(left_top) == box(centred) == {"x": 10, "y": 20, "width": 100, "height": 50}
+    place(centred, 0, 0)
+    assert (centred["left"], centred["top"]) == (50, 25)
+
+
+# ---------------------------------------------------------------------------------------------
+# Operations
+# ---------------------------------------------------------------------------------------------
+
+
+def test_adding_objects_returns_their_ids_and_boxes():
+    document = make_doc()
+    outcome = run(
+        document,
+        {"op": "add_text", "text": "Title", "preset": "heading", "x": 40, "y": 30, "id": "title"},
+        {
+            "op": "add_shape",
+            "shape": "rect",
+            "x": 0,
+            "y": 0,
+            "width": 800,
+            "height": 100,
+            "fill": "#ffcc00",
+            "index": 0,
+        },
+        {"op": "add_image", "asset_id": "asset-1", "width": 200},
+        {"op": "add_qr_code", "text": "https://example.com", "size": 120, "x": 660, "y": 460},
+        {"op": "add_line", "x1": 40, "y1": 120, "x2": 760, "y2": 120, "arrow_end": "triangle"},
+    )
+    objects = outcome.document["pages"][0]["objects"]
+    assert [object_kind(obj) for obj in objects] == ["shape", "text", "image", "qr", "line"]
+    assert outcome.results[0]["object_id"] == "title"
+    assert outcome.results[0]["box"]["x"] == 40 and outcome.results[0]["box"]["y"] == 30
+    assert outcome.results[2]["box"]["width"] == 200 and outcome.results[2]["box"]["height"] == 100
+    assert objects[2]["assetId"] == "asset-1" and objects[2]["name"] == "Logo"
+    assert document["pages"][0]["objects"] == []  # the input is never changed
+    valid(outcome.document)
+
+
+def test_fonts_get_their_catalogue_category():
+    outcome = run(make_doc(), {"op": "add_text", "text": "Hi", "font_family": "Playfair Display"})
+    assert outcome.document["pages"][0]["objects"][0]["fontFamily"] == '"Playfair Display", serif'
+
+
+def test_updating_an_object_changes_only_what_was_sent():
+    document = run(
+        make_doc(), {"op": "add_text", "text": "Old", "x": 100, "y": 100, "width": 300, "id": "t"}
+    ).document
+    before = dict(document["pages"][0]["objects"][0])
+    outcome = run(document, {"op": "update_object", "object_id": "t", "text": "New text", "color": "#112233"})
+    after = outcome.document["pages"][0]["objects"][0]
+    assert after["text"] == "New text" and after["fill"] == "#112233"
+    assert after["fontFamily"] == before["fontFamily"] and after["width"] == before["width"]
+    assert box(after)["x"] == pytest.approx(100)
+
+
+def test_moving_and_resizing():
+    document = run(
+        make_doc(),
+        {"op": "add_shape", "shape": "ellipse", "x": 0, "y": 0, "width": 100, "height": 100, "id": "e"},
+        {"op": "add_image", "asset_id": "asset-1", "x": 0, "y": 0, "width": 400, "id": "img"},
+    ).document
+    outcome = run(
+        document,
+        {"op": "update_object", "object_id": "e", "x": 10, "y": 20, "width": 300},
+        {"op": "update_object", "object_id": "img", "height": 50},
+    )
+    ellipse, image = outcome.document["pages"][0]["objects"]
+    assert box(ellipse) == {"x": 10, "y": 20, "width": 300, "height": 100}
+    assert ellipse["rx"] == 150
+    assert box(image)["width"] == 100 and box(image)["height"] == 50  # proportions kept
+    assert box(image)["x"] == 150  # resized around its centre (it was 0 → 400 wide)
+
+
+def test_raw_props_can_be_set_and_removed():
+    document = run(make_doc(), {"op": "add_text", "text": "Hi", "id": "t"}).document
+    document["pages"][0]["objects"][0]["underline"] = True
+    outcome = run(
+        document,
+        {
+            "op": "update_object",
+            "object_id": "t",
+            "props": {"charSpacing": 200, "underline": None, "fontStyle": "italic", "flipX": True},
+        },
+    )
+    obj = outcome.document["pages"][0]["objects"][0]
+    assert obj["charSpacing"] == 200 and obj["fontStyle"] == "italic" and obj["flipX"] is True
+    assert "underline" not in obj
+
+
+@pytest.mark.parametrize(
+    "props",
+    [
+        {"type": "rect"},
+        {"id": "other"},
+        {"src": "https://evil.example/x.png"},
+        {"clipPath": {"type": "rect"}},
+        {"objects": []},
+        {"fill": "url(https://evil.example/x.svg)"},
+        {"splitByGrapheme": None},
+    ],
+)
+def test_props_outside_the_allowlist_are_refused(props):
+    document = run(make_doc(), {"op": "add_image", "asset_id": "asset-1", "id": "i"}).document
+    with pytest.raises(EditError, match="cannot be set through props"):
+        run(document, {"op": "update_object", "object_id": "i", "props": props})
+
+
+@pytest.mark.parametrize(
+    "props",
+    [
+        {"charSpacing": "200"},
+        {"charSpacing": True},
+        {"flipX": 1},
+        {"fontStyle": "bold"},
+        {"textBackgroundColor": "url(javascript:alert(1))"},
+        {"strokeDashArray": [1, -2]},
+        {"strokeDashArray": [1] * 9},  # the typed `dash` takes at most 8
+        {"lineHeight": 0},
+        {"lineHeight": 11},  # the typed `line_height` allows 0 to 10
+        {"lineHeight": -100_000},
+    ],
+)
+def test_allowed_props_are_type_checked(props):
+    document = run(make_doc(), {"op": "add_text", "text": "Hi", "id": "t"}).document
+    with pytest.raises(EditError, match="Invalid value"):
+        run(document, {"op": "update_object", "object_id": "t", "props": props})
+
+
+def test_a_text_box_keeps_its_height_when_nothing_about_its_layout_changes():
+    document = run(make_doc(), {"op": "add_text", "text": "Hi", "id": "t"}).document
+    document["pages"][0]["objects"][0]["height"] = 300  # as measured by the editor
+    outcome = run(document, {"op": "update_object", "object_id": "t", "opacity": 0.5, "color": "#ff0000"})
+    assert outcome.document["pages"][0]["objects"][0]["height"] == 300
+    outcome = run(document, {"op": "update_object", "object_id": "t", "x": 10, "props": {"flipX": True}})
+    assert outcome.document["pages"][0]["objects"][0]["height"] == 300
+    outcome = run(document, {"op": "update_object", "object_id": "t", "text": "Hello there"})
+    assert outcome.document["pages"][0]["objects"][0]["height"] < 300  # re-estimated for the new text
+
+
+def test_text_height_cannot_be_set():
+    document = run(make_doc(), {"op": "add_text", "text": "Hi", "id": "t"}).document
+    with pytest.raises(EditError, match="follows from its text"):
+        run(document, {"op": "update_object", "object_id": "t", "height": 10})
+
+
+def test_arranging_and_deleting():
+    document = run(
+        make_doc(),
+        {"op": "add_shape", "shape": "rect", "id": "a"},
+        {"op": "add_shape", "shape": "rect", "id": "b"},
+        {"op": "add_shape", "shape": "rect", "id": "c"},
+    ).document
+    ids = lambda doc: [o["id"] for o in doc["pages"][0]["objects"]]  # noqa: E731
+    assert ids(run(document, {"op": "arrange_object", "object_id": "a", "to": "front"}).document) == [
+        "b",
+        "c",
+        "a",
+    ]
+    assert ids(run(document, {"op": "arrange_object", "object_id": "c", "to": "back"}).document) == [
+        "c",
+        "a",
+        "b",
+    ]
+    assert ids(run(document, {"op": "arrange_object", "object_id": "a", "to": "forward"}).document) == [
+        "b",
+        "a",
+        "c",
+    ]
+    assert ids(run(document, {"op": "delete_objects", "object_ids": ["a", "c"]}).document) == ["b"]
+    with pytest.raises(EditError, match="no object"):
+        run(document, {"op": "delete_objects", "object_ids": ["a", "zzz"]})
+
+
+def test_pages_can_be_added_moved_and_deleted():
+    document = make_doc(pages=2)
+    first, second = (page["id"] for page in document["pages"])
+    outcome = run(
+        document,
+        {"op": "add_page", "after": 1, "id": "middle", "background_color": "#000000"},
+        {"op": "add_page", "width": 1080, "height": 1920, "id": "story"},
+        {"op": "move_page", "page": "story", "to_number": 1},
+        {"op": "delete_page", "page": second},
+        {"op": "add_text", "text": "On the story page", "page": 1},
+    )
+    pages = outcome.document["pages"]
+    assert [page["id"] for page in pages] == ["story", first, "middle"]
+    assert (pages[0]["width"], pages[0]["height"]) == (1080, 1920)
+    assert "width" not in pages[2]  # same size as the design
+    assert pages[0]["objects"][0]["left"] == 540  # centred on its own page size
+    valid(outcome.document)
+
+
+def test_the_last_page_cannot_be_deleted_and_bad_page_refs_are_explained():
+    with pytest.raises(EditError, match="at least one page"):
+        run(make_doc(), {"op": "delete_page", "page": 1})
+    with pytest.raises(EditError, match="no page 3"):
+        run(make_doc(pages=2), {"op": "add_text", "text": "x", "page": 3})
+    with pytest.raises(EditError, match="no page with id"):
+        run(make_doc(), {"op": "set_notes", "page": "nope", "notes": "x"})
+    with pytest.raises(EditError, match="no page with id"):
+        run(make_doc(), {"op": "set_notes", "page": "\u00b2", "notes": "x"})  # "²" passes isdigit()
+    assert run(make_doc(pages=2), {"op": "set_notes", "page": "2", "notes": "x"}).document["pages"][1][
+        "notes"
+    ]
+
+
+def test_the_page_limit_is_the_callers():
+    document = make_doc(pages=2)
+    ops = OPS.validate_python([{"op": "add_page"}])
+    with pytest.raises(EditError, match="at most 2 pages"):
+        apply_ops(document, ops, Resolver(), max_pages=2)
+    assert len(apply_ops(document, ops, Resolver(), max_pages=3).document["pages"]) == 3
+
+
+def test_backgrounds_and_notes():
+    outcome = run(
+        make_doc(pages=3),
+        {"op": "set_background", "page": 1, "color": "#101010"},
+        {
+            "op": "set_background",
+            "page": 2,
+            "gradient": [{"offset": 0, "color": "#ff0000"}, {"offset": 1, "color": "#0000ff"}],
+        },
+        {"op": "set_background", "page": 3, "asset_id": "asset-1", "fit": "contain"},
+        {"op": "set_notes", "notes": "Say hello"},
+    )
+    pages = outcome.document["pages"]
+    assert pages[0]["background"] == {"type": "solid", "color": "#101010"}
+    assert pages[1]["background"]["type"] == "gradient" and len(pages[1]["background"]["stops"]) == 2
+    assert pages[2]["background"] == {"type": "image", "src": "/media/assets/u/asset-1.png", "fit": "contain"}
+    assert pages[0]["notes"] == "Say hello"
+    valid(outcome.document)
+    with pytest.raises(EditError, match="exactly one"):
+        run(make_doc(), {"op": "set_background", "color": "#fff", "asset_id": "asset-1"})
+
+
+def test_ids_must_be_new_and_well_formed():
+    document = run(make_doc(), {"op": "add_text", "text": "x", "id": "t"}).document
+    with pytest.raises(EditError, match="already used"):
+        run(document, {"op": "add_shape", "shape": "rect", "id": "t"})
+    with pytest.raises(EditError, match="may only hold"):
+        run(document, {"op": "add_shape", "shape": "rect", "id": "has space"})
+
+
+def test_a_failing_operation_names_itself_and_nothing_is_applied():
+    document = make_doc()
+    with pytest.raises(EditError) as raised:
+        run(document, {"op": "add_text", "text": "fine"}, {"op": "add_image", "asset_id": "missing"})
+    assert (
+        raised.value.index == 1 and "Operation 2" in str(raised.value) and "no picture" in str(raised.value)
+    )
+    assert document["pages"][0]["objects"] == []
+
+
+def test_operation_inputs_are_validated():
+    with pytest.raises(ValidationError):
+        OPS.validate_python([{"op": "add_text", "text": "x", "color": "url(javascript:alert(1))"}])
+    with pytest.raises(ValidationError):
+        OPS.validate_python([{"op": "explode"}])
+    with pytest.raises(ValidationError):
+        OPS.validate_python([{"op": "add_shape", "shape": "rect", "unknown": 1}])
+
+
+# ---------------------------------------------------------------------------------------------
+# Summary
+# ---------------------------------------------------------------------------------------------
+
+
+def test_the_summary_lists_what_is_where():
+    document = run(
+        make_doc(width=800, height=600),
+        {
+            "op": "add_text",
+            "text": "Hello",
+            "preset": "heading",
+            "x": 10,
+            "y": 10,
+            "font_family": "Playfair Display",
+        },
+        {"op": "add_shape", "shape": "star", "fill": "#ff0", "x": 0, "y": 0, "width": 50, "height": 50},
+        {"op": "add_page", "background_color": "#000000"},
+    ).document
+    summary = summarize_document(document)
+    assert [page["number"] for page in summary["pages"]] == [1, 2]
+    text, star = summary["pages"][0]["objects"]
+    assert text["kind"] == "text" and text["text"] == "Hello" and text["font"] == "Playfair Display"
+    assert (text["x"], text["y"]) == (10, 10)
+    assert star == {
+        "id": star["id"],
+        "kind": "shape",
+        "x": 0,
+        "y": 0,
+        "width": 50,
+        "height": 50,
+        "shape": "star",
+        "fill": "#ff0",
+    }
+    assert summary["pages"][1]["background"] == {"type": "solid", "color": "#000000"}
