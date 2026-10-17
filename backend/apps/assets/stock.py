@@ -50,6 +50,82 @@ def _cache_key(provider: str, query: str, page: int, per_page: int) -> str:
     return f"stock:v1:{provider}:{digest}:{page}:{per_page}"
 
 
+def search(
+    requested_provider: str | None, query: str, page: int = 1, per_page: int = DEFAULT_PER_PAGE
+) -> dict:
+    """One page of stock photos (cached ten minutes). Raises `StockUnavailable` when the provider fails."""
+    provider = _pick_provider(requested_provider)
+    if provider is None:
+        return {
+            "configured": False,
+            "provider": requested_provider or "",
+            "total": 0,
+            "next_page": None,
+            "results": [],
+        }
+    query = query.strip()
+    key = _cache_key(provider.name, query, page, per_page)
+    payload = cache.get(key)
+    if payload is None:
+        try:
+            found = provider.search(query, page, per_page)
+        except providers.ProviderError as exc:
+            raise StockUnavailable() from exc
+        payload = {
+            "configured": True,
+            "provider": provider.name,
+            "total": found.total,
+            "next_page": found.next_page,
+            "results": [photo.as_dict() for photo in found.photos],
+        }
+        cache.set(key, payload, SEARCH_CACHE_SECONDS)
+    return payload
+
+
+def import_photo(owner, provider_name: str, photo_id: str) -> tuple[Asset, bool]:
+    """The owner's asset for a stock photo, downloaded on first use; returns (asset, created)."""
+    provider = providers.PROVIDERS[provider_name]
+    if not provider.configured:
+        raise StockNotConfigured()
+    if not provider.valid_id(photo_id):
+        raise serializers.ValidationError({"id": ["Not a valid photo id for this provider."]})
+
+    existing = Asset.objects.filter(
+        owner=owner, meta__provider=provider.name, meta__photo_id=photo_id
+    ).first()
+    if existing:
+        return existing, False
+
+    try:
+        resolved = provider.resolve(photo_id)
+        data = providers.download_image(
+            resolved.download_url, hosts=provider.image_hosts, max_bytes=settings.MAX_UPLOAD_BYTES
+        )
+    except providers.PhotoTooLarge as exc:
+        raise FileTooLarge() from exc
+    except providers.ProviderError as exc:
+        raise StockUnavailable() from exc
+
+    photo = resolved.photo
+    asset = create_asset(
+        owner,
+        data,
+        name=clean_name(f"Photo by {photo.author}" if photo.author else f"{provider.name.title()} photo"),
+        meta={
+            "provider": provider.name,
+            "photo_id": photo_id,
+            "attribution": {
+                "provider": provider.name,
+                "author": photo.author,
+                "author_url": photo.author_url,
+                "source_url": photo.source_url,
+            },
+        },
+    )
+    provider.track_download(resolved)
+    return asset, True
+
+
 class StockSearchView(APIView):
     def get_throttles(self):
         return [*super().get_throttles(), StockRateThrottle()]
@@ -59,34 +135,12 @@ class StockSearchView(APIView):
         params = StockSearchSerializer(data=request.query_params)
         params.is_valid(raise_exception=True)
         data = params.validated_data
-        provider = _pick_provider(data.get("provider"))
-        if provider is None:
-            return Response(
-                {
-                    "configured": False,
-                    "provider": data.get("provider", ""),
-                    "total": 0,
-                    "next_page": None,
-                    "results": [],
-                }
-            )
-        query, page = data.get("q", "").strip(), data.get("page", 1)
-        per_page = data.get("per_page", DEFAULT_PER_PAGE)
-        key = _cache_key(provider.name, query, page, per_page)
-        payload = cache.get(key)
-        if payload is None:
-            try:
-                found = provider.search(query, page, per_page)
-            except providers.ProviderError as exc:
-                raise StockUnavailable() from exc
-            payload = {
-                "configured": True,
-                "provider": provider.name,
-                "total": found.total,
-                "next_page": found.next_page,
-                "results": [photo.as_dict() for photo in found.photos],
-            }
-            cache.set(key, payload, SEARCH_CACHE_SECONDS)
+        payload = search(
+            data.get("provider"),
+            data.get("q", ""),
+            data.get("page", 1),
+            data.get("per_page", DEFAULT_PER_PAGE),
+        )
         return Response(payload)
 
 
@@ -100,44 +154,9 @@ class StockImportView(APIView):
     def post(self, request):
         body = StockImportSerializer(data=request.data)
         body.is_valid(raise_exception=True)
-        provider = providers.PROVIDERS[body.validated_data["provider"]]
-        photo_id = body.validated_data["id"]
-        if not provider.configured:
-            raise StockNotConfigured()
-        if not provider.valid_id(photo_id):
-            raise serializers.ValidationError({"id": ["Not a valid photo id for this provider."]})
-
-        existing = Asset.objects.filter(
-            owner=request.user, meta__provider=provider.name, meta__photo_id=photo_id
-        ).first()
-        if existing:
-            return Response(AssetSerializer(existing).data)
-
-        try:
-            resolved = provider.resolve(photo_id)
-            data = providers.download_image(
-                resolved.download_url, hosts=provider.image_hosts, max_bytes=settings.MAX_UPLOAD_BYTES
-            )
-        except providers.PhotoTooLarge as exc:
-            raise FileTooLarge() from exc
-        except providers.ProviderError as exc:
-            raise StockUnavailable() from exc
-
-        photo = resolved.photo
-        asset = create_asset(
-            request.user,
-            data,
-            name=clean_name(f"Photo by {photo.author}" if photo.author else f"{provider.name.title()} photo"),
-            meta={
-                "provider": provider.name,
-                "photo_id": photo_id,
-                "attribution": {
-                    "provider": provider.name,
-                    "author": photo.author,
-                    "author_url": photo.author_url,
-                    "source_url": photo.source_url,
-                },
-            },
+        asset, created = import_photo(
+            request.user, body.validated_data["provider"], body.validated_data["id"]
         )
-        provider.track_download(resolved)
-        return Response(AssetSerializer(asset).data, status=status.HTTP_201_CREATED)
+        return Response(
+            AssetSerializer(asset).data, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK
+        )

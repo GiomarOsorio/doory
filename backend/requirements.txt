@@ -23,3 +23,5 @@ pycrdt>=0.14,<0.15
 uvicorn>=0.30
 websockets>=17.2
 pypdf>=5
+pydantic>=2.7,<3
+mcp>=2.3,<3

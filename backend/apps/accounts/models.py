@@ -56,6 +56,22 @@ class User(BaseModel, AbstractBaseUser, PermissionsMixin):
         self.email = self.email.strip().lower()
         super().save(*args, **kwargs)
 
+    def check_password(self, raw_password):
+        # A correct password may be re-hashed on the spot (a hasher upgrade). It is the same password, so
+        # API tokens bound to the old hash carry over instead of dying.
+        old = self.password
+        valid = super().check_password(raw_password)
+        if valid and self.password != old:
+            from apps.apitokens.services import rebind
+
+            rebind(self, old)
+        return valid
+
+    async def acheck_password(self, raw_password):
+        from asgiref.sync import sync_to_async
+
+        return await sync_to_async(self.check_password)(raw_password)
+
     @property
     def name(self) -> str:
         return self.display_name or self.email.split("@")[0]

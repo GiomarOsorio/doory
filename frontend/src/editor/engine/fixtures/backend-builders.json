@@ -1,0 +1,456 @@
+[
+  {
+    "name": "heading text",
+    "kind": "text",
+    "factory": {
+      "fn": "createTextbox",
+      "opts": {
+        "text": "Hello world",
+        "preset": "heading"
+      }
+    },
+    "object": {
+      "id": "case-1",
+      "type": "textbox",
+      "text": "Hello world",
+      "originX": "center",
+      "originY": "center",
+      "left": 400,
+      "top": 300,
+      "width": 576,
+      "height": 44.07,
+      "fontFamily": "\"Plus Jakarta Sans\", sans-serif",
+      "fontSize": 39,
+      "fontWeight": 700,
+      "fill": "#1a1a2e",
+      "textAlign": "center",
+      "lineHeight": 1.16,
+      "splitByGrapheme": false,
+      "strokeUniform": true
+    }
+  },
+  {
+    "name": "styled body text",
+    "kind": "text",
+    "factory": {
+      "fn": "createTextbox",
+      "opts": {
+        "text": "Summer sale on everything",
+        "preset": "body",
+        "width": 300,
+        "fontFamily": "\"Playfair Display\", serif",
+        "fontSize": 28,
+        "fontWeight": 600,
+        "fill": "#ff0000",
+        "textAlign": "left"
+      }
+    },
+    "object": {
+      "id": "case-2",
+      "type": "textbox",
+      "text": "Summer sale on everything",
+      "originX": "center",
+      "originY": "center",
+      "left": 400,
+      "top": 300,
+      "width": 300,
+      "height": 68.342,
+      "fontFamily": "\"Playfair Display\", serif",
+      "fontSize": 28,
+      "fontWeight": 600,
+      "fill": "#ff0000",
+      "textAlign": "left",
+      "lineHeight": 1.16,
+      "splitByGrapheme": false,
+      "strokeUniform": true
+    },
+    "ignore": [
+      "top"
+    ]
+  },
+  {
+    "name": "rounded rectangle",
+    "kind": "shape",
+    "factory": {
+      "fn": "createRect",
+      "size": 120,
+      "radius": 12
+    },
+    "object": {
+      "id": "case-3",
+      "type": "rect",
+      "originX": "center",
+      "originY": "center",
+      "left": 400,
+      "top": 300,
+      "fill": "#7a64e0",
+      "stroke": null,
+      "strokeWidth": 0,
+      "strokeUniform": true,
+      "shapeKind": "rect",
+      "width": 120,
+      "height": 120,
+      "rx": 12,
+      "ry": 12
+    }
+  },
+  {
+    "name": "circle",
+    "kind": "shape",
+    "factory": {
+      "fn": "createEllipse",
+      "size": 90
+    },
+    "object": {
+      "id": "case-4",
+      "type": "ellipse",
+      "originX": "center",
+      "originY": "center",
+      "left": 400,
+      "top": 300,
+      "fill": "#7a64e0",
+      "stroke": null,
+      "strokeWidth": 0,
+      "strokeUniform": true,
+      "shapeKind": "ellipse",
+      "width": 90,
+      "height": 90,
+      "rx": 45,
+      "ry": 45
+    }
+  },
+  {
+    "name": "triangle",
+    "kind": "shape",
+    "factory": {
+      "fn": "createTriangle",
+      "size": 80
+    },
+    "object": {
+      "id": "case-5",
+      "type": "triangle",
+      "originX": "center",
+      "originY": "center",
+      "left": 400,
+      "top": 300,
+      "fill": "#7a64e0",
+      "stroke": null,
+      "strokeWidth": 0,
+      "strokeUniform": true,
+      "shapeKind": "triangle",
+      "width": 80,
+      "height": 72
+    }
+  },
+  {
+    "name": "hexagon",
+    "kind": "shape",
+    "factory": {
+      "fn": "createPolygon",
+      "size": 100,
+      "sides": 6
+    },
+    "object": {
+      "id": "case-6",
+      "type": "polygon",
+      "originX": "center",
+      "originY": "center",
+      "left": 400,
+      "top": 300,
+      "fill": "#7a64e0",
+      "stroke": null,
+      "strokeWidth": 0,
+      "strokeUniform": true,
+      "shapeKind": "polygon",
+      "width": 100,
+      "height": 100,
+      "scaleX": 1,
+      "scaleY": 1,
+      "sides": 6,
+      "points": [
+        {
+          "x": 50,
+          "y": 0
+        },
+        {
+          "x": 100,
+          "y": 25
+        },
+        {
+          "x": 100,
+          "y": 75
+        },
+        {
+          "x": 50,
+          "y": 100
+        },
+        {
+          "x": 0,
+          "y": 75
+        },
+        {
+          "x": 0,
+          "y": 25
+        }
+      ]
+    }
+  },
+  {
+    "name": "star",
+    "kind": "shape",
+    "factory": {
+      "fn": "createStar",
+      "size": 150,
+      "points": 7,
+      "innerRatio": 0.4
+    },
+    "object": {
+      "id": "case-7",
+      "type": "polygon",
+      "originX": "center",
+      "originY": "center",
+      "left": 400,
+      "top": 300,
+      "fill": "#7a64e0",
+      "stroke": null,
+      "strokeWidth": 0,
+      "strokeUniform": true,
+      "shapeKind": "star",
+      "width": 100,
+      "height": 100,
+      "scaleX": 1.5,
+      "scaleY": 1.5,
+      "starPoints": 7,
+      "innerRatio": 0.4,
+      "points": [
+        {
+          "x": 50,
+          "y": 0
+        },
+        {
+          "x": 58.901,
+          "y": 33.647
+        },
+        {
+          "x": 90.097,
+          "y": 19.806
+        },
+        {
+          "x": 70,
+          "y": 47.922
+        },
+        {
+          "x": 100,
+          "y": 64.31
+        },
+        {
+          "x": 66.039,
+          "y": 65.724
+        },
+        {
+          "x": 72.252,
+          "y": 100
+        },
+        {
+          "x": 50,
+          "y": 73.647
+        },
+        {
+          "x": 27.748,
+          "y": 100
+        },
+        {
+          "x": 33.961,
+          "y": 65.724
+        },
+        {
+          "x": 0,
+          "y": 64.31
+        },
+        {
+          "x": 30,
+          "y": 47.922
+        },
+        {
+          "x": 9.903,
+          "y": 19.806
+        },
+        {
+          "x": 41.099,
+          "y": 33.647
+        }
+      ]
+    }
+  },
+  {
+    "name": "stretched octagon with a border",
+    "kind": "shape",
+    "object": {
+      "id": "case-8",
+      "type": "polygon",
+      "originX": "center",
+      "originY": "center",
+      "left": 160,
+      "top": 80,
+      "fill": "#7a64e0",
+      "stroke": "#000000",
+      "strokeWidth": 4,
+      "strokeUniform": true,
+      "shapeKind": "polygon",
+      "width": 100,
+      "height": 100,
+      "scaleX": 3,
+      "scaleY": 1.2,
+      "sides": 8,
+      "points": [
+        {
+          "x": 50,
+          "y": 0
+        },
+        {
+          "x": 85.355,
+          "y": 14.645
+        },
+        {
+          "x": 100,
+          "y": 50
+        },
+        {
+          "x": 85.355,
+          "y": 85.355
+        },
+        {
+          "x": 50,
+          "y": 100
+        },
+        {
+          "x": 14.645,
+          "y": 85.355
+        },
+        {
+          "x": 0,
+          "y": 50
+        },
+        {
+          "x": 14.645,
+          "y": 14.645
+        }
+      ]
+    }
+  },
+  {
+    "name": "arrow",
+    "kind": "line",
+    "factory": {
+      "fn": "createLine",
+      "opts": {
+        "length": 200,
+        "arrowEnd": "triangle"
+      }
+    },
+    "object": {
+      "id": "case-9",
+      "type": "doryline",
+      "originX": "center",
+      "originY": "center",
+      "left": 400,
+      "top": 300,
+      "width": 200,
+      "height": 0,
+      "angle": 0,
+      "stroke": "#1c1517",
+      "strokeWidth": 6,
+      "strokeDashArray": null,
+      "arrowStart": "none",
+      "arrowEnd": "triangle"
+    }
+  },
+  {
+    "name": "dashed diagonal line",
+    "kind": "line",
+    "object": {
+      "id": "case-10",
+      "type": "doryline",
+      "originX": "center",
+      "originY": "center",
+      "left": 150,
+      "top": 200,
+      "width": 500,
+      "height": 0,
+      "angle": 53.13,
+      "stroke": "#3366ff",
+      "strokeWidth": 3,
+      "strokeDashArray": [
+        12,
+        6
+      ],
+      "arrowStart": "none",
+      "arrowEnd": "none"
+    }
+  },
+  {
+    "name": "image",
+    "kind": "image",
+    "factory": {
+      "fn": "createImage",
+      "src": "/media/assets/a/b.png",
+      "fit": 100
+    },
+    "object": {
+      "id": "case-11",
+      "type": "image",
+      "src": "/media/assets/a/b.png",
+      "originX": "center",
+      "originY": "center",
+      "left": 400,
+      "top": 300,
+      "width": 10,
+      "height": 10,
+      "scaleX": 10,
+      "scaleY": 10,
+      "strokeUniform": true
+    }
+  },
+  {
+    "name": "uploaded photo",
+    "kind": "image",
+    "object": {
+      "id": "case-12",
+      "type": "image",
+      "src": "https://cdn.example.com/photo.jpg",
+      "originX": "center",
+      "originY": "center",
+      "left": 400,
+      "top": 400,
+      "width": 10,
+      "height": 10,
+      "scaleX": 80,
+      "scaleY": 80,
+      "strokeUniform": true,
+      "assetId": "0b5e7a46-6f1e-4cf0-9f0e-6b3cf7f1d001",
+      "name": "Beach"
+    }
+  },
+  {
+    "name": "qr code",
+    "kind": "qr",
+    "object": {
+      "id": "case-13",
+      "type": "image",
+      "name": "QR code",
+      "qr": {
+        "text": "https://doory.example/menu",
+        "fg": "#000000",
+        "bg": "#ffffff"
+      },
+      "originX": "center",
+      "originY": "center",
+      "left": 400,
+      "top": 300,
+      "width": 512,
+      "height": 512,
+      "scaleX": 0.391,
+      "scaleY": 0.391
+    }
+  }
+]

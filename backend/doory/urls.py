@@ -20,6 +20,7 @@ urlpatterns = [
     path("api/v1/", include("apps.exports.urls")),
     path("api/v1/", include("apps.collab.urls")),
     path("api/v1/", include("apps.presets.urls")),
+    path("api/v1/", include("apps.apitokens.urls")),
 ]
 
 if settings.DEBUG:

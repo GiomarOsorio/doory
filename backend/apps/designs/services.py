@@ -25,6 +25,7 @@ from .models import Design, DesignVersion, Folder
 from .validators import DocumentInfo, describe_document, validate_document
 
 AUTO_VERSION_INTERVAL = timedelta(minutes=10)
+EDIT_VERSION_INTERVAL = timedelta(minutes=2)
 MAX_AUTO_VERSIONS = 50
 MAX_MANUAL_VERSIONS = 100
 THUMBNAIL_MAX_BYTES = 2 * 1024 * 1024
@@ -198,6 +199,34 @@ def _maybe_record_auto_version(design: Design, user) -> None:
     if latest is None or timezone.now() - latest >= AUTO_VERSION_INTERVAL:
         _record_version(design, user, is_auto=True)
         prune_auto_versions(design)
+
+
+def record_version_before_edit(design: Design, user, document: dict, *, label: str) -> None:
+    """Snapshot `document` (the state an edit starts from) unless a version was taken moments ago.
+
+    Edits made through the API by agents come in bursts; one version before each burst lets the owner undo it
+    with a version restore, without filling the history with near-identical entries.
+    """
+    latest = (
+        DesignVersion.objects.filter(design=design)
+        .order_by("-created_at")
+        .values_list("created_at", flat=True)
+    ).first()
+    if latest is not None and timezone.now() - latest < EDIT_VERSION_INTERVAL:
+        return
+    version = DesignVersion(
+        design=design,
+        label=label[:120],
+        is_auto=True,
+        document=document,
+        page_count=len(document.get("pages", [])),
+        created_by=user,
+    )
+    thumbnail = _thumbnail_copy(design.thumbnail)
+    if thumbnail:
+        version.thumbnail.save(f"{version.id}.webp", thumbnail, save=False)
+    version.save()
+    prune_auto_versions(design)
 
 
 def record_auto_version_if_due(design: Design, user) -> None:
