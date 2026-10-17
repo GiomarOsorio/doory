@@ -199,6 +199,26 @@ def apply_curve(obj: dict, amount: float) -> None:
         obj.pop("curveAmount", None)
 
 
+MaskShape = Literal[
+    "circle", "rounded", "triangle", "diamond", "hexagon", "star", "heart", "blob", "arch", "cross"
+]
+
+
+def apply_mask(obj: dict, shape: str | None, radius: float | None = None) -> None:
+    """Crop a picture to a shape (`masks.ts`): the editor rebuilds the clip from `maskShape` when it loads
+    the picture. `radius` is the corner radius of `rounded`, as a fraction of the shorter side. None removes
+    the mask."""
+    obj.pop("clipPath", None)
+    if shape:
+        obj["maskShape"] = shape
+    else:
+        obj.pop("maskShape", None)
+    if shape == "rounded" and radius is not None:
+        obj["maskRadius"] = _num(max(0.0, min(0.5, radius)))
+    elif shape != "rounded":
+        obj.pop("maskRadius", None)
+
+
 def apply_effects(obj: dict, effects: dict, *, text: bool) -> None:
     """Set an object's effects (`effects.ts` `applyEffects`): the declarative `effects` the editor reads,
     plus the native text props they imply, so an outline or highlight that is removed does not linger.

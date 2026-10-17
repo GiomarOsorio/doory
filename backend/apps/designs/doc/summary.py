@@ -67,6 +67,8 @@ def summarize_object(obj: dict) -> dict:
             out["src"] = obj["src"]
         if obj.get("assetId"):
             out["asset_id"] = obj["assetId"]
+        if isinstance(obj.get("maskShape"), str):
+            out["mask"] = obj["maskShape"]
     elif kind == "qr":
         out["qr_text"] = (obj.get("qr") or {}).get("text")
     elif kind == "group":

@@ -144,6 +144,39 @@ def _cases() -> list[dict]:
             ),
         },
         {
+            "name": "photo cropped to a heart",
+            "kind": "image",
+            "object": _masked(
+                builders.build_image(
+                    PAGE,
+                    src="/media/assets/a/b.png",
+                    natural_width=10,
+                    natural_height=10,
+                    width=100,
+                    height=100,
+                ),
+                "heart",
+            ),
+            "expect": {"clipPath": True},
+        },
+        {
+            "name": "photo with rounded corners",
+            "kind": "image",
+            "object": _masked(
+                builders.build_image(
+                    PAGE,
+                    src="/media/assets/a/b.png",
+                    natural_width=10,
+                    natural_height=10,
+                    width=100,
+                    height=100,
+                ),
+                "rounded",
+                0.3,
+            ),
+            "expect": {"clipPath": True},
+        },
+        {
             "name": "qr code",
             "kind": "qr",
             "object": builders.build_qr(PAGE, text="https://doory.example/menu", size=200),
@@ -212,6 +245,11 @@ def _cases() -> list[dict]:
 
 def _with_effects(obj: dict, effects: dict, *, text: bool) -> dict:
     builders.apply_effects(obj, effects, text=text)
+    return obj
+
+
+def _masked(obj: dict, shape: str, radius: float | None = None) -> dict:
+    builders.apply_mask(obj, shape, radius)
     return obj
 
 

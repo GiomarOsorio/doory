@@ -344,6 +344,25 @@ def test_catalogue_shapes_can_be_added_and_resized():
         OPS.validate_python([{"op": "add_shape", "shape": "path", "path_shape": "unicorn"}])
 
 
+def test_pictures_can_be_masked_and_unmasked():
+    document = run(
+        make_doc(),
+        {"op": "add_image", "asset_id": "asset-1", "id": "img", "mask": "rounded", "mask_radius": 0.3},
+    ).document
+    image = document["pages"][0]["objects"][0]
+    assert (image["maskShape"], image["maskRadius"]) == ("rounded", 0.3)
+    assert summarize_document(document)["pages"][0]["objects"][0]["mask"] == "rounded"
+    hearted = run(document, {"op": "update_object", "object_id": "img", "mask": "heart"}).document
+    image = hearted["pages"][0]["objects"][0]
+    assert image["maskShape"] == "heart" and "maskRadius" not in image
+    image["clipPath"] = {"type": "path"}  # as an editor-saved picture might carry
+    plain = run(hearted, {"op": "update_object", "object_id": "img", "mask": "none"}).document
+    assert not {"maskShape", "clipPath"} & set(plain["pages"][0]["objects"][0])
+    text = run(make_doc(), {"op": "add_text", "text": "Hi", "id": "t"}).document
+    with pytest.raises(EditError, match="can be masked"):
+        run(text, {"op": "update_object", "object_id": "t", "mask": "circle"})
+
+
 def test_text_height_cannot_be_set():
     document = run(make_doc(), {"op": "add_text", "text": "Hi", "id": "t"}).document
     with pytest.raises(EditError, match="follows from its text"):

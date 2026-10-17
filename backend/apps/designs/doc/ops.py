@@ -190,6 +190,11 @@ class AddLine(_Add):
     dash: list[Annotated[float, Field(ge=0, le=1000)]] | None = Field(None, max_length=8)
 
 
+MaskRadius = Annotated[float, Field(ge=0, le=0.5)]
+MASK_HELP = "Crop the picture to a shape (uploaded pictures only)."
+RADIUS_HELP = "Corner radius of the `rounded` mask, as a fraction of the shorter side (default 0.18)."
+
+
 class AddImage(_Add):
     """Add a picture: one of your uploads (`asset_id`) or a catalogue graphic (`element_id`). It is scaled
     to fit inside width x height with its proportions kept."""
@@ -201,6 +206,8 @@ class AddImage(_Add):
     y: Coordinate | None = None
     width: Length | None = None
     height: Length | None = None
+    mask: builders.MaskShape | None = Field(None, description=MASK_HELP)
+    mask_radius: MaskRadius | None = Field(None, description=RADIUS_HELP)
 
 
 class AddQrCode(_Add):
@@ -236,6 +243,10 @@ class UpdateObject(_Op):
     align: builders.TextAlign | None = None
     effects: Effects | None = Field(None, description=EFFECTS_HELP + " Shapes take only a shadow.")
     curve: Curve | None = Field(None, description="Text only. " + CURVE_HELP)
+    mask: builders.MaskShape | Literal["none"] | None = Field(
+        None, description=MASK_HELP + " `none` removes it."
+    )
+    mask_radius: MaskRadius | None = Field(None, description=RADIUS_HELP)
     name: Annotated[str, StringConstraints(max_length=120)] | None = None
     locked: bool | None = None
     visible: bool | None = None
@@ -517,6 +528,10 @@ class _Editor:
             asset_id=source.asset_id,
             name=source.name,
         )
+        if op.mask:
+            if object_kind(obj) != "image":
+                raise self.fail("Only uploaded pictures can be masked, not catalogue graphics.")
+            builders.apply_mask(obj, op.mask, op.mask_radius)
         return self.insert(op, obj)
 
     def add_qr_code(self, op: AddQrCode) -> dict:
@@ -570,6 +585,13 @@ class _Editor:
             if kind == "shape" and set(effects) - {"shadow"}:
                 raise self.fail("Shapes only take a shadow.")
             builders.apply_effects(obj, effects, text=kind == "text")
+        if op.mask is not None or op.mask_radius is not None:
+            if kind not in ("image", "placeholder"):
+                raise self.fail("Only uploaded pictures and photo placeholders can be masked.")
+            if obj.get("slot"):
+                raise self.fail("This picture fills a photo frame; the frame decides its crop.")
+            shape = obj.get("maskShape") if op.mask is None else (None if op.mask == "none" else op.mask)
+            builders.apply_mask(obj, shape, op.mask_radius)
         if op.curve is not None:
             if kind != "text":
                 raise self.fail("Only text can be curved.")

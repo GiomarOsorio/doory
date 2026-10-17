@@ -432,10 +432,55 @@
     }
   },
   {
+    "name": "photo cropped to a heart",
+    "kind": "image",
+    "object": {
+      "id": "case-13",
+      "type": "image",
+      "src": "/media/assets/a/b.png",
+      "originX": "center",
+      "originY": "center",
+      "left": 400,
+      "top": 300,
+      "width": 10,
+      "height": 10,
+      "scaleX": 10,
+      "scaleY": 10,
+      "strokeUniform": true,
+      "maskShape": "heart"
+    },
+    "expect": {
+      "clipPath": true
+    }
+  },
+  {
+    "name": "photo with rounded corners",
+    "kind": "image",
+    "object": {
+      "id": "case-14",
+      "type": "image",
+      "src": "/media/assets/a/b.png",
+      "originX": "center",
+      "originY": "center",
+      "left": 400,
+      "top": 300,
+      "width": 10,
+      "height": 10,
+      "scaleX": 10,
+      "scaleY": 10,
+      "strokeUniform": true,
+      "maskShape": "rounded",
+      "maskRadius": 0.3
+    },
+    "expect": {
+      "clipPath": true
+    }
+  },
+  {
     "name": "qr code",
     "kind": "qr",
     "object": {
-      "id": "case-13",
+      "id": "case-15",
       "type": "image",
       "name": "QR code",
       "qr": {
@@ -462,7 +507,7 @@
       "size": 168
     },
     "object": {
-      "id": "case-14",
+      "id": "case-16",
       "type": "path",
       "originX": "center",
       "originY": "center",
@@ -554,7 +599,7 @@
       "size": 168
     },
     "object": {
-      "id": "case-15",
+      "id": "case-17",
       "type": "path",
       "originX": "center",
       "originY": "center",
@@ -655,7 +700,7 @@
       "size": 168
     },
     "object": {
-      "id": "case-16",
+      "id": "case-18",
       "type": "path",
       "originX": "center",
       "originY": "center",
@@ -723,7 +768,7 @@
       "size": 168
     },
     "object": {
-      "id": "case-17",
+      "id": "case-19",
       "type": "path",
       "originX": "center",
       "originY": "center",
@@ -816,7 +861,7 @@
       "size": 168
     },
     "object": {
-      "id": "case-18",
+      "id": "case-20",
       "type": "path",
       "originX": "center",
       "originY": "center",
@@ -869,7 +914,7 @@
       "size": 168
     },
     "object": {
-      "id": "case-19",
+      "id": "case-21",
       "type": "path",
       "originX": "center",
       "originY": "center",
@@ -922,7 +967,7 @@
       "size": 168
     },
     "object": {
-      "id": "case-20",
+      "id": "case-22",
       "type": "path",
       "originX": "center",
       "originY": "center",
@@ -975,7 +1020,7 @@
       "size": 168
     },
     "object": {
-      "id": "case-21",
+      "id": "case-23",
       "type": "path",
       "originX": "center",
       "originY": "center",
@@ -1093,7 +1138,7 @@
       "size": 168
     },
     "object": {
-      "id": "case-22",
+      "id": "case-24",
       "type": "path",
       "originX": "center",
       "originY": "center",
@@ -1185,7 +1230,7 @@
       "size": 168
     },
     "object": {
-      "id": "case-23",
+      "id": "case-25",
       "type": "path",
       "originX": "center",
       "originY": "center",
@@ -1248,7 +1293,7 @@
       "size": 168
     },
     "object": {
-      "id": "case-24",
+      "id": "case-26",
       "type": "path",
       "originX": "center",
       "originY": "center",
@@ -1311,7 +1356,7 @@
       "size": 168
     },
     "object": {
-      "id": "case-25",
+      "id": "case-27",
       "type": "path",
       "originX": "center",
       "originY": "center",
@@ -1374,7 +1419,7 @@
       "size": 168
     },
     "object": {
-      "id": "case-26",
+      "id": "case-28",
       "type": "path",
       "originX": "center",
       "originY": "center",
@@ -1457,7 +1502,7 @@
       "size": 168
     },
     "object": {
-      "id": "case-27",
+      "id": "case-29",
       "type": "path",
       "originX": "center",
       "originY": "center",
@@ -1526,7 +1571,7 @@
     "name": "stretched heart with a border",
     "kind": "shape",
     "object": {
-      "id": "case-28",
+      "id": "case-30",
       "type": "path",
       "originX": "center",
       "originY": "center",
@@ -1613,7 +1658,7 @@
     "name": "text with effects",
     "kind": "text",
     "object": {
-      "id": "case-29",
+      "id": "case-31",
       "type": "textbox",
       "text": "Glow up",
       "originX": "center",
@@ -1659,7 +1704,7 @@
     "name": "curved text",
     "kind": "text",
     "object": {
-      "id": "case-30",
+      "id": "case-32",
       "type": "textbox",
       "text": "Curved",
       "originX": "center",
@@ -1686,7 +1731,7 @@
     "name": "shape with a shadow",
     "kind": "shape",
     "object": {
-      "id": "case-31",
+      "id": "case-33",
       "type": "rect",
       "originX": "center",
       "originY": "center",
