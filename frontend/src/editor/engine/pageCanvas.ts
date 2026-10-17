@@ -17,6 +17,7 @@ import {
   type TPointerEvent,
   type TPointerEventInfo,
 } from 'fabric'
+import type { SafeZone } from '@/lib/sizePresets'
 import type { DocObject, DocPage, PageGuide } from '@/types/document'
 import type { PageSize } from './docOps'
 import { DragLayerCache } from './dragCache'
@@ -57,6 +58,9 @@ export interface PageCanvasHost {
   readonly showBleed: boolean
   readonly showRulerGuides: boolean
   readonly bleedPx: number
+  readonly showSafeZone: boolean
+  /** The safe zone of a page of this size, from the design's size preset; null for none. */
+  safeZoneFor(width: number, height: number): SafeZone | null
   readonly gridSize: number
   onCommit(pageId: string, info: CommitInfo): void
   onSelectionChange(pageId: string): void
@@ -953,6 +957,27 @@ export class PageCanvas {
       ctx.strokeStyle = theme.guide
       ctx.lineWidth = px
       ctx.strokeRect(b, b, w - b * 2, h - b * 2)
+      ctx.setLineDash([])
+    }
+
+    const zone = this.host.showSafeZone ? this.host.safeZoneFor(w, h) : null
+    if (zone) {
+      // Shade the margins a platform covers with its own buttons and captions, and outline what stays clear.
+      const top = (zone.top ?? 0) * h
+      const bottom = (zone.bottom ?? 0) * h
+      const left = (zone.left ?? 0) * w
+      const right = (zone.right ?? 0) * w
+      ctx.fillStyle = theme.guide
+      ctx.globalAlpha = 0.1
+      ctx.fillRect(0, 0, w, top)
+      ctx.fillRect(0, h - bottom, w, bottom)
+      ctx.fillRect(0, top, left, h - top - bottom)
+      ctx.fillRect(w - right, top, right, h - top - bottom)
+      ctx.globalAlpha = 1
+      ctx.setLineDash([2 * px, 3 * px])
+      ctx.strokeStyle = theme.guide
+      ctx.lineWidth = px
+      ctx.strokeRect(left, top, w - left - right, h - top - bottom)
       ctx.setLineDash([])
     }
 

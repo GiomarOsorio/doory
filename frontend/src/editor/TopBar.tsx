@@ -1,4 +1,6 @@
 import { ChevronDown, Menu as MenuIcon, Presentation, Share2, Users } from 'lucide-react'
+import { useSizePresets } from '@/lib/sizePresets'
+import { getPageSize } from './engine/pageSizes'
 import { type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { useCollabState } from './collab/context'
 import { PresenceStack } from './chrome/PresenceStack'
@@ -207,6 +209,12 @@ export function TopBar({ start, end, onTitle, onPresent }: TopBarProps) {
   const notesOpen = useNotesOpen()
   const timelineOpen = useTimelineView().open
   const guideCount = useEditorState((s) => s.doc.pages.find((p) => p.id === s.activePageId)?.guides?.length ?? 0)
+  // Re-read when the server's size presets arrive: they say which sizes have a safe zone.
+  useSizePresets()
+  const hasSafeZone = useEditorState((s) => {
+    const size = getPageSize(s.doc, s.activePageId)
+    return editor.safeZoneFor(size.width, size.height) !== null
+  })
   const visible = useVisiblePanels()
   const { openId, toggle } = useOpenTool()
   const barRef = useRef<HTMLElement>(null)
@@ -251,6 +259,7 @@ export function TopBar({ start, end, onTitle, onPresent }: TopBarProps) {
           { id: 'guides', label: t.menu.guides, checked: ui.guides, onSelect: () => editor.patchUi({ guides: !ui.guides }) },
           { id: 'snap', label: t.menu.snapping, checked: ui.snapping, onSelect: () => editor.patchUi({ snapping: !ui.snapping }) },
           { id: 'bleed', label: t.menu.bleed, checked: ui.bleed, onSelect: () => editor.patchUi({ bleed: !ui.bleed }) },
+          ...(hasSafeZone ? [{ id: 'safe-zone', label: t.menu.safeZone, checked: ui.safeZone, onSelect: () => editor.patchUi({ safeZone: !ui.safeZone }) }] : []),
           ...(guideCount > 0 ? [{ id: 'clear-guides', label: t.design.clearGuides(guideCount), onSelect: () => editor.pages.setGuides(editor.state.activePageId, []) }] : []),
           { id: 'v1', separator: true },
         ]),
