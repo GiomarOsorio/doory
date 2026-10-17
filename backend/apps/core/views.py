@@ -39,6 +39,7 @@ _CONFIG_SCHEMA = inline_serializer(
                 "email_verification": serializers.BooleanField(),
                 "background_removal": serializers.BooleanField(),
                 "realtime": serializers.BooleanField(),
+                "mcp": serializers.BooleanField(),
             },
         ),
         "limits": inline_serializer(
@@ -110,6 +111,7 @@ def config(request):
                 "email_verification": email_delivers(),
                 "background_removal": background_removal is not None,
                 "realtime": realtime_enabled(),
+                "mcp": settings.MCP_ENABLED,
             },
             "limits": {
                 "max_upload_bytes": settings.MAX_UPLOAD_BYTES,
