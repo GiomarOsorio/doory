@@ -182,7 +182,9 @@ saved, edited and imported again. `manage.py seed_size_presets --update` resets 
 | `WEB_PORT`, `WEB_BIND` | Where the site is published (default `0.0.0.0:8080`) |
 | `INSTALL_CHROMIUM` | `false` skips the headless browser that server-side PDF export needs |
 | `GOOGLE_CLIENT_ID` | Turns on "Sign in with Google" |
-| `UNSPLASH_ACCESS_KEY`, `PEXELS_API_KEY` | Turn on stock photo search |
+| `UNSPLASH_ACCESS_KEY`, `PEXELS_API_KEY`, `PIXABAY_API_KEY` | Turn on stock photo search, one tab per provider plus an "All" tab |
+| `STOCK_PROVIDERS`, `STOCK_ALL_PROVIDERS`, `STOCK_DEFAULT_TAB` | Which providers are offered, in which order, and which the "All" tab searches |
+| `STOCK_<PROVIDER>_RATE`, `STOCK_<PROVIDER>_CACHE_SECONDS` | Calls allowed per API key (all users together) and how long searches are cached. These only hold across workers with a shared cache (the Docker setup uses the database cache; `locmem` is for development) |
 | `USE_S3` and `AWS_*` | Store uploads in S3-compatible storage instead of a local volume |
 | `DOORY_SIZE_PRESETS_FILE`, `DOORY_SIZE_PRESETS_MODE` | Import your own size presets from a JSON file on every start (see above) |
 

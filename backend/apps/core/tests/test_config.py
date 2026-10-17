@@ -86,13 +86,26 @@ def test_google_flag_follows_the_client_id(api, settings):
 
 
 @pytest.mark.parametrize(
-    ("unsplash", "pexels", "expected"),
-    [("", "", False), ("key", "", True), ("", "key", True), ("a", "b", True)],
+    ("unsplash", "pexels", "pixabay", "expected"),
+    [
+        ("", "", "", False),
+        ("key", "", "", True),
+        ("", "key", "", True),
+        ("", "", "key", True),
+        ("a", "b", "c", True),
+    ],
 )
-def test_stock_photos_flag_needs_a_provider_key(api, settings, unsplash, pexels, expected):
+def test_stock_photos_flag_needs_a_provider_key(api, settings, unsplash, pexels, pixabay, expected):
     settings.UNSPLASH_ACCESS_KEY = unsplash
     settings.PEXELS_API_KEY = pexels
+    settings.PIXABAY_API_KEY = pixabay
     assert features(api)["stock_photos"] is expected
+
+
+def test_stock_photos_flag_follows_stock_providers(api, settings):
+    settings.PIXABAY_API_KEY = "key"
+    settings.STOCK_PROVIDERS = ["unsplash", "pexels"]
+    assert features(api)["stock_photos"] is False
 
 
 @pytest.mark.parametrize("enabled", [True, False])
@@ -119,6 +132,7 @@ def test_email_verification_flag_needs_a_real_mail_backend(api, settings, backen
 def test_config_does_not_leak_secrets(api, settings):
     settings.UNSPLASH_ACCESS_KEY = "super-secret-unsplash"
     settings.PEXELS_API_KEY = "super-secret-pexels"
+    settings.PIXABAY_API_KEY = "super-secret-pixabay"
     body = api.get(URL).content.decode()
     assert "super-secret" not in body and settings.SECRET_KEY not in body
 

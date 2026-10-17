@@ -148,12 +148,37 @@ export interface StockPhoto {
   author_url: string
   source_url: string
 }
+/** A provider the "All" search left out of this page, and why. */
+export interface StockSkipped {
+  provider: string
+  reason: 'busy' | 'unavailable' | 'timeout'
+  retry_after: number | null
+}
 export interface StockPage {
   configured: boolean
+  /** A provider name, or `all`. */
   provider: string
   total: number
-  next_page: number | null
+  /** A page number for one provider; an opaque cursor for `all`. */
+  next_page: number | string | null
   results: StockPhoto[]
+  /** The provider failed or was busy, so an older copy of these results is shown. */
+  stale?: boolean
+  skipped?: StockSkipped[]
+}
+export interface StockProviderInfo {
+  name: string
+  label: string
+  /** The credit line the provider asks for, e.g. "Photos provided by Pexels". */
+  attribution: string
+  url: string
+}
+export interface StockProviders {
+  providers: StockProviderInfo[]
+  /** The providers the "All" tab searches; empty when there is no "All" tab. */
+  all: string[]
+  /** `all` or a provider name. */
+  default: string
 }
 
 export interface BrandColor {

@@ -22,6 +22,7 @@ import type {
   ShareRole,
   StockPage,
   StockPhoto,
+  StockProviders,
   TemplateCategory,
   TemplateDetail,
   TemplateQuery,
@@ -122,7 +123,9 @@ export interface EditorServices {
   /** null when unavailable (e.g. guests). The editor then shows a "sign up to use this" prompt. */
   brand: { list(): Promise<BrandKit[]>; save(kit: BrandKit): Promise<BrandKit> } | null
   stock: {
-    search(q: string, page: number): Promise<StockPage>
+    providers(): Promise<StockProviders>
+    /** `page` is a page number, or the cursor an `all` search returned; `provider` is a name or `all`. */
+    search(q: string, page: number | string, provider?: string): Promise<StockPage>
     importPhoto(photo: StockPhoto): Promise<AssetRef>
   } | null
   versions: {

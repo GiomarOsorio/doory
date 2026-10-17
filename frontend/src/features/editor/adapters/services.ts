@@ -2,6 +2,12 @@ import { assetsApi, authApi, brandApi, commentsApi, designsApi, elementsApi, fon
 import type { Asset, BrandKit, BrandKitInput, Page } from '@/types/api'
 import type { AssetRef, CommentViewer, EditorServices, UserFontsService } from '@/types/adapter'
 
+/** The page's language for stock providers that search in it (Pixabay). */
+function uiLanguage(): string | undefined {
+  const lang = (typeof document !== 'undefined' && document.documentElement.lang) || (typeof navigator !== 'undefined' ? navigator.language : '')
+  return /^[A-Za-z]{2}([-_][A-Za-z0-9]{1,8})*$/.test(lang) ? lang : undefined
+}
+
 /**
  * Tells the comments who is looking (`GET /auth/me/`). The answer is kept once there is one; a visitor who is not
  * signed in is asked again next time because they may sign in meanwhile. `owner`: the person owns the design.
@@ -67,7 +73,8 @@ export function createAccountServices(designId: string | null, beforeVersion: ()
       save: (kit) => (kit.id ? brandApi.update(kit.id, brandInput(kit)) : brandApi.create(brandInput(kit))),
     },
     stock: {
-      search: (query, page) => stockApi.search(query, page),
+      providers: () => stockApi.providers(),
+      search: (query, page, provider) => stockApi.search(query, page, { provider, lang: uiLanguage() }),
       importPhoto: async (photo) => assetToRef(await stockApi.importPhoto(photo)),
     },
     sharing: designId
