@@ -168,12 +168,31 @@ class TestPixabaySearch:
         assert api.get(SEARCH, {"q": "x", "provider": "pixabay"}).json()["configured"] is False
         assert net.calls == []
 
-    def test_results_are_cached_for_a_day(self, api, pixabay, net, monkeypatch):
+    @pytest.mark.parametrize(
+        ("cache_seconds", "stored"),
+        [
+            (86400, [86400]),  # the default: a stale copy would outlive the 24 h image URLs
+            (172800, [86400]),  # a longer cache time is capped at the URLs' lifetime
+            (60000, [60000, 86400]),  # the stale copy ends when the URLs do
+            (3600, [3600, 7200]),
+        ],
+    )
+    def test_results_never_outlive_the_image_urls(
+        self, api, pixabay, net, monkeypatch, settings, cache_seconds, stored
+    ):
+        set_cache(settings, "pixabay", cache_seconds)
         net.add(PIXABAY_API, pixabay_page([pixabay_item()]))
-        stored = {}
-        monkeypatch.setattr("apps.assets.stock.cache.set", lambda k, v, t: stored.update({k: t}))
+        found = {}
+        monkeypatch.setattr("apps.assets.stock.cache.set", lambda k, v, t: found.update({k: t}))
         api.get(SEARCH, {"q": "x"})
-        assert sorted(t for k, t in stored.items() if k.startswith("stock:v2:pixabay:")) == [86400, 172800]
+        assert sorted(t for k, t in found.items() if k.startswith("stock:v2:pixabay:")) == stored
+
+    def test_no_stale_copy_past_the_url_lifetime(self, api, pixabay, net):
+        net.add(PIXABAY_API, pixabay_page([pixabay_item()]))
+        api.get(SEARCH, {"q": "x"})
+        expire_fresh_copies()
+        net.add(PIXABAY_API, FakeResponse(status=500))
+        assert api.get(SEARCH, {"q": "x"}).status_code == 502
 
 
 @pytest.mark.django_db
@@ -310,7 +329,8 @@ class TestCaching:
         api.get(SEARCH, {"q": "xyzzy"})
         assert [t for k, t in stored.items() if k.startswith("stock:v2:")] == [stock.EMPTY_CACHE_SECONDS]
 
-    def test_stale_copy_is_served_when_the_provider_fails(self, api, pixabay, net):
+    def test_stale_copy_is_served_when_the_provider_fails(self, api, pixabay, net, settings):
+        set_cache(settings, "pixabay", 3600)
         net.add(PIXABAY_API, pixabay_page([pixabay_item()]))
         fresh = api.get(SEARCH, {"q": "x"}).json()
         expire_fresh_copies()
@@ -333,6 +353,11 @@ class TestCaching:
         monkeypatch.setattr(stock, "LOCK_POLL_SECONDS", 0.01)
         net.add(PIXABAY_API, pixabay_page([pixabay_item()]))
         assert api.get(SEARCH, {"q": "x"}).status_code == 200 and len(net.calls) == 1
+
+
+def set_cache(settings, name, seconds):
+    values = settings.STOCK_PROVIDER_SETTINGS
+    settings.STOCK_PROVIDER_SETTINGS = {**values, name: {**values[name], "cache_seconds": seconds}}
 
 
 def set_rate(settings, name, rate):
@@ -384,7 +409,8 @@ class TestLimits:
         api.get(SEARCH, {"q": "b"})
         assert len(net.calls) == 1
 
-    def test_busy_serves_a_stale_copy(self, api, pixabay, net):
+    def test_busy_serves_a_stale_copy(self, api, pixabay, net, settings):
+        set_cache(settings, "pixabay", 3600)
         net.add(PIXABAY_API, pixabay_page([pixabay_item()]))
         api.get(SEARCH, {"q": "x"})
         expire_fresh_copies()
@@ -516,6 +542,19 @@ class TestAllSearch:
             {"provider": "pexels", "reason": "unavailable", "retry_after": None},
             {"provider": "pixabay", "reason": "busy", "retry_after": 9},
         ]
+        # The skipped providers stay in the cursor at the page they missed.
+        assert body["next_page"] == cursor({"pexels": 1, "pixabay": 1, "unsplash": 2})
+
+    def test_a_skipped_provider_keeps_its_page(self, api, every, net):
+        stub_all(net, pixabay=FakeResponse(status=429, headers={"Retry-After": "9"}))
+        body = api.get(
+            SEARCH, {"q": "x", "provider": "all", "cursor": cursor({"pixabay": 2, "unsplash": 2})}
+        ).json()
+        assert body["next_page"] == cursor({"pixabay": 2, "unsplash": 3})
+        net.add(PIXABAY_API, pixabay_page([pixabay_item(8)], total_hits=900))
+        cache.delete("stock:pause:pixabay")  # the pause is over
+        again = api.get(SEARCH, {"q": "x", "provider": "all", "cursor": cursor({"pixabay": 2})}).json()
+        assert [p["id"] for p in again["results"]] == ["8"] and net.calls[-1]["params"]["page"] == 2
 
     def test_slow_provider_times_out_but_fills_the_cache(self, api, every, net, settings):
         settings.STOCK_ALL_TIMEOUT_SECONDS = 0.2

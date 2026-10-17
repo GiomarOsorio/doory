@@ -213,6 +213,7 @@ class StockProvider(ABC):
     home_url: str
     image_hosts: frozenset[str]
     max_results: int | None = None  # the most a search can page through, when the provider caps it
+    url_lifetime_seconds: int | None = None  # how long the image URLs in a search answer keep working
     pause_fallback_seconds = 60  # how long to back off when the provider says "stop" without saying how long
 
     @property
@@ -484,6 +485,7 @@ class PixabayProvider(StockProvider):
     image_hosts = frozenset({"cdn.pixabay.com", "pixabay.com"})
     api = "https://pixabay.com/api/"
     max_results = 500  # the API pages through at most 500 hits per query
+    url_lifetime_seconds = 24 * 60 * 60  # webformatURL, our thumbnail and preview, expires after 24 h
     min_per_page, max_per_page, max_query = 3, 200, 100
 
     def _key(self) -> str:

@@ -119,10 +119,14 @@ def cached_search(
             "next_page": found.next_page,
             "results": [photo.as_dict() for photo in found.photos],
         }
-        seconds = provider.config.cache_seconds
+        # Never keep results, fresh or stale, past the lifetime of the image URLs in them.
+        lifetime = provider.url_lifetime_seconds
+        seconds = min(provider.config.cache_seconds, lifetime or provider.config.cache_seconds)
         if seconds and found.photos:
             cache.set(key, payload, seconds)
-            cache.set(f"{key}:stale", payload, seconds * 2)
+            stale_seconds = min(seconds * 2, lifetime or seconds * 2)
+            if stale_seconds > seconds:
+                cache.set(f"{key}:stale", payload, stale_seconds)
         elif seconds:
             cache.set(key, payload, min(seconds, EMPTY_CACHE_SECONDS))
         return payload
@@ -202,11 +206,14 @@ def search_all(
                 seen.add((photo["provider"], photo["id"]))
                 results.append(photo)
     caps = {provider.name: provider.max_results for provider in chosen}
+    # A skipped provider keeps the page it was asked for, so "Load more" asks it again rather than losing it.
+    next_pages = {n: p["next_page"] for n, p in found.items() if p["next_page"]}
+    next_pages.update({s["provider"]: pages[s["provider"]] for s in skipped})
     payload: dict[str, Any] = {
         "configured": True,
         "provider": ALL,
         "total": sum(min(page["total"], caps[name] or page["total"]) for name, page in found.items()),
-        "next_page": _encode_cursor({n: p["next_page"] for n, p in found.items() if p["next_page"]}),
+        "next_page": _encode_cursor(next_pages),
         "results": results,
         "skipped": skipped,
     }
