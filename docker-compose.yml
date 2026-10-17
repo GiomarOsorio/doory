@@ -49,6 +49,8 @@ services:
       REDIS_URL: ${REDIS_URL:-}
     volumes:
       - media:/app/media
+      # Your own size presets (DOORY_SIZE_PRESETS_FILE=/config/size-presets.json in .env):
+      # - ./config/size-presets.json:/config/size-presets.json:ro
     networks:
       default:
         # The name the web container's nginx uses; unique even on a network shared with other apps.
