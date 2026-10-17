@@ -260,6 +260,9 @@ BACKGROUND_REMOVAL_MODEL = env("BACKGROUND_REMOVAL_MODEL", default="")  # empty:
 
 # ---- Real-time co-editing (apps.collab) ----
 REALTIME_ENABLED = env.bool("REALTIME_ENABLED", default=True)
+
+# Element library: keep the brand logos (trademarks) the icon packs contain when `sync_element_packs` runs.
+DOORY_ELEMENTS_BRAND_LOGOS = env.bool("DOORY_ELEMENTS_BRAND_LOGOS", default=False)
 # Channel layer: in-memory (one server process only) unless REDIS_URL is set, which is mandatory as soon
 # as more than one realtime worker or replica runs.
 REDIS_URL = env("REDIS_URL", default="")

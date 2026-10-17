@@ -85,13 +85,32 @@ def test_every_downloaded_icon_pack_is_framed_so_the_editor_sizes_icons_alike(pa
     assert pack.normalize.mode == "mono" and pack.normalize.size == 24 and pack.normalize.frame
 
 
-def test_no_downloaded_pack_ships_brand_logos():
+def test_brand_logos_are_marked_as_brand_and_not_mixed_into_skip():
+    brands = {p.id: p.naming.brand for p in MANIFEST.packs}
     skips = {p.id: p.naming.skip for p in MANIFEST.packs}
-    assert skips["tabler-outline"] == skips["tabler-filled"] == "^brand-"
-    assert all(skips[f"phosphor-{w}"] == "-logo(?:-simple)?$" for w in ("regular", "bold", "fill", "duotone"))
-    assert re.search(skips["material-outlined"], "nest_audio") and re.search(
-        skips["material-filled"], "android"
+    assert brands["tabler-outline"] == brands["tabler-filled"] == "^brand-"
+    assert all(
+        brands[f"phosphor-{w}"] == "-logo(?:-simple)?$" for w in ("regular", "bold", "fill", "duotone")
     )
+    assert re.search(brands["material-outlined"], "nest_audio") and re.search(
+        brands["material-filled"], "android"
+    )
+    # The skin-tone variants stay in `skip`, so turning brand logos on cannot bring them in.
+    assert {pack_id for pack_id, brand in brands.items() if brand} == {
+        "tabler-outline",
+        "tabler-filled",
+        *(f"phosphor-{w}" for w in ("regular", "bold", "fill", "duotone")),
+        "material-outlined",
+        "material-filled",
+    }
+    assert re.search(skips["noto-emoji"], "waving-hand-dark-skin-tone") and not brands["noto-emoji"]
+    assert not any(skip and re.search(skip, "brand-facebook") for skip in skips.values())
+
+
+def test_the_brand_logo_choice_changes_the_fingerprint_only_of_packs_with_logos():
+    for pack in MANIFEST.packs:
+        assert pack.fingerprint_for(False) == pack.fingerprint
+        assert (pack.fingerprint_for(True) != pack.fingerprint) == pack.has_brand
 
 
 def test_every_url_in_the_shipped_indexes_is_https_on_an_allowed_host_with_a_hash():
@@ -218,6 +237,7 @@ def broken(**changes):
         ({"license.file": None}, "go together"),
         ({"homepage": "http://example.com"}, "https"),
         ({"naming": {"skip": "(unclosed"}}, "naming.skip"),
+        ({"naming": {"brand": "(unclosed"}}, "naming.brand"),
         ({"naming": {"strip_extra": "x"}}, "unknown key"),
         ({"surprise": 1}, "unknown key"),
     ],

@@ -1,5 +1,7 @@
+import argparse
 from pathlib import Path
 
+from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 
 from apps.elements.manifest import Manifest, ManifestError, PackSpec, load_manifest
@@ -49,6 +51,13 @@ class Command(BaseCommand):
             help="Unpublish elements that are no longer part of a pack (they are only reported otherwise).",
         )
         parser.add_argument(
+            "--brand-logos",
+            action=argparse.BooleanOptionalAction,
+            default=None,
+            help="Keep the brand logos (trademarks) the icon sets contain, tagged 'brand' and 'logo'. "
+            "Default: DOORY_ELEMENTS_BRAND_LOGOS (off). After turning it off, --prune removes them.",
+        )
+        parser.add_argument(
             "--concurrency",
             type=int,
             default=4,
@@ -62,13 +71,16 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, pack=None, list=False, dry_run=False, force=False, prune=False, **options):
+        brand_logos = options.get("brand_logos")
+        if brand_logos is None:
+            brand_logos = settings.DOORY_ELEMENTS_BRAND_LOGOS
         try:
             manifest = self._manifest or load_manifest()
             packs = manifest.select(pack)
         except ManifestError as exc:
             raise CommandError(str(exc)) from exc
         if list:
-            return self._list(packs)
+            return self._list(packs, brand_logos)
         if options["concurrency"] < 1:
             raise CommandError("--concurrency needs a positive number.")
         concurrency = min(options["concurrency"], MAX_CONCURRENCY)
@@ -76,13 +88,16 @@ class Command(BaseCommand):
 
         self.stdout.write(
             f"Syncing {len(packs)} pack(s) ({concurrency} at a time)"
+            + (", with brand logos" if brand_logos else "")
             + (" - dry run, nothing is written" if dry_run else "")
             + "."
         )
         report = sync_packs(
             packs,
             source,
-            SyncOptions(concurrency=concurrency, force=force, dry_run=dry_run, prune=prune),
+            SyncOptions(
+                concurrency=concurrency, force=force, dry_run=dry_run, prune=prune, brand_logos=brand_logos
+            ),
             log=self.stdout.write,
         )
         self._summarise(report, dry_run)
@@ -106,7 +121,7 @@ class Command(BaseCommand):
             raise CommandError(f"{from_dir}: not a directory.")
         return DirectorySource(directory)
 
-    def _list(self, packs: list[PackSpec]) -> None:
+    def _list(self, packs: list[PackSpec], brand_logos: bool) -> None:
         rows = {row.slug: row for row in ElementPack.objects.filter(slug__in=[p.id for p in packs])}
         width = max(len(p.id) for p in packs)
         for spec in packs:
@@ -115,7 +130,7 @@ class Command(BaseCommand):
                 state = "not installed"
             else:
                 count = row.elements.count()
-                current = row.sync_fingerprint == spec.fingerprint
+                current = row.sync_fingerprint == spec.fingerprint_for(brand_logos)
                 state = f"{count} elements" + ("" if current else ", out of date")
             self.stdout.write(
                 f"{spec.id:<{width}}  {spec.kind:<12} {spec.style or '-':<8} {spec.license.spdx:<14} "

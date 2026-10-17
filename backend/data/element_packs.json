@@ -217,7 +217,7 @@
         "file": "icons.json"
       },
       "naming": {
-        "skip": "^brand-"
+        "brand": "^brand-"
       }
     },
     {
@@ -256,7 +256,7 @@
         "file": "icons.json"
       },
       "naming": {
-        "skip": "^brand-"
+        "brand": "^brand-"
       }
     },
     {
@@ -295,7 +295,7 @@
         "file": "dist/index.mjs"
       },
       "naming": {
-        "skip": "-logo(?:-simple)?$"
+        "brand": "-logo(?:-simple)?$"
       }
     },
     {
@@ -331,7 +331,7 @@
       },
       "naming": {
         "strip_suffix": "-bold",
-        "skip": "-logo(?:-simple)?$"
+        "brand": "-logo(?:-simple)?$"
       },
       "tags": {
         "format": "phosphor-js",
@@ -371,7 +371,7 @@
       },
       "naming": {
         "strip_suffix": "-fill",
-        "skip": "-logo(?:-simple)?$"
+        "brand": "-logo(?:-simple)?$"
       },
       "tags": {
         "format": "phosphor-js",
@@ -411,7 +411,7 @@
       },
       "naming": {
         "strip_suffix": "-duotone",
-        "skip": "-logo(?:-simple)?$"
+        "brand": "-logo(?:-simple)?$"
       },
       "tags": {
         "format": "phosphor-js",
@@ -517,7 +517,7 @@
         "frame": true
       },
       "naming": {
-        "skip": "^(?:nest_|mfg_nest|google_|chromecast|stadia_|youtube_)|^(?:android|duo)$"
+        "brand": "^(?:nest_|mfg_nest|google_|chromecast|stadia_|youtube_)|^(?:android|duo)$"
       }
     },
     {
@@ -553,7 +553,7 @@
       },
       "naming": {
         "strip_suffix": "-fill",
-        "skip": "^(?:nest_|mfg_nest|google_|chromecast|stadia_|youtube_)|^(?:android|duo)$"
+        "brand": "^(?:nest_|mfg_nest|google_|chromecast|stadia_|youtube_)|^(?:android|duo)$"
       }
     },
     {
