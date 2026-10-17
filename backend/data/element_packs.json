@@ -419,6 +419,80 @@
       }
     },
     {
+      "id": "bootstrap-outline",
+      "name": "Bootstrap Icons",
+      "kind": "icon",
+      "style": "outline",
+      "description": "Over 1,300 general-purpose outline icons from Bootstrap.",
+      "homepage": "https://icons.getbootstrap.com",
+      "sort_order": 225,
+      "source": {
+        "type": "npm",
+        "package": "bootstrap-icons",
+        "version": "1.13.2",
+        "integrity": "sha512-fAU1Ly3dH7hwRg+CB8EZ0Vl0fF80zgXHeUVJyfUOKzoURr+TbwISbCW5tKUoQLERaWYG2emTCybcPbD96hdD1A=="
+      },
+      "files": {
+        "include": [
+          "icons/*.svg"
+        ],
+        "exclude": [
+          "icons/*-fill.svg"
+        ]
+      },
+      "license": {
+        "spdx": "MIT",
+        "url": "https://cdn.jsdelivr.net/npm/bootstrap-icons@1.13.2/LICENSE",
+        "file": "LICENSE",
+        "match": "The MIT License \\(MIT\\)"
+      },
+      "attribution": "Bootstrap Icons: Copyright (c) 2019-2024 The Bootstrap Authors (MIT).",
+      "normalize": {
+        "mode": "mono",
+        "size": 24,
+        "frame": true
+      },
+      "naming": {
+        "skip": "^(?:alexa|alipay|amazon|amd|android2?|anthropic|apple(?:-music)?|behance|bing|bluesky|bootstrap(?:-reboot)?|browser-(?:chrome|edge|firefox|safari)|claude|discord|dribbble|dropbox|facebook|git|github|gitlab|google(?:-play)?|instagram|javascript|line|linkedin|mastodon|medium|messenger|meta|microsoft(?:-teams)?|nintendo-switch|nvidia|openai|opencollective|paypal|perplexity|pinterest|playstation|quora|reddit|signal|sina-weibo|skype|slack|snapchat|sourceforge|spotify|stack-overflow|steam|strava|stripe|substack|telegram|tencent-qq|threads|tiktok|trello|twitch|twitter(?:-x)?|ubuntu|unity|vimeo|wechat|whatsapp|wikipedia|windows|wordpress|xbox|yelp|youtube)$"
+      }
+    },
+    {
+      "id": "bootstrap-fill",
+      "name": "Bootstrap Icons Fill",
+      "kind": "icon",
+      "style": "filled",
+      "description": "Solid versions of the Bootstrap icons.",
+      "homepage": "https://icons.getbootstrap.com",
+      "sort_order": 226,
+      "source": {
+        "type": "npm",
+        "package": "bootstrap-icons",
+        "version": "1.13.2",
+        "integrity": "sha512-fAU1Ly3dH7hwRg+CB8EZ0Vl0fF80zgXHeUVJyfUOKzoURr+TbwISbCW5tKUoQLERaWYG2emTCybcPbD96hdD1A=="
+      },
+      "files": {
+        "include": [
+          "icons/*-fill.svg"
+        ]
+      },
+      "license": {
+        "spdx": "MIT",
+        "url": "https://cdn.jsdelivr.net/npm/bootstrap-icons@1.13.2/LICENSE",
+        "file": "LICENSE",
+        "match": "The MIT License \\(MIT\\)"
+      },
+      "attribution": "Bootstrap Icons: Copyright (c) 2019-2024 The Bootstrap Authors (MIT).",
+      "normalize": {
+        "mode": "mono",
+        "size": 24,
+        "frame": true
+      },
+      "naming": {
+        "strip_suffix": "-fill",
+        "skip": "^(?:alexa|alipay|amazon|amd|android2?|anthropic|apple(?:-music)?|behance|bing|bluesky|bootstrap(?:-reboot)?|browser-(?:chrome|edge|firefox|safari)|claude|discord|dribbble|dropbox|facebook|git|github|gitlab|google(?:-play)?|instagram|javascript|line|linkedin|mastodon|medium|messenger|meta|microsoft(?:-teams)?|nintendo-switch|nvidia|openai|opencollective|paypal|perplexity|pinterest|playstation|quora|reddit|signal|sina-weibo|skype|slack|snapchat|sourceforge|spotify|stack-overflow|steam|strava|stripe|substack|telegram|tencent-qq|threads|tiktok|trello|twitch|twitter(?:-x)?|ubuntu|unity|vimeo|wechat|whatsapp|wikipedia|windows|wordpress|xbox|yelp|youtube)$"
+      }
+    },
+    {
       "id": "heroicons-outline",
       "name": "Heroicons Outline",
       "kind": "icon",

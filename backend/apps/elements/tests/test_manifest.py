@@ -38,6 +38,8 @@ def test_the_shipped_manifest_has_the_planned_packs():
         "phosphor-bold",
         "phosphor-fill",
         "phosphor-duotone",
+        "bootstrap-outline",
+        "bootstrap-fill",
         "heroicons-outline",
         "heroicons-solid",
         "material-outlined",
@@ -91,6 +93,13 @@ def test_no_downloaded_pack_ships_brand_logos():
     assert all(skips[f"phosphor-{w}"] == "-logo(?:-simple)?$" for w in ("regular", "bold", "fill", "duotone"))
     assert re.search(skips["material-outlined"], "nest_audio") and re.search(
         skips["material-filled"], "android"
+    )
+    assert skips["bootstrap-outline"] == skips["bootstrap-fill"]
+    assert all(
+        re.search(skips["bootstrap-fill"], name) for name in ("facebook", "github", "twitter-x", "apple")
+    )
+    assert not any(
+        re.search(skips["bootstrap-fill"], name) for name in ("heart", "alarm", "credit-card", "git-branch")
     )
 
 
