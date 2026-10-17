@@ -217,16 +217,19 @@ def test_brand_logos_are_left_out_unless_turned_on_and_then_tagged_with_a_tradem
     assert row.sync_fingerprint == pack.fingerprint_for(True) and is_up_to_date(pack, brand_logos=True)
 
 
-def test_turning_brand_logos_off_again_resyncs_and_prune_unpublishes_them():
+def test_turning_brand_logos_off_again_unpublishes_them_on_the_next_sync_without_pruning():
     pack, source = brand_pack_and_source()
     run([pack], source, brand_logos=True)
 
-    report, _ = run([pack], source)
-    assert report.results[0].stale == 1 and Element.objects.get(key="brand-facebook").is_published
+    report, lines = run([pack], source)
+    assert report.results[0].logos_unpublished == 1 and report.results[0].stale == 0
+    assert not Element.objects.get(key="brand-facebook").is_published
+    assert Element.objects.filter(key="home", is_published=True).exists()
     assert ElementPack.objects.get(slug="demo").attribution == "Demo: Copyright (c) 2026 Example (MIT)."
+    assert any("1 brand logo(s) unpublished" in line for line in lines)
 
-    report, _ = run([pack], source, force=True, prune=True)
-    assert report.results[0].pruned == 1 and not Element.objects.get(key="brand-facebook").is_published
+    report, _ = run([pack], source, prune=True)  # already done: nothing left for --prune
+    assert [r.status for r in report.results] == ["up-to-date"]
 
 
 def test_packs_without_brand_patterns_are_not_resynced_when_brand_logos_are_turned_on():

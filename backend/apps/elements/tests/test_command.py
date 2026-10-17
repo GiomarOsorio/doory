@@ -193,5 +193,5 @@ def test_brand_logos_follow_the_setting_and_the_option_overrides_it(settings):
     assert "with brand logos" in sync(source=source, manifest=manifest)
     assert Element.objects.filter(key="brand-facebook").exists()
 
-    sync("--no-brand-logos", "--prune", source=source, manifest=manifest)
+    sync("--no-brand-logos", source=source, manifest=manifest)
     assert not Element.objects.get(key="brand-facebook").is_published

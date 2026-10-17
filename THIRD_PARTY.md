@@ -264,13 +264,14 @@ day. The sync also re-checks the licence file of every release at install time a
 Candidates that were examined and **not** used (Font Awesome Free, Twemoji, OpenMoji, Remix Icon, Material Design
 Icons, unDraw, ...) are not part of Doory.
 
-Brand logos: Tabler (`brand-*`), Phosphor (`*-logo`) and Material Symbols (`google_*`, `youtube_*`, `android`, ...)
-contain third-party logos. They match the pack's `naming.brand` pattern in the manifest and are left out by default,
+Brand logos: Tabler (`brand-*`), Phosphor (`*-logo`), Material Symbols (`google_*`, `youtube_*`, `android`, ...) and
+Bootstrap Icons (`facebook`, `github`, `twitter-x`, ...) contain third-party logos. They match the pack's `naming.brand` pattern in the manifest and are left out by default,
 because logos are trademarks whose owners set usage rules. A self-hosted instance can opt in with
 `DOORY_ELEMENTS_BRAND_LOGOS=true` (or `sync_element_packs --brand-logos`). The logos are then tagged `brand` and
 `logo`, and the attribution of those packs adds "Logos are trademarks of their respective owners; use them according
-to their brand guidelines." Turning the flag off again and running `sync_element_packs --prune` unpublishes them.
-Designs that already use a logo keep their copy.
+to their brand guidelines." Turning the flag off again makes the next sync unpublish them (no `--prune` needed);
+designs that already use a logo keep their copy. Turning it back on does not republish them, since `is_published`
+belongs to staff; they can republish the logos in the admin.
 
 ## Audio packs
 

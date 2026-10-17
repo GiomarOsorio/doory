@@ -55,7 +55,7 @@ class Command(BaseCommand):
             action=argparse.BooleanOptionalAction,
             default=None,
             help="Keep the brand logos (trademarks) the icon sets contain, tagged 'brand' and 'logo'. "
-            "Default: DOORY_ELEMENTS_BRAND_LOGOS (off). After turning it off, --prune removes them.",
+            "Default: DOORY_ELEMENTS_BRAND_LOGOS (off). Off again: the next sync unpublishes them.",
         )
         parser.add_argument(
             "--concurrency",

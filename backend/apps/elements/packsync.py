@@ -74,6 +74,8 @@ class PackResult:
     duplicates: int = 0
     stale: int = 0
     pruned: int = 0
+    #: Brand logos unpublished because the pack was synced with `brand_logos` off.
+    logos_unpublished: int = 0
     warnings: list[str] = field(default_factory=list)
     error: str = ""
     seconds: float = 0.0
@@ -292,6 +294,14 @@ def _attribution(pack: PackSpec, brand_logos: bool) -> str:
     return f"{pack.attribution} {TRADEMARK_NOTICE}".strip()
 
 
+def _unpublish(row: ElementPack, keys: list[str]) -> int:
+    count = 0
+    for start in range(0, len(keys), PRUNE_CHUNK):
+        chunk = keys[start : start + PRUNE_CHUNK]
+        count += row.elements.filter(key__in=chunk, is_published=True).update(is_published=False)
+    return count
+
+
 def import_pack(pack: PackSpec, files: dict[str, bytes], options: SyncOptions, log: Log) -> PackResult:
     """Import already-fetched `files` into the database. Raises `SourceError` (e.g. `LicenseMismatch`)."""
     result = PackResult(pack_id=pack.id, source_ref=pack.source_ref)
@@ -330,13 +340,17 @@ def import_pack(pack: PackSpec, files: dict[str, bytes], options: SyncOptions, l
         )
         produced = {entry.key for entry in entries}
         stale = sorted(set(row.elements.filter(is_published=True).values_list("key", flat=True)) - produced)
+        logos: list[str] = []
+        if pack.has_brand and not options.brand_logos:
+            # Logos left out by this sync are unpublished right away, not reported as stale: otherwise the
+            # fingerprint is current again and a later `--prune` would skip the pack and keep them.
+            is_brand = re.compile(pack.naming.brand).search
+            logos = [key for key in stale if is_brand(key)]
+            stale = [key for key in stale if not is_brand(key)]
         result.stale = len(stale)
-        if options.prune and stale:
-            for start in range(0, len(stale), PRUNE_CHUNK):
-                chunk = stale[start : start + PRUNE_CHUNK]
-                result.pruned += row.elements.filter(key__in=chunk, is_published=True).update(
-                    is_published=False
-                )
+        result.logos_unpublished = _unpublish(row, logos)
+        if options.prune:
+            result.pruned = _unpublish(row, stale)
         with transaction.atomic():
             row.source_ref, row.sync_fingerprint, row.synced_at = (
                 pack.source_ref,
@@ -467,6 +481,8 @@ def sync_packs(
                 log(f"    skipped {label}: {reason}")
             if len(result.skipped) > 5:
                 log(f"    ... and {len(result.skipped) - 5} more skipped")
+            if result.logos_unpublished:
+                log(f"    {result.logos_unpublished} brand logo(s) unpublished (brand logos are off).")
             if result.stale:
                 log(
                     f"    {result.stale} element(s) are no longer part of this pack"
