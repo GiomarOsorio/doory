@@ -21,5 +21,5 @@ channels>=4.2,<5
 channels-redis>=4.2
 pycrdt>=0.14,<0.15
 uvicorn>=0.30
-websockets>=13
+websockets>=17.2
 pypdf>=5
