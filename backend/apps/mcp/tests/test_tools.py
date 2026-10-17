@@ -354,6 +354,18 @@ def test_text_effects_and_curves_through_edit_design(as_caller, design):
     assert summary["curve"] == 120 and summary["effects"] == ["glow"]
 
 
+def test_only_your_own_comments_can_be_reworded(as_caller, other, design):
+    mine = comments.add_comment(str(design.pk), "Make the title bigger")
+    assert (
+        comments.edit_comment(str(design.pk), mine["id"], "  Make the title red  ")["body"]
+        == "Make the title red"
+    )
+    visitor = Comment.objects.create(design=design, author=other, body="Love it")  # via a share link
+    with pytest.raises(ToolError, match="your own comments"):
+        comments.edit_comment(str(design.pk), str(visitor.pk), "Hate it")
+    assert comments.resolve_comment(str(design.pk), str(visitor.pk))["resolved"] is True  # resolving is fine
+
+
 def test_assets_and_stock(as_caller, user, other):
     make_asset(user, name="Beach")
     make_asset(other, name="Theirs")
@@ -413,6 +425,8 @@ def test_tokens_issued_before_trash_and_comment_management_do_not_gain_them(as_c
         comments.resolve_comment(str(design.pk), comment["id"])
     with pytest.raises(ToolError, match="`comments:manage` scope"):
         comments.delete_comment(str(design.pk), comment["id"])
+    with pytest.raises(ToolError, match="`comments:manage` scope"):
+        comments.edit_comment(str(design.pk), comment["id"], "Hello")
 
 
 def test_comment_text_is_labelled_untrusted(as_caller, design):

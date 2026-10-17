@@ -155,12 +155,12 @@ class DesignCommentDetailView(OwnerAPIView):
 
     @extend_schema(request=CommentUpdateSerializer, responses=CommentSerializer, tags=["comments"])
     def patch(self, request, design_id, pk):
-        """Owner only: mark a thread as resolved / re-open it, and/or move its pin."""
+        """Owner only: mark a thread as resolved / re-open it, move its pin, or edit one's own comment."""
         comment = get_object_or_404(
             Comment.objects.filter(design_id=design_id, design__owner=request.user).select_related("author"),
             pk=pk,
         )
-        serializer = CommentUpdateSerializer(comment, data=request.data)
+        serializer = CommentUpdateSerializer(comment, data=request.data, context={"user": request.user})
         serializer.is_valid(raise_exception=True)
         comment = serializer.save()
         return Response(CommentSerializer(comment).data)

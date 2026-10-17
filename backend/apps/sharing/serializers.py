@@ -238,12 +238,17 @@ class _AnchorMixin(serializers.Serializer):
 
 
 class CommentUpdateSerializer(_AnchorMixin):
-    """Owner PATCH: resolve or re-open a thread and/or move its pin. Top-level comments only."""
+    """Owner PATCH: resolve or re-open a thread and/or move its pin (top-level comments only), and change the
+    text of a comment the requesting user wrote (`context["user"]`)."""
 
     resolved = serializers.BooleanField(required=False)
+    body = serializers.CharField(max_length=COMMENT_MAX_LENGTH, required=False)
 
     def validate(self, attrs):
         attrs = super().validate(attrs)
+        user = self.context.get("user")
+        if "body" in attrs and (user is None or self.instance is None or self.instance.author_id != user.pk):
+            raise serializers.ValidationError({"body": "You can only change the text of your own comments."})
         if self.instance is not None and self.instance.parent_id is not None:
             if "resolved" in attrs:
                 raise serializers.ValidationError({"resolved": "Only top-level comments can be resolved."})
@@ -252,9 +257,11 @@ class CommentUpdateSerializer(_AnchorMixin):
         return attrs
 
     def update(self, instance, validated_data):
-        if "resolved" in validated_data:
-            instance.resolved = validated_data["resolved"]
-            instance.save(update_fields=["resolved", "updated_at"])
+        changed = [field for field in ("resolved", "body") if field in validated_data]
+        for field in changed:
+            setattr(instance, field, validated_data[field])
+        if changed:
+            instance.save(update_fields=[*changed, "updated_at"])
         return self.move(instance, validated_data)
 
 

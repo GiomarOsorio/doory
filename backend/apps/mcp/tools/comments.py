@@ -92,7 +92,20 @@ def resolve_comment(design_id: DesignId, comment_id: CommentId, resolved: bool =
     """Mark a comment thread as resolved (or re-open it with resolved = false). Replies cannot be resolved
     on their own; resolve the comment they answer."""
     comment = _owned_comment(design_id, comment_id)
-    serializer = CommentUpdateSerializer(comment, data={"resolved": resolved})
+    serializer = CommentUpdateSerializer(
+        comment, data={"resolved": resolved}, context={"user": current().user}
+    )
+    serializer.is_valid(raise_exception=True)
+    return _comment(serializer.save())
+
+
+@tool(scope=COMMENTS_MANAGE, title="Edit a comment", idempotent=True)
+def edit_comment(
+    design_id: DesignId, comment_id: CommentId, body: Annotated[str, Field(min_length=1, max_length=2000)]
+) -> dict[str, Any]:
+    """Change the text of a comment you wrote (comments by other people can be resolved, not rewritten)."""
+    comment = _owned_comment(design_id, comment_id)
+    serializer = CommentUpdateSerializer(comment, data={"body": body}, context={"user": current().user})
     serializer.is_valid(raise_exception=True)
     return _comment(serializer.save())
 

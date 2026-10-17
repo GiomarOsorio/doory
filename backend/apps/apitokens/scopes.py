@@ -19,7 +19,7 @@ SCOPES: dict[str, str] = {
     DESIGNS_TRASH: "Move your designs to the trash and restore them.",
     ASSETS_WRITE: "Add images to your uploads (stock photos, images from a URL).",
     COMMENTS_WRITE: "Add comments to your designs.",
-    COMMENTS_MANAGE: "Resolve and delete comments on your designs, including other people's.",
+    COMMENTS_MANAGE: "Edit your own comments, and resolve and delete comments on your designs (anyone's).",
     BRAND_WRITE: "Create and change your brand kits.",
     SHARING_WRITE: "See, create and revoke share links to your designs (they let other people in).",
 }

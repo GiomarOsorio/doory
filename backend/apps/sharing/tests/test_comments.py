@@ -377,11 +377,24 @@ def test_replies_cannot_be_resolved(owner_client, design, make_comment, stranger
 
 def test_owner_patch_only_touches_resolved(owner_client, design, make_comment, stranger):
     comment = make_comment(stranger, "original")
-    owner_client.patch(
-        design_comment(design, comment), {"body": "edited", "author": "x", "resolved": True}, format="json"
-    )
+    owner_client.patch(design_comment(design, comment), {"author": "x", "resolved": True}, format="json")
     comment.refresh_from_db()
     assert comment.body == "original" and comment.author == stranger and comment.resolved
+
+
+def test_only_authors_change_the_text_of_their_comments(owner_client, owner, design, make_comment, stranger):
+    theirs = make_comment(stranger, "original")
+    response = owner_client.patch(
+        design_comment(design, theirs), {"body": "edited", "resolved": True}, format="json"
+    )
+    assert response.status_code == 400 and "own comments" in str(response.json()["error"]["fields"]["body"])
+    theirs.refresh_from_db()
+    assert theirs.body == "original" and theirs.resolved is False  # nothing applied
+    mine = make_comment(owner, "typo")
+    assert (
+        owner_client.patch(design_comment(design, mine), {"body": "fixed"}, format="json").json()["body"]
+        == "fixed"
+    )
 
 
 def test_owner_can_delete_any_comment(owner_client, design, make_comment, stranger):
