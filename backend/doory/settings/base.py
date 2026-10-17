@@ -40,6 +40,7 @@ INSTALLED_APPS = [
     "apps.sharing",
     "apps.exports",
     "apps.collab",
+    "apps.presets",
 ]
 
 MIDDLEWARE = [
