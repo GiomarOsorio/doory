@@ -6,9 +6,10 @@ to must be a public one. The connection then goes to the address that was checke
 the host name, so a second DNS answer cannot swap in a private address (DNS rebinding). Redirects are
 followed by hand and each target is checked the same way.
 
-One deadline covers the whole download, redirects included: a watchdog shuts the socket down when it passes,
-whatever the request is doing (connecting, the TLS handshake, the headers or the body). Socket timeouts alone
-restart with every byte, so a server trickling bytes in any phase could otherwise hold a worker for minutes.
+One deadline covers the whole download, redirects and DNS lookups included: a watchdog shuts the socket down
+when it passes, whatever the request is doing (connecting, the TLS handshake, the headers or the body), and
+each lookup gets only the time left. Socket timeouts alone restart with every byte, so a server trickling
+bytes in any phase could otherwise hold a worker for minutes.
 """
 
 from __future__ import annotations
@@ -27,6 +28,7 @@ from urllib.parse import urljoin, urlsplit
 import certifi
 import urllib3
 import urllib3.connection
+from urllib3.util.ssl_match_hostname import CertificateError
 
 from .providers import _UNSAFE_URL_CHARS, USER_AGENT
 
@@ -120,6 +122,27 @@ def check_url(url: str, *, lookup: Callable[[str], list[str]] = resolve) -> Targ
     return Target(host=host, addresses=tuple(addresses), path=path)
 
 
+def _resolve_within(lookup: Callable[[str], list[str]], host: str, seconds: float) -> list[str]:
+    """`lookup(host)`, given at most `seconds`. `getaddrinfo` takes no timeout, so it runs on a daemon thread;
+    one that overruns is left to finish (the resolver's own timeout ends it) and its answer is dropped."""
+    outcome: dict[str, Any] = {}
+
+    def run() -> None:
+        try:
+            outcome["addresses"] = lookup(host)
+        except BaseException as exc:  # handed to the caller below
+            outcome["error"] = exc
+
+    thread = threading.Thread(target=run, name="remote-image-dns", daemon=True)
+    thread.start()
+    thread.join(max(0.0, seconds))
+    if thread.is_alive():
+        raise RemoteImageError("The download took too long.")
+    if "error" in outcome:
+        raise outcome["error"]
+    return outcome["addresses"]
+
+
 class Watchdog:
     """Shuts down the socket of the connection it watches once `deadline` passes, which wakes any read or
     handshake blocked on it. A connection whose socket does not exist yet (still connecting, bounded by its
@@ -140,6 +163,13 @@ class Watchdog:
     def watch(self, conn: Any) -> None:
         with self._lock:
             self._conn = conn
+
+    def release(self) -> None:
+        """Close the watched connection (`response.close()` leaves its socket open) and stop watching it."""
+        with self._lock:
+            conn, self._conn = self._conn, None
+        if conn is not None:
+            conn.close()
 
     def stop(self) -> None:
         self._done.set()
@@ -216,7 +246,8 @@ def _read_body(response: Any, *, max_bytes: int) -> bytes:
 
 
 # What a request can raise when the server misbehaves or the watchdog cuts the socket.
-_TRANSPORT_ERRORS = (urllib3.exceptions.HTTPError, http.client.HTTPException, OSError)
+# A certificate for another host fails urllib3's own name check, which raises a ValueError subclass.
+_TRANSPORT_ERRORS = (urllib3.exceptions.HTTPError, http.client.HTTPException, OSError, CertificateError)
 
 
 def fetch_image(
@@ -243,7 +274,7 @@ def _fetch(url: str, *, max_bytes: int, lookup, opener, watchdog: Watchdog) -> b
     for _ in range(MAX_REDIRECTS + 1):
         if watchdog.left() <= 0:
             raise RemoteImageError("The download took too long.")
-        target = check_url(current, lookup=lookup)
+        target = check_url(current, lookup=lambda host: _resolve_within(lookup, host, watchdog.left()))
         response = opener(target, watchdog)
         try:
             if watchdog.fired:  # cut while reading the headers: they may be incomplete
@@ -267,4 +298,5 @@ def _fetch(url: str, *, max_bytes: int, lookup, opener, watchdog: Watchdog) -> b
             return body
         finally:
             response.close()
+            watchdog.release()
     raise RemoteImageError("Too many redirects.")

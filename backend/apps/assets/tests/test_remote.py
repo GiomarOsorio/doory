@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import socket
+import sys
 import threading
 import time
 
@@ -211,6 +212,11 @@ def _drip_headers(conn, stop):
     drip(conn, stop)  # one header line that never ends
 
 
+def _unanswered(conn, stop):
+    conn.recv(4096)
+    stop.wait(30)  # reads the request, never answers: only the watchdog ends the 10 s read
+
+
 def _silent(conn, stop):
     stop.wait(30)  # accepts the connection, then says nothing: a TLS handshake waits for the server hello
 
@@ -240,14 +246,28 @@ def tls_opener(port):
 
 @pytest.mark.parametrize(
     ("server", "make_opener"),
-    [(_drip_body, plain_opener), (_drip_headers, plain_opener), (_silent, tls_opener)],
+    [
+        (_drip_body, plain_opener),
+        (_drip_headers, plain_opener),
+        pytest.param(
+            _unanswered,
+            plain_opener,
+            marks=pytest.mark.xfail(
+                sys.platform == "win32",
+                reason="shutdown() does not wake a blocked recv on Windows",
+                strict=True,
+            ),
+        ),
+        (_silent, tls_opener),
+    ],
     indirect=["server"],
-    ids=["body", "headers", "tls-handshake"],
+    ids=["body", "headers", "unanswered", "tls-handshake"],
 )
 def test_a_server_dripping_bytes_in_any_phase_cannot_hold_the_worker_past_the_deadline(
     monkeypatch, server, make_opener
 ):
     monkeypatch.setattr(remote, "DEADLINE_SECONDS", 1.0)
+    monkeypatch.setattr(remote, "CONNECT_TIMEOUT", 10.0)  # so the handshake case is ended by the watchdog
     started = time.monotonic()
     with pytest.raises(remote.RemoteImageError, match="took too long"):
         remote.fetch_image(
@@ -264,3 +284,63 @@ def test_the_watchdog_stops_without_firing_when_the_download_ends_in_time():
         pass
     time.sleep(0.4)
     assert watchdog.fired is False
+
+
+def test_a_slow_dns_lookup_counts_against_the_deadline(monkeypatch):
+    monkeypatch.setattr(remote, "DEADLINE_SECONDS", 0.5)
+
+    def slow(host):
+        time.sleep(3)
+        return [PUBLIC]
+
+    started = time.monotonic()
+    with pytest.raises(remote.RemoteImageError, match="took too long"):
+        remote.fetch_image("https://img.example/a.png", max_bytes=1000, lookup=slow, opener=None)
+    assert time.monotonic() - started < 1.5
+
+
+def test_lookup_errors_still_reach_the_caller():
+    with pytest.raises(remote.RemoteImageError, match="Cannot find the host"):
+        remote.fetch_image(
+            "https://nowhere.invalid/a.png",
+            max_bytes=1000,
+            lookup=lambda host: remote.resolve("nowhere.invalid"),
+            opener=None,
+        )
+
+
+def test_a_certificate_for_another_host_is_a_clean_failure():
+    from urllib3.util.ssl_match_hostname import CertificateError
+
+    def opener(target, watchdog):
+        raise CertificateError("hostname 'img.example' doesn't match 'other.example'")
+
+    with pytest.raises(remote.RemoteImageError, match="The download failed"):
+        remote.fetch_image(
+            "https://img.example/a.png", max_bytes=1000, lookup=dns({"img.example": [PUBLIC]}), opener=opener
+        )
+
+
+def test_every_connection_is_closed_redirects_included():
+    closed = []
+
+    class Conn:
+        def __init__(self, name):
+            self.name = name
+
+        def close(self):
+            closed.append(self.name)
+
+    responses = [Response(302, {"Location": "/b.png"}), Response(body=image_bytes())]
+
+    def opener(target, watchdog):
+        watchdog.watch(Conn(target.path))
+        return responses.pop(0)
+
+    remote.fetch_image(
+        "https://img.example/a.png",
+        max_bytes=10_000_000,
+        lookup=dns({"img.example": [PUBLIC]}),
+        opener=opener,
+    )
+    assert closed == ["/a.png", "/b.png"]
