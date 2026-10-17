@@ -257,10 +257,11 @@ EXPORT_ALLOWED_ORIGINS = env.list(
     default=["/".join(SITE_URL.split("/")[:3]), "http://127.0.0.1:8000", "http://localhost:8000"],
 )
 
-# Server-side PNG/JPG/WebP export of a saved design page (apps.exports.services.export_image). The same
-# browser opens the frontend's headless render page and draws the page with the editor's engine. It must be
-# the *built* frontend's `render.html`: the Vite dev server serves modules from paths it may not load.
-SERVER_IMAGE_EXPORT_ENABLED = env.bool("SERVER_IMAGE_EXPORT_ENABLED", default=SERVER_PDF_ENABLED)
+# Server-side PNG/JPG/WebP export of a saved design page (apps.exports.services.export_image). Off by default:
+# turning it on opens the frontend's headless render page in the export browser with JavaScript enabled and
+# draws the page with the editor's engine. It must be the *built* frontend's `render.html`: the Vite dev
+# server serves modules from paths it may not load.
+SERVER_IMAGE_EXPORT_ENABLED = env.bool("SERVER_IMAGE_EXPORT_ENABLED", default=False)
 EXPORT_RENDER_PAGE_URL = env(
     "EXPORT_RENDER_PAGE_URL", default="/".join(SITE_URL.split("/")[:3]) + "/render.html"
 )

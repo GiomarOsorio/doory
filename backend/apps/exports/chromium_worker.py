@@ -13,8 +13,8 @@ Two modes share one locked-down browser:
 For both:
  * every request goes through `context.route`: `data:` URLs pass, same-origin `/media/` and `/static/`
    GETs are fetched by this process *without following redirects*, everything else is aborted and recorded;
- * Chromium cannot resolve host names at all (`--host-resolver-rules`), so even a routing bug has no
-   network to reach; service workers, downloads and permissions are off.
+ * Chromium cannot resolve host names at all (`--host-resolver-rules`) and WebRTC UDP is disabled, so even a
+   routing bug has no network to reach; service workers, downloads and permissions are off.
 """
 
 from __future__ import annotations
@@ -58,6 +58,8 @@ LAUNCH_ARGS = (
     "--mute-audio",
     "--force-color-profile=srgb",
     "--host-resolver-rules=MAP * ~NOTFOUND",
+    "--force-webrtc-ip-handling-policy",
+    "--webrtc-ip-handling-policy=disable_non_proxied_udp",
 )
 
 
