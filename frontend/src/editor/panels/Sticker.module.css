@@ -219,7 +219,8 @@
   margin: 2px -14px 0;
   padding: 2px 14px;
   overflow-x: auto;
-  scrollbar-width: none;
+  scrollbar-width: thin;
+  scrollbar-color: var(--ed-border) transparent;
 }
 .pack {
   flex: none;
@@ -236,7 +237,7 @@
 .pack:hover {
   color: var(--ed-text);
 }
-.pack[aria-selected='true'] {
+.pack[aria-pressed='true'] {
   border-color: var(--ed-accent);
   color: var(--ed-accent);
 }

@@ -74,11 +74,11 @@ describe('StickerPanel packs', () => {
     const elements = fakeElements()
     await open(elements)
     await chooseKind('icon')
-    const tabs = within(await screen.findByRole('tablist', { name: t.stickers.packs })).getAllByRole('tab')
+    const tabs = within(await screen.findByRole('group', { name: t.stickers.packs })).getAllByRole('button')
     expect(tabs.map((b) => b.textContent)).toEqual([t.stickers.allPacks, 'Tabler Outline', 'Bootstrap Icons Fill'])
     await userEvent.click(screen.getByTestId('sticker-pack-bootstrap-fill'))
     await waitFor(() => expect(lastQuery(elements)).toMatchObject({ kind: 'icon', pack: 'bootstrap-fill' }))
-    expect(screen.getByTestId('sticker-pack-bootstrap-fill')).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByTestId('sticker-pack-bootstrap-fill')).toHaveAttribute('aria-pressed', 'true')
   })
 
   it('resets the pack to All when the type no longer matches it', async () => {
@@ -94,7 +94,7 @@ describe('StickerPanel packs', () => {
     window.localStorage.setItem('doory.stickers.filter', JSON.stringify({ kind: 'icon', pack: 'bootstrap-fill' }))
     const elements = fakeElements()
     await open(elements)
-    expect(await screen.findByTestId('sticker-pack-bootstrap-fill')).toHaveAttribute('aria-selected', 'true')
+    expect(await screen.findByTestId('sticker-pack-bootstrap-fill')).toHaveAttribute('aria-pressed', 'true')
     await waitFor(() => expect(lastQuery(elements)).toMatchObject({ kind: 'icon', pack: 'bootstrap-fill' }))
     engine?.dispose()
     cleanup()
@@ -102,7 +102,7 @@ describe('StickerPanel packs', () => {
     window.localStorage.setItem('doory.stickers.filter', JSON.stringify({ kind: 'icon', pack: 'removed-pack' }))
     const again = fakeElements()
     await open(again)
-    expect(await screen.findByTestId('sticker-pack-all')).toHaveAttribute('aria-selected', 'true')
+    expect(await screen.findByTestId('sticker-pack-all')).toHaveAttribute('aria-pressed', 'true')
     await waitFor(() => expect(lastQuery(again)).toMatchObject({ kind: 'icon', pack: undefined }))
   })
 

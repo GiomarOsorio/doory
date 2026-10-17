@@ -75,9 +75,9 @@ export function StickerPanel() {
       <LibrarySearch value={query} onChange={setQuery} placeholder={t.stickers.search} clearLabel={t.stickers.clearSearch} testId="sticker-search" />
       <CategoryMenu name={t.stickers.category} label={label} entries={entries} activeId={kind} onSelect={selectKind} testId="sticker-category" />
       {visiblePacks.length >= 2 ? (
-        <div className={styles.packs} role="tablist" aria-label={t.stickers.packs} data-testid="sticker-packs">
+        <div className={styles.packs} role="group" aria-label={t.stickers.packs} data-testid="sticker-packs">
           {[{ slug: 'all', name: t.stickers.allPacks }, ...visiblePacks].map((p) => (
-            <button key={p.slug} type="button" role="tab" aria-selected={pack === p.slug} className={styles.pack} data-testid={`sticker-pack-${p.slug}`} onClick={() => setPack(p.slug)}>
+            <button key={p.slug} type="button" aria-pressed={pack === p.slug} className={styles.pack} data-testid={`sticker-pack-${p.slug}`} onClick={() => setPack(p.slug)}>
               {p.name}
             </button>
           ))}
