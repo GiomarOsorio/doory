@@ -115,6 +115,16 @@ class ImageResult:
     blocked_total: int = 0
 
 
+def page_index(page: int | str | None) -> int | str | None:
+    """A page as the API and MCP name it (its id, or its number counting from 1) as `export_image` takes it
+    (its id, or its 0-based index)."""
+    if isinstance(page, int) and not isinstance(page, bool):
+        if page < 1:
+            raise InvalidExport("page_not_found", "Pages are numbered from 1.")
+        return page - 1
+    return page
+
+
 def _pick_page(document: dict, page: int | str | None) -> tuple[dict, int]:
     pages = document.get("pages") if isinstance(document, dict) else None
     if not isinstance(pages, list) or not pages:
