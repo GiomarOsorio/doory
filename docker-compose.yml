@@ -46,11 +46,13 @@ services:
       DATABASE_URL: postgres://${POSTGRES_USER:-doory}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-doory}
       CACHE_URL: dbcache://doory_cache
       MEDIA_ROOT: /app/media
+      EXPORT_STORAGE_ROOT: /app/exports
       REDIS_URL: ${REDIS_URL:-}
-      # The headless render page of the image export, on the web container (see .env.example).
+      # The headless render page of the image export, on the web container (opt-in: SERVER_IMAGE_EXPORT_ENABLED=true).
       EXPORT_RENDER_PAGE_URL: ${EXPORT_RENDER_PAGE_URL:-http://doory-web:8080/render.html}
     volumes:
       - media:/app/media
+      - exports:/app/exports
       # Your own size presets (DOORY_SIZE_PRESETS_FILE=/config/size-presets.json in .env):
       # - ./config/size-presets.json:/config/size-presets.json:ro
     networks:
@@ -158,13 +160,15 @@ services:
       DATABASE_URL: postgres://${POSTGRES_USER:-doory}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-doory}
       CACHE_URL: dbcache://doory_cache
       MEDIA_ROOT: /app/media
+      EXPORT_STORAGE_ROOT: /app/exports
       REDIS_URL: ${REDIS_URL:-}
-      # The headless render page of the image export, on the web container (see .env.example).
+      # The headless render page of the image export, on the web container (opt-in: SERVER_IMAGE_EXPORT_ENABLED=true).
       EXPORT_RENDER_PAGE_URL: ${EXPORT_RENDER_PAGE_URL:-http://doory-web:8080/render.html}
       HEALTH_PORT: "8002"
       HEALTH_PATH: /mcp/health
     volumes:
       - media:/app/media
+      - exports:/app/exports
     networks:
       default:
         aliases: [doory-mcp]
@@ -224,3 +228,4 @@ services:
 volumes:
   pgdata:
   media:
+  exports:

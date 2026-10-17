@@ -234,6 +234,14 @@ def test_the_worker_command_runs_the_worker_module(tmp_path):
     )
 
 
+def test_the_browser_launch_flags_block_dns_and_webrtc():
+    from apps.exports.chromium_worker import LAUNCH_ARGS
+
+    assert "--host-resolver-rules=MAP * ~NOTFOUND" in LAUNCH_ARGS
+    assert "--force-webrtc-ip-handling-policy" in LAUNCH_ARGS
+    assert "--webrtc-ip-handling-policy=disable_non_proxied_udp" in LAUNCH_ARGS
+
+
 # ---- image mode ----------------------------------------------------------------------------------
 
 RENDER_URL = "http://frontend.test:8080/render.html"

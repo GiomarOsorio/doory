@@ -22,6 +22,7 @@ ENV PYTHONUNBUFFERED=1 \
     PATH="/opt/venv/bin:$PATH" \
     DJANGO_SETTINGS_MODULE=doory.settings.prod \
     MEDIA_ROOT=/app/media \
+    EXPORT_STORAGE_ROOT=/app/exports \
     PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
     WEB_CONCURRENCY=3 \
     SERVER_PDF_ENABLED=${INSTALL_CHROMIUM} \
@@ -41,8 +42,8 @@ RUN if [ "$INSTALL_CHROMIUM" = "true" ]; then \
 WORKDIR /app
 COPY --chown=doory:doory . .
 RUN chmod +x docker-entrypoint.sh \
-    && mkdir -p /app/media /app/staticfiles \
-    && chown doory:doory /app /app/media /app/staticfiles
+    && mkdir -p /app/media /app/exports /app/staticfiles \
+    && chown doory:doory /app /app/media /app/exports /app/staticfiles
 
 USER doory
 EXPOSE 8000 8001

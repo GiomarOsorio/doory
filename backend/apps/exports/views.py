@@ -1,6 +1,5 @@
 from django.conf import settings
 from django.core.exceptions import SuspiciousOperation, TooManyFilesSent
-from django.core.files.storage import default_storage
 from django.http import FileResponse, Http404, HttpResponse
 from django.shortcuts import get_object_or_404
 from django.utils.http import content_disposition_header
@@ -146,5 +145,9 @@ class ImageDownloadView(APIView):
         if found is None:
             raise Http404
         name, mime = found
-        response = FileResponse(default_storage.open(name, "rb"), content_type=mime)
-        return _file_headers(response, name.rsplit("/", 1)[-1], attachment=False)
+        try:
+            stream = delivery.export_storage().open(name, "rb")
+        except FileNotFoundError as exc:
+            raise Http404 from exc
+        response = FileResponse(stream, content_type=mime)
+        return _file_headers(response, name, attachment=False)

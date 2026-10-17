@@ -335,11 +335,11 @@ in your editor, the change appears live, like a co-editor's; with Redis it arriv
 seconds.
 
 Text heights reported to the assistant are estimates until the design is opened in the editor, which measures
-text exactly. `export_design` needs the server-side Chromium (`INSTALL_CHROMIUM=true`, the default) and reaches the
-web container's `render.html` (`EXPORT_RENDER_PAGE_URL`); images over 1 MB come back as a download link that
-expires after ten minutes. The same render is available to signed-in users at
-`POST /api/v1/designs/{id}/export/image/`. Revoke a token in the same settings page. Changing or resetting your password revokes all your
-tokens.
+text exactly. `export_design` is off by default (`SERVER_IMAGE_EXPORT_ENABLED=true` in `.env` turns it on; it
+needs `INSTALL_CHROMIUM=true`, the default, and reaches the web container's `render.html` at
+`EXPORT_RENDER_PAGE_URL`); images over 1 MB come back as a download link that expires after ten minutes. The
+same render is available to signed-in users at `POST /api/v1/designs/{id}/export/image/`. Revoke a token in
+the same settings page. Changing or resetting your password revokes all your tokens.
 
 ## FAQ
 

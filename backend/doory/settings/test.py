@@ -28,3 +28,4 @@ UNSPLASH_ACCESS_KEY = ""
 PEXELS_API_KEY = ""
 SERVER_PDF_ENABLED = True
 STATIC_ROOT = tempfile.mkdtemp(prefix="doory-test-static-")
+EXPORT_STORAGE_ROOT = tempfile.mkdtemp(prefix="doory-test-exports-")

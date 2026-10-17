@@ -258,10 +258,11 @@ EXPORT_ALLOWED_ORIGINS = env.list(
     default=["/".join(SITE_URL.split("/")[:3]), "http://127.0.0.1:8000", "http://localhost:8000"],
 )
 
-# Server-side PNG/JPG/WebP export of a saved design page (apps.exports.services.export_image). The same
-# browser opens the frontend's headless render page and draws the page with the editor's engine. It must be
-# the *built* frontend's `render.html`: the Vite dev server serves modules from paths it may not load.
-SERVER_IMAGE_EXPORT_ENABLED = env.bool("SERVER_IMAGE_EXPORT_ENABLED", default=SERVER_PDF_ENABLED)
+# Server-side PNG/JPG/WebP export of a saved design page (apps.exports.services.export_image). Off by default:
+# turning it on opens the frontend's headless render page in the export browser with JavaScript enabled and
+# draws the page with the editor's engine. It must be the *built* frontend's `render.html`: the Vite dev
+# server serves modules from paths it may not load.
+SERVER_IMAGE_EXPORT_ENABLED = env.bool("SERVER_IMAGE_EXPORT_ENABLED", default=False)
 EXPORT_RENDER_PAGE_URL = env(
     "EXPORT_RENDER_PAGE_URL", default="/".join(SITE_URL.split("/")[:3]) + "/render.html"
 )
@@ -312,5 +313,7 @@ MCP_CALLS_PER_MINUTE = env.int("MCP_CALLS_PER_MINUTE", default=120)  # per user;
 MCP_MAX_REQUEST_BYTES = env.int("MCP_MAX_REQUEST_BYTES", default=4 * 1024 * 1024)
 MCP_URL_UPLOADS = env.bool("MCP_URL_UPLOADS", default=True)  # upload_image_from_url (public https only)
 # export_design: larger images are sent as a download link instead of inline; links expire after the TTL.
+# Stored outside MEDIA_ROOT so `/media/` never serves them directly; `ImageDownloadView` is the only way in.
 MCP_EXPORT_INLINE_MAX_BYTES = env.int("MCP_EXPORT_INLINE_MAX_BYTES", default=1024 * 1024)
 MCP_EXPORT_URL_TTL_SECONDS = env.int("MCP_EXPORT_URL_TTL_SECONDS", default=600)
+EXPORT_STORAGE_ROOT = Path(env("EXPORT_STORAGE_ROOT", default=str(BASE_DIR / "exports")))

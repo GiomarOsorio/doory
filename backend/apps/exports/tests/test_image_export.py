@@ -178,7 +178,10 @@ def test_a_page_without_a_size_is_refused(user, renders):
     assert caught.value.get_codes() == "invalid_document"
 
 
-def test_the_switch_turns_it_off(design, renders, settings):
+def test_the_switch_is_off_by_default_and_turns_it_off(design, renders, settings):
+    from doory.settings import base
+
+    assert base.SERVER_IMAGE_EXPORT_ENABLED is False
     settings.SERVER_IMAGE_EXPORT_ENABLED = False
     with pytest.raises(ImageExportDisabled):
         services.export_image(design)

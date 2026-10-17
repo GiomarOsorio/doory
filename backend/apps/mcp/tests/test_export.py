@@ -136,6 +136,29 @@ def test_a_link_is_returned_on_request_and_serves_the_image_until_it_expires(
     assert anonymous.get(path).status_code == 404
 
 
+def test_stored_images_live_outside_public_media_storage(as_caller, design, renders, settings, rf):
+    from pathlib import Path
+
+    from django.core import signing
+    from django.core.files.storage import default_storage
+    from django.http import Http404
+    from django.views.static import serve
+
+    url = info_of(export.export_design(str(design.pk), delivery="url"))["url"]
+    token = url.rstrip("/").rsplit("/", 1)[-1]
+    name = signing.loads(token, salt=delivery.SALT)["name"]
+    storage = delivery.export_storage()
+    assert storage.exists(name)
+    assert not Path(storage.path(name)).resolve().is_relative_to(Path(settings.MEDIA_ROOT).resolve())
+    assert not default_storage.exists(name) and not default_storage.exists(f"exports/{name}")
+    with pytest.raises(ValueError, match="not accessible via a URL"):
+        storage.url(name)
+    for candidate in (name, f"exports/{name}"):
+        assert APIClient().get(f"{settings.MEDIA_URL}{candidate}").status_code == 404
+        with pytest.raises(Http404):
+            serve(rf.get(f"{settings.MEDIA_URL}{candidate}"), candidate, document_root=settings.MEDIA_ROOT)
+
+
 def test_images_too_large_to_send_inline_become_a_link(as_caller, design, renders, settings):
     settings.MCP_EXPORT_INLINE_MAX_BYTES = len(IMAGE) - 1
     info = info_of(export.export_design(str(design.pk)))
@@ -209,16 +232,16 @@ def test_the_image_is_an_image_block_on_the_wire(issued, user, renders):
 
 def test_expired_files_are_purged_by_name(settings):
     from django.core.files.base import ContentFile
-    from django.core.files.storage import default_storage
 
+    storage = delivery.export_storage()
     now = int(time.time())
-    old = default_storage.save(f"exports/{now - 700:010d}-{'a' * 32}.png", ContentFile(b"x"))
-    fresh = default_storage.save(f"exports/{now - 10:010d}-{'b' * 32}.png", ContentFile(b"x"))
-    stray = default_storage.save("exports/readme.txt", ContentFile(b"x"))
+    old = storage.save(f"{now - 700:010d}-{'a' * 32}.png", ContentFile(b"x"))
+    fresh = storage.save(f"{now - 10:010d}-{'b' * 32}.png", ContentFile(b"x"))
+    stray = storage.save("readme.txt", ContentFile(b"x"))
     try:
         assert delivery.purge_expired(now) == 1
-        assert not default_storage.exists(old)
-        assert default_storage.exists(fresh) and default_storage.exists(stray)
+        assert not storage.exists(old)
+        assert storage.exists(fresh) and storage.exists(stray)
     finally:
         for name in (fresh, stray):
-            default_storage.delete(name)
+            storage.delete(name)
