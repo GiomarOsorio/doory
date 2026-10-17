@@ -14,6 +14,8 @@ from apps.assets.ordering import order_queryset
 from apps.assets.uploads import reject_oversize_request
 
 from . import services
+from .doc.fields import list_fields
+from .edits import read_current
 from .exceptions import RevisionConflict
 from .models import Design, DesignVersion
 from .parsers import DesignJSONParser
@@ -25,6 +27,7 @@ from .serializers import (
     DesignSerializer,
     DesignSummarySerializer,
     DesignUpdateSerializer,
+    FieldSerializer,
     VersionCreateSerializer,
     VersionDetailSerializer,
     VersionSummarySerializer,
@@ -32,7 +35,7 @@ from .serializers import (
 from .services import THUMBNAIL_MAX_BYTES
 
 UUID_REGEX = "[0-9a-fA-F-]{36}"
-FULL_DOCUMENT_ACTIONS = {"retrieve", "restore", "duplicate"}
+FULL_DOCUMENT_ACTIONS = {"retrieve", "restore", "duplicate", "fields"}
 ORDERING = {
     "updated_at": F("updated_at"),
     "created_at": F("created_at"),
@@ -156,6 +159,17 @@ class DesignViewSet(viewsets.GenericViewSet):
     def duplicate(self, request, pk=None):
         copy = services.duplicate_design(self.get_object(), request.user)
         return Response(DesignSerializer(copy).data, status=status.HTTP_201_CREATED)
+
+    @extend_schema(
+        request=None,
+        responses=FieldSerializer(many=True),
+        description="The template fields of the design: tagged objects, one entry per key, and photo "
+        "placeholders without a tag (`key: null`).",
+    )
+    @action(detail=True, methods=["get"])
+    def fields(self, request, pk=None):
+        document, _live = read_current(self.get_object())
+        return Response(list_fields(document))
 
     @extend_schema(
         request={

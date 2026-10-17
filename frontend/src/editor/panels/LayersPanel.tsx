@@ -1,8 +1,9 @@
-import { ChevronDown, ChevronRight, Eye, EyeOff, Folder, GripVertical, Image as ImageIcon, Lock, Minus, QrCode, Shapes, Square, Type, Unlock } from 'lucide-react'
+import { ChevronDown, ChevronRight, Eye, EyeOff, Folder, GripVertical, Image as ImageIcon, Lock, Minus, QrCode, Shapes, Square, Tag, Type, Unlock } from 'lucide-react'
 import { useMemo, useRef, useState } from 'react'
 import type { DocObject } from '@/types/document'
 import { useEditor, useEditorState, useEditorStateShallow } from '../context'
 import { childrenOf } from '../engine/docOps'
+import { readField } from '../engine/fields'
 import { kindOfDoc } from '../engine/objects/kinds'
 import { useResolvedSrc } from '../hooks/useResolvedSrc'
 import { t } from '../strings'
@@ -102,6 +103,7 @@ export function LayersPanel() {
         const isGroup = kind === 'group'
         const expanded = open.has(obj.id)
         const label = labelOf(obj, kind)
+        const field = readField(obj.field)
         return (
           <div
             key={obj.id}
@@ -190,6 +192,11 @@ export function LayersPanel() {
                 {label}
               </span>
             )}
+            {field ? (
+              <span className={styles.fieldTag} title={t.panels.fieldLayer(field.key)} aria-label={t.panels.fieldLayer(field.key)} role="img">
+                <Tag size={12} />
+              </span>
+            ) : null}
             {readOnly ? null : (
               <span className={styles.toggles}>
                 <button type="button" tabIndex={-1} className={`${styles.toggle} ${locked ? styles.on : ''}`} aria-label={locked ? t.panels.unlockLayer : t.panels.lockLayer} aria-pressed={locked} onClick={(e) => { e.stopPropagation(); editor.arrange.setLocked(obj.id, !locked) }}>

@@ -9,6 +9,7 @@ from __future__ import annotations
 from typing import Any
 
 from .builders import primary_family
+from .fields import read_field
 from .kinds import object_kind
 from .ops import box
 
@@ -39,6 +40,9 @@ def summarize_object(obj: dict) -> dict:
         out["opacity"] = obj["opacity"]
     if obj.get("locked"):
         out["locked"] = True
+    tag = read_field(obj.get("field"))
+    if tag:
+        out["field"] = tag
     if obj.get("visible") is False:
         out["visible"] = False
     if kind == "text":

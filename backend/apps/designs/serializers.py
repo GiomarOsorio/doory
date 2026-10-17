@@ -215,3 +215,16 @@ class FolderWriteSerializer(serializers.Serializer):
                 f"Ensure this field has no more than {FOLDER_NAME_LENGTH} characters."
             )
         return name
+
+
+class FieldSerializer(serializers.Serializer):
+    """A template field (`doc/fields.py:list_fields`); for the API schema only."""
+
+    key = serializers.CharField(allow_null=True)
+    type = serializers.ChoiceField(choices=["text", "image", "color"])
+    label = serializers.CharField(allow_null=True)
+    pages = serializers.ListField(child=serializers.IntegerField())
+    object_ids = serializers.ListField(child=serializers.CharField())
+    current = serializers.JSONField(allow_null=True)
+    fit = serializers.JSONField(allow_null=True)
+    overflow = serializers.BooleanField()

@@ -2,8 +2,10 @@ import { Check, Group, LayoutGrid, Ungroup } from 'lucide-react'
 import { useState } from 'react'
 import { I } from '../../chrome/icons'
 import { useEditor, useEditorState, useSelection } from '../../context'
+import { FIELD_KEY, FIELD_LABEL_MAX, fieldTypeFor, keyClashes, readField } from '../../engine/fields'
 import { pxToUnit, unitDecimals, unitToPx } from '../../engine/units'
 import { t } from '../../strings'
+import type { FieldType } from '@/types/document'
 import { NumberField } from '../../ui/NumberField'
 import { Switch } from '../../ui/Switch'
 import { EffectsPanel } from '../effects'
@@ -69,6 +71,7 @@ export function OverflowSections() {
   const placeholderCapable = sel.kinds.every((k) => k === 'shape' || k === 'image')
   const list = typeof o.listStyle === 'string' ? o.listStyle : 'none'
   const isPlaceholder = o.isPlaceholder === true
+  const fieldType = sel.ids.length === 1 ? fieldTypeFor(sel.kinds[0]) : null
   return (
     <>
       {text ? (
@@ -92,6 +95,11 @@ export function OverflowSections() {
       <Accordion title={t.ctx.moreSectionLink} testId="more-link">
         <LinkPanel />
       </Accordion>
+      {fieldType ? (
+        <Accordion title={t.ctx.moreSectionField} testId="more-field">
+          <FieldPanel type={fieldType} />
+        </Accordion>
+      ) : null}
       {placeholderCapable ? (
         <Accordion title={t.ctx.placeholder} testId="more-placeholder">
           <ToggleRow label={isPlaceholder ? t.ctx.placeholderOff : t.ctx.placeholderOnTip} checked={isPlaceholder} onChange={(on) => editor.style.setPlaceholder(on)} />
@@ -235,6 +243,76 @@ export function LinkPanel() {
         <button type="button" className={`${ed.btn} ${ed.primary}`} disabled={!valid} onClick={() => editor.style.setLink(value)}>
           <Check size={14} aria-hidden="true" />
           {t.tools.linkApply}
+        </button>
+      </div>
+    </PopoverStack>
+  )
+}
+
+/** Tags the selected object as a template field: a key data can be filled in by, and an optional label. */
+export function FieldPanel({ type }: { type: FieldType }) {
+  const editor = useEditor()
+  const sel = useSelection()
+  const doc = useEditorState((s) => s.doc)
+  const current = readField(sel.objects[0]?.field)
+  const [key, setKey] = useState(current?.key ?? '')
+  const [label, setLabel] = useState(current?.label ?? '')
+  const page = doc.pages.findIndex((p) => p.id === sel.pageId) + 1
+  const valid = FIELD_KEY.test(key)
+  const clash = valid && keyClashes(doc, key, type, sel.ids[0] ?? '', page)
+  const apply = (): void => {
+    if (valid && !clash) editor.style.setField({ key, type, ...(label.trim() ? { label: label.trim() } : {}) })
+  }
+  return (
+    <PopoverStack width={248}>
+      <span className={styles.count}>{t.ctx.fieldType(type)}</span>
+      <input
+        className={ed.propInput}
+        value={key}
+        placeholder={t.ctx.fieldKeyPlaceholder}
+        aria-label={t.ctx.fieldKey}
+        aria-invalid={key !== '' && (!valid || clash)}
+        title={t.ctx.fieldKeyHint}
+        maxLength={40}
+        spellCheck={false}
+        onChange={(e) => setKey(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '_').slice(0, 40))}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') apply()
+        }}
+      />
+      <input
+        className={ed.propInput}
+        value={label}
+        placeholder={t.ctx.fieldLabelPlaceholder}
+        aria-label={t.ctx.fieldLabel}
+        maxLength={FIELD_LABEL_MAX}
+        onChange={(e) => setLabel(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') apply()
+        }}
+      />
+      {clash ? (
+        <span role="alert" className={styles.fieldError}>
+          {t.ctx.fieldDuplicate}
+        </span>
+      ) : null}
+      <div className={styles.actionsRow}>
+        {current ? (
+          <button
+            type="button"
+            className={`${ed.btn} ${ed.ghost}`}
+            onClick={() => {
+              editor.style.setField(null)
+              setKey('')
+              setLabel('')
+            }}
+          >
+            {t.ctx.fieldRemove}
+          </button>
+        ) : null}
+        <button type="button" className={`${ed.btn} ${ed.primary}`} disabled={!valid || clash} onClick={apply}>
+          <Check size={14} aria-hidden="true" />
+          {t.ctx.fieldApply}
         </button>
       </div>
     </PopoverStack>

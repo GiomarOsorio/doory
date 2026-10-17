@@ -118,6 +118,38 @@ def test_edit_design_explains_what_went_wrong_and_changes_nothing(as_caller, oth
     assert Design.objects.get(pk=design.pk).revision == 1
 
 
+def test_objects_can_be_tagged_as_template_fields_and_listed(as_caller, user, other, design):
+    text_id = design.document["pages"][0]["objects"][0]["id"]
+    tag = {"key": "headline", "type": "text", "label": "Headline"}
+    designs.edit_design(str(design.pk), [{"op": "update_object", "object_id": text_id, "field": tag}])
+    got = designs.list_fields(str(design.pk))["fields"]
+    assert [(f["key"], f["label"], f["current"]) for f in got] == [("headline", "Headline", "Hello")]
+    assert designs.get_design(str(design.pk))["pages"][0]["objects"][0]["field"] == tag
+    with pytest.raises(ToolError, match="can only be a text field"):
+        designs.edit_design(
+            str(design.pk),
+            [{"op": "update_object", "object_id": text_id, "field": {"key": "logo", "type": "image"}}],
+        )
+    added = designs.edit_design(str(design.pk), [{"op": "add_text", "text": "Second"}])
+    second = added["results"][0]["object_id"]
+    with pytest.raises(ToolError, match="already used"):
+        designs.edit_design(
+            str(design.pk),
+            [{"op": "update_object", "object_id": second, "field": {"key": "headline", "type": "text"}}],
+        )
+    designs.edit_design(str(design.pk), [{"op": "update_object", "object_id": text_id, "field": "none"}])
+    assert designs.list_fields(str(design.pk))["fields"] == []
+    with pytest.raises(ToolError, match="Not found"):
+        designs.list_fields(str(make_design(other).pk))
+
+
+def test_template_field_tags_come_along_from_a_template(as_caller):
+    doc = make_doc(objects=[{**text_object("Hello"), "field": {"key": "headline", "type": "text"}}])
+    make_template("Tagged", category=make_category(), document=doc)
+    created = designs.create_design(template="tagged")
+    assert [f["key"] for f in designs.list_fields(created["id"])["fields"]] == ["headline"]
+
+
 # ---------------------------------------------------------------------------------------------
 # Catalogue
 # ---------------------------------------------------------------------------------------------

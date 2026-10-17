@@ -168,3 +168,10 @@
     opacity: 1;
   }
 }
+
+.fieldTag {
+  display: inline-flex;
+  flex: none;
+  margin-right: 4px;
+  color: var(--color-brand);
+}

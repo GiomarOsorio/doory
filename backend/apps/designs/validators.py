@@ -11,6 +11,7 @@ import math
 import re
 from dataclasses import dataclass
 
+from .doc.fields import duplicate_keys
 from .exceptions import DocumentTooLarge, InlineAssetNotAllowed, InvalidDocument
 
 SUPPORTED_SCHEMA_VERSION = 1
@@ -300,6 +301,11 @@ def validate_document(doc: object, *, max_bytes: int) -> None:
     """Raise an API error (400 `invalid_document` / `inline_asset_not_allowed`, 413 `document_too_large`)."""
     _check_structure(doc)
     _walk(doc)
+    duplicates = duplicate_keys(doc)
+    if duplicates:
+        raise InvalidDocument(
+            f"Template field keys used twice on one page or with different types: {', '.join(duplicates)}."
+        )
     encoded = json.dumps(doc, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
     if len(encoded) > max_bytes:
         raise DocumentTooLarge(f"The design document is larger than {max_bytes / (1024 * 1024):g} MB.")

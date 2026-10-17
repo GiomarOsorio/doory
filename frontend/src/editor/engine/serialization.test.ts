@@ -79,6 +79,24 @@ describe('serialization', () => {
     c.dispose()
   })
 
+  it('keeps template field tags on text, shapes and placeholders', async () => {
+    const c = newCanvas()
+    const text = createTextbox(page, at, { text: 'Hi' })
+    const rect = createRect(at, 100, 0)
+    const slot = createPlaceholder(at, 200, 150)
+    asDory(text).field = { key: 'headline', type: 'text', label: 'Headline' }
+    asDory(rect).field = { key: 'accent', type: 'color' }
+    asDory(slot).field = { key: 'photo', type: 'image' }
+    c.add(text, rect, slot)
+    const out = await roundTrip(serializeObjects(c))
+    expect(out.map((o) => o.field)).toEqual([
+      { key: 'headline', type: 'text', label: 'Headline' },
+      { key: 'accent', type: 'color' },
+      { key: 'photo', type: 'image' },
+    ])
+    c.dispose()
+  })
+
   it('keeps shape descriptors (polygon sides, star points, line arrows)', async () => {
     const c = newCanvas()
     c.add(createPolygon(at, 100, 8), createLine(at, { length: 100, arrowEnd: 'open' }))

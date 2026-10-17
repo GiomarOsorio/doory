@@ -17,6 +17,7 @@ from pydantic import ValidationError as PydanticValidationError
 
 from . import builders, groups
 from .builders import Page
+from .fields import KIND_TYPES, FieldTag, duplicate_keys
 from .kinds import object_kind
 
 MAX_OPS = 200
@@ -250,6 +251,11 @@ class UpdateObject(_Op):
     name: Annotated[str, StringConstraints(max_length=120)] | None = None
     locked: bool | None = None
     visible: bool | None = None
+    field: FieldTag | Literal["none"] | None = Field(
+        None,
+        description="Tag the object as a template field (text boxes: text, pictures and placeholders: image, "
+        "shapes: color), so it can be found with list_fields and filled with data. `none` removes the tag.",
+    )
     props: dict[str, Any] | None = Field(
         None,
         description="Advanced: raw document properties to set (Fabric.js names, e.g. {'charSpacing': 200}). "
@@ -644,6 +650,8 @@ class _Editor:
             if kind != "text":
                 raise self.fail("Only text can be curved.")
             builders.apply_curve(obj, op.curve)
+        if op.field is not None:
+            self.set_field(obj, kind, op.field)
         if op.props:
             for key, value in op.props.items():
                 adapter = PROPS.get(key)
@@ -667,6 +675,22 @@ class _Editor:
             refit_text_height(obj)  # the text or its font changed: keep the box's centre
         self.resize(obj, kind, op)
         return {"object_id": obj["id"], "box": box(obj)}
+
+    def set_field(self, obj: dict, kind: str, tag: FieldTag | Literal["none"]) -> None:
+        if tag == "none":
+            obj.pop("field", None)
+            return
+        if KIND_TYPES.get(kind) != tag.type:
+            allowed = KIND_TYPES.get(kind)
+            if allowed is None:
+                raise self.fail(f"A {kind} can't be a template field.")
+            raise self.fail(f"This {kind} can only be a {allowed} field.")
+        obj["field"] = tag.document()
+        if tag.key in duplicate_keys(self.doc):
+            raise self.fail(
+                f"The field key `{tag.key}` is already used on this page or with another type; "
+                "a key appears once per page and has one type."
+            )
 
     def resize(self, obj: dict, kind: str, op: UpdateObject) -> None:
         """Apply x / y / width / height, keeping the box's other edges where they make sense."""

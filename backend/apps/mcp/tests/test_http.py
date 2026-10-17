@@ -11,6 +11,7 @@ from asgiref.sync import async_to_sync
 from apps.apitokens import services as tokens
 from apps.apitokens.scopes import DESIGNS_READ
 from apps.designs.models import Design
+from apps.designs.tests.helpers import make_doc
 from apps.mcp.server import build_app
 
 pytestmark = pytest.mark.django_db(transaction=True)  # tools run on worker threads with their own connections
@@ -115,6 +116,10 @@ def test_scopes_are_enforced(user):
     assert result["isError"] is True
     assert "designs:write" in result["content"][0]["text"]
     assert call(read_only.plaintext, "list_designs", {})["isError"] is False
+    design = Design.objects.create(
+        owner=user, title="T", width=10, height=10, document=make_doc(width=10, height=10)
+    )
+    assert call(read_only.plaintext, "list_fields", {"design_id": str(design.pk)})["isError"] is False
 
 
 def test_bad_arguments_are_explained(issued):

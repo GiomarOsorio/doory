@@ -6,6 +6,7 @@ import type { FabricObject } from 'fabric'
 import { newId } from '@/lib/document'
 import type {
   ArrowHead,
+  DocField,
   ImageFilterSpec,
   ListStyle,
   MaskShape,
@@ -40,6 +41,7 @@ export interface DoryProps {
   /** On a picture that fills a placeholder: the frame it stays inside (see objects/slot.ts). */
   slot?: SlotSpec
   link?: { url: string }
+  field?: DocField
   qr?: QrSpec
   /** The logical `src` stored in the document (may be `idb://…`); the live element uses a resolved URL. */
   docSrc?: string
