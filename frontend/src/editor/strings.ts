@@ -156,7 +156,13 @@ export const t = {
     stockBusy: (provider: string, seconds: number | null) => (seconds ? `${provider} is busy. Try again in ${seconds} s.` : `${provider} is busy. Try again shortly.`),
     stockBusyAll: (seconds: number | null) => (seconds ? `Photo search is busy. Try again in ${seconds} s.` : 'Photo search is busy. Try again shortly.'),
     stockStale: 'Showing earlier results while the photo service is unavailable.',
-    skipped: (skipped: string, shown: string) => `${skipped} unavailable, showing ${shown}`,
+    skippedReason: {
+      busy: (provider: string) => `${provider} is busy`,
+      timeout: (provider: string) => `${provider} didn’t answer in time`,
+      unavailable: (provider: string) => `${provider} is unavailable`,
+    },
+    skipped: (reasons: string, shown: string) => `${reasons}. Showing ${shown}.`,
+    listNames: (names: string[]) => (names.length < 2 ? (names[0] ?? '') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`),
     loadMore: 'Load more',
   },
   ctx: {

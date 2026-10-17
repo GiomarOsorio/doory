@@ -151,7 +151,7 @@ class TestSearch:
         assert (photo["width"], photo["height"], photo["author"]) == (4000, 3000, "Ada Lovelace")
         assert "utm_source=doory" in photo["author_url"] and "utm_source=doory" in photo["source_url"]
         call = net.calls[0]
-        assert call["params"] == {"page": 1, "per_page": 20, "query": "cat", "content_filter": "high"}
+        assert call["params"] == {"page": 1, "per_page": 20, "query": "cat"}
         assert call["headers"]["Authorization"] == "Client-ID unsplash-secret"
         assert call["allow_redirects"] is False and call["timeout"] == providers.API_TIMEOUT
 

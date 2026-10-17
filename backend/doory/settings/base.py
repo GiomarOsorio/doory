@@ -173,18 +173,19 @@ STOCK_ALL_PROVIDERS = env.list("STOCK_ALL_PROVIDERS", default=[])  # searched by
 STOCK_ALL_TIMEOUT_SECONDS = env.float("STOCK_ALL_TIMEOUT_SECONDS", default=4.0)
 STOCK_DEFAULT_TAB = env("STOCK_DEFAULT_TAB", default="all")  # "all" or a provider name
 STOCK_LANG_FROM_UI = env.bool("STOCK_LANG_FROM_UI", default=True)
-STOCK_PIXABAY_IMAGE_TYPE = env(
-    "STOCK_PIXABAY_IMAGE_TYPE", default="photo"
-)  # photo, illustration, vector, all
-# Search cache time and calls allowed per API key (all users together), per provider.
-_STOCK_DEFAULTS = {"unsplash": (3600, "50/h"), "pexels": (3600, "200/h"), "pixabay": (86400, "100/m")}
+# photo, illustration, vector or all
+STOCK_PIXABAY_IMAGE_TYPE = env("STOCK_PIXABAY_IMAGE_TYPE", default="photo")
+# Per provider: search cache time; calls allowed per API key, all users together ("100/m", "5000/h"; empty: no
+# cap of our own, Doory still pauses a provider when it answers 429 or reports its quota used up); safe search
+# (Unsplash: content_filter=high; Pixabay: safesearch). Unsplash keeps its previous unfiltered default.
+_STOCK_DEFAULTS = {"unsplash": (3600, False), "pexels": (3600, True), "pixabay": (86400, True)}
 STOCK_PROVIDER_SETTINGS = {
     name: {
         "cache_seconds": env.int(f"STOCK_{name.upper()}_CACHE_SECONDS", default=cache_seconds),
-        "rate": env(f"STOCK_{name.upper()}_RATE", default=rate),
-        "safesearch": env.bool(f"STOCK_{name.upper()}_SAFESEARCH", default=True),
+        "rate": env(f"STOCK_{name.upper()}_RATE", default=""),
+        "safesearch": env.bool(f"STOCK_{name.upper()}_SAFESEARCH", default=safesearch),
     }
-    for name, (cache_seconds, rate) in _STOCK_DEFAULTS.items()
+    for name, (cache_seconds, safesearch) in _STOCK_DEFAULTS.items()
 }
 
 # ---- DRF ----

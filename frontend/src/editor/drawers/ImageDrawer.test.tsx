@@ -125,7 +125,58 @@ describe('ImageDrawer stock photos', () => {
       search: vi.fn(async () => page('all', [photo('unsplash', 'u1')], { skipped: [{ provider: 'pexels', reason: 'busy', retry_after: 30 }] })),
     })
     await open(stock)
-    expect(await screen.findByTestId('stock-skipped')).toHaveTextContent(t.imageDrawer.skipped('Pexels', 'Unsplash and Pixabay'))
+    expect(await screen.findByTestId('stock-skipped')).toHaveTextContent('Pexels is busy. Showing Unsplash.')
+    // Only the providers whose photos are on screen are credited.
+    expect(screen.getByTestId('stock-attribution')).toHaveTextContent(/^Photos from Unsplash$/)
+  })
+
+  it('names why each provider was skipped', async () => {
+    const stock = fakeStock({
+      search: vi.fn(async () =>
+        page('all', [photo('unsplash', 'u1')], {
+          skipped: [
+            { provider: 'pexels', reason: 'timeout', retry_after: null },
+            { provider: 'pixabay', reason: 'unavailable', retry_after: null },
+          ],
+        }),
+      ),
+    })
+    await open(stock)
+    expect(await screen.findByTestId('stock-skipped')).toHaveTextContent('Pexels didn’t answer in time, Pixabay is unavailable. Showing Unsplash.')
+  })
+
+  it('does not carry an All cursor into a provider tab when the answer arrives after the switch', async () => {
+    let answerAll: ((p: StockPage) => void) | null = null
+    const stock = fakeStock({
+      search: vi.fn((_q: string, p: number | string, provider?: string) => {
+        if (provider === 'all') return new Promise<StockPage>((resolve) => (answerAll = resolve))
+        return Promise.resolve(page('pexels', [photo('pexels', `p${String(p)}`)], { next_page: p === 1 ? 2 : null, total: 99 }))
+      }),
+    })
+    let fire: (() => void) | null = null
+    vi.stubGlobal(
+      'IntersectionObserver',
+      class {
+        constructor(cb: IntersectionObserverCallback) {
+          fire = () => cb([{ isIntersecting: true } as IntersectionObserverEntry], this as unknown as IntersectionObserver)
+        }
+        observe() {}
+        disconnect() {}
+      },
+    )
+    try {
+      await open(stock)
+      await waitFor(() => expect(answerAll).not.toBeNull())
+      await userEvent.click(screen.getByTestId('stock-source-pexels'))
+      await screen.findAllByTestId('stock-photo')
+      await act(async () => answerAll?.(page('all', [photo('unsplash', 'u1')], { next_page: 'CURSOR', total: 99 })))
+      await act(async () => fire?.())
+      await waitFor(() => expect(stock.search).toHaveBeenLastCalledWith('nature', 2, 'pexels'))
+      expect(stock.search).not.toHaveBeenCalledWith('nature', 'CURSOR', 'pexels')
+      expect((await screen.findAllByTestId('stock-photo')).map((b) => b.getAttribute('title'))).toEqual(['Photo by Ada on Pexels', 'Photo by Ada on Pexels'])
+    } finally {
+      vi.unstubAllGlobals()
+    }
   })
 
   it('pages on with the cursor the All search returned', async () => {

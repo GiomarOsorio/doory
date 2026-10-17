@@ -34,7 +34,7 @@ def config_for(name: str) -> StockConfig:
     return StockConfig(
         cache_seconds=max(0, int(values.get("cache_seconds", 3600))),
         rate=str(values.get("rate", "")),
-        safesearch=bool(values.get("safesearch", True)),
+        safesearch=bool(values.get("safesearch", False)),
     )
 
 
@@ -78,6 +78,8 @@ def acquire(name: str, rate: str) -> int | None:
     window = int(now // period)
     key = f"stock:rate:{name}:{period}:{window}"
     cache.add(key, 0, period + 5)
+    # incr is atomic on Redis and locmem but a read-then-write on the database cache, so there it can count a
+    # little low under load; the provider's own 429 and rate-limit headers (see `pause`) are the backstop.
     try:
         used = cache.incr(key)
     except ValueError:  # expired between add and incr

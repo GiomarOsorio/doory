@@ -204,8 +204,11 @@
   color: var(--color-on-brand);
   font: 500 10px / 1.2 var(--font-sans);
   text-align: left;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  /* Two lines, so "on Unsplash" isn't cut off behind a long name; the button's title has it all. */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
   opacity: 0;
   transition: opacity var(--ed-dur);
 }

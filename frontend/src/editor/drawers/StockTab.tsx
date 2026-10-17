@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { isApiError } from '@/lib/api'
 import { safeGetItem, safeSetItem } from '@/lib/storage'
-import type { StockPhoto, StockProviders } from '@/types/api'
+import type { StockPhoto, StockProviders, StockSkipped } from '@/types/api'
 import { I } from '../chrome/icons'
 import { useEditor } from '../context'
 import { useAsyncList } from '../hooks/useAsyncList'
@@ -29,10 +29,6 @@ function stockFailure(error: unknown, label: string | null): string {
   return t.imageDrawer.stockFailed
 }
 
-function listNames(names: string[]): string {
-  return names.length < 2 ? (names[0] ?? '') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
-}
-
 /** Stock tab: search free photos, add one (the server imports it with its attribution). */
 export function StockTab({ close }: PanelProps) {
   const editor = useEditor()
@@ -44,9 +40,10 @@ export function StockTab({ close }: PanelProps) {
   const [importing, setImporting] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [failure, setFailure] = useState<string | null>(null)
-  const [notice, setNotice] = useState<{ skipped: string[]; stale: boolean }>({ skipped: [], stale: false })
-  // `all` pages on with a cursor rather than a number: the cursor for page n, from page n - 1's answer.
-  const cursors = useRef(new Map<number, string>())
+  const [notice, setNotice] = useState<{ skipped: StockSkipped[]; stale: boolean }>({ skipped: [], stale: false })
+  // `all` pages on with a cursor rather than a number: the cursor for page n, from page n - 1's answer. They
+  // belong to one list (tab and search); an answer for another list, still in flight after a switch, is ignored.
+  const cursors = useRef<{ list: string; pages: Map<number, string> }>({ list: '', pages: new Map() })
 
   useEffect(() => {
     if (!stock) return
@@ -72,23 +69,27 @@ export function StockTab({ close }: PanelProps) {
     safeSetItem(STOCK_TAB_KEY, next)
   }
 
+  const list = `${source}\u0000${q}`
   const photos = useAsyncList<StockPhoto>(
     async (page) => {
       if (!stock) throw new Error(t.imageDrawer.stockOff)
-      if (page === 1) cursors.current.clear()
+      if (page === 1) cursors.current = { list, pages: new Map() }
+      const current = (): boolean => cursors.current.list === list
+      const cursor = source === ALL && current() ? cursors.current.pages.get(page) : undefined
       setFailure(null)
       try {
-        const res = await stock.search(q || 'nature', cursors.current.get(page) ?? page, source || undefined)
-        if (typeof res.next_page === 'string') cursors.current.set(page + 1, res.next_page)
-        const skipped = (res.skipped ?? []).map((s) => s.provider)
+        const res = await stock.search(q || 'nature', cursor ?? page, source || undefined)
+        if (!current()) return { count: 0, next: null, previous: null, results: [] } // dropped by useAsyncList
+        if (typeof res.next_page === 'string') cursors.current.pages.set(page + 1, res.next_page)
+        const skipped = res.skipped ?? []
         setNotice((cur) => ({ skipped: page === 1 ? skipped : cur.skipped, stale: page === 1 ? Boolean(res.stale) : cur.stale || Boolean(res.stale) }))
         return { count: res.total, next: res.next_page === null ? null : String(res.next_page), previous: null, results: res.results }
       } catch (err) {
-        setFailure(stockFailure(err, source && source !== ALL ? label(source) : null))
+        if (current()) setFailure(stockFailure(err, source && source !== ALL ? label(source) : null))
         throw err
       }
     },
-    `${source}\u0000${q}`,
+    list,
     stock !== null && info !== null,
   )
   const searchId = useId()
@@ -124,8 +125,10 @@ export function StockTab({ close }: PanelProps) {
   }
 
   const tabs = info ? [...(info.all.length > 1 ? [ALL] : []), ...info.providers.map((p) => p.name)] : []
-  const credited = info ? info.providers.filter((p) => (source === ALL ? info.all.includes(p.name) : p.name === source)) : []
-  const shownNames = credited.map((p) => p.label).filter((name) => !notice.skipped.map(label).includes(name))
+  // Credit the providers whose photos are on screen.
+  const onScreen = new Set(photos.items.map((p) => p.provider))
+  const credited = (info?.providers ?? []).filter((p) => onScreen.has(p.name))
+  const skippedNote = notice.skipped.map((s) => t.imageDrawer.skippedReason[s.reason](label(s.provider))).join(', ')
 
   return (
     <>
@@ -144,7 +147,7 @@ export function StockTab({ close }: PanelProps) {
       </label>
       {notice.skipped.length > 0 && photos.items.length > 0 ? (
         <p className={styles.note} role="status" data-testid="stock-skipped">
-          {t.imageDrawer.skipped(listNames(notice.skipped.map(label)), listNames(shownNames))}
+          {t.imageDrawer.skipped(skippedNote, t.imageDrawer.listNames(credited.map((p) => p.label)))}
         </p>
       ) : null}
       {notice.stale && photos.items.length > 0 ? <p className={styles.note}>{t.imageDrawer.stockStale}</p> : null}

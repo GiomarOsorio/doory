@@ -38,6 +38,7 @@ RESOLVE_CACHE_SECONDS = 10 * 60
 LOCK_SECONDS = 15
 LOCK_WAIT_SECONDS = 3.0
 LOCK_POLL_SECONDS = 0.1
+SEARCH_THREADS = 8  # shared by every "All" search in this process; more requests wait their turn
 DEFAULT_PER_PAGE = 24
 MAX_PAGE = 100
 PROVIDER_CHOICES = tuple(providers.PROVIDERS)
@@ -100,7 +101,12 @@ def cached_search(
     payload = cache.get(key)
     if payload is not None:
         return payload
-    if not cache.add(f"{key}:lock", 1, LOCK_SECONDS):
+    # Never keep results, fresh or stale, past the lifetime of the image URLs in them.
+    lifetime = provider.url_lifetime_seconds
+    seconds = min(provider.config.cache_seconds, lifetime or provider.config.cache_seconds)
+    # Without caching there is nothing to wait for; otherwise one request asks and the others read its answer.
+    locked = bool(seconds) and cache.add(f"{key}:lock", 1, LOCK_SECONDS)
+    if seconds and not locked:
         payload = _wait_for(key)  # someone else is asking the provider for exactly this
         if payload is not None:
             return payload
@@ -119,9 +125,6 @@ def cached_search(
             "next_page": found.next_page,
             "results": [photo.as_dict() for photo in found.photos],
         }
-        # Never keep results, fresh or stale, past the lifetime of the image URLs in them.
-        lifetime = provider.url_lifetime_seconds
-        seconds = min(provider.config.cache_seconds, lifetime or provider.config.cache_seconds)
         if seconds and found.photos:
             cache.set(key, payload, seconds)
             stale_seconds = min(seconds * 2, lifetime or seconds * 2)
@@ -131,7 +134,8 @@ def cached_search(
             cache.set(key, payload, min(seconds, EMPTY_CACHE_SECONDS))
         return payload
     finally:
-        cache.delete(f"{key}:lock")
+        if locked:  # only the holder releases it; a waiter that gave up must not free someone else's lock
+            cache.delete(f"{key}:lock")
 
 
 def _encode_cursor(pages: dict[str, int]) -> str | None:
@@ -162,6 +166,9 @@ def _decode_cursor(cursor: str, names: list[str]) -> dict[str, int]:
     return pages
 
 
+_POOL = ThreadPoolExecutor(max_workers=SEARCH_THREADS, thread_name_prefix="stock-search")
+
+
 def _search_in_thread(provider: providers.StockProvider, *args: Any) -> dict[str, Any]:
     try:
         return cached_search(provider, *args)
@@ -173,13 +180,14 @@ def search_all(
     chosen: list[providers.StockProvider], pages: dict[str, int], query: str, per_page: int, lang: str
 ) -> dict[str, Any]:
     """Search `chosen` (each at its page) in parallel and mix the results in turn: U1, Px1, Pb1, U2, …"""
-    pool = ThreadPoolExecutor(max_workers=len(chosen), thread_name_prefix="stock-search")
     futures = {
-        pool.submit(_search_in_thread, provider, query, pages[provider.name], per_page, lang): provider
+        _POOL.submit(_search_in_thread, provider, query, pages[provider.name], per_page, lang): provider
         for provider in chosen
     }
     done, _ = wait(futures, timeout=settings.STOCK_ALL_TIMEOUT_SECONDS)
-    pool.shutdown(wait=False)  # a slow provider finishes in the background and still fills the cache
+    for future in futures:
+        # One still queued is dropped; one already running finishes in the background and fills the cache.
+        future.cancel()
     found: dict[str, dict[str, Any]] = {}
     skipped: list[dict[str, Any]] = []
     for future, provider in futures.items():
@@ -206,9 +214,10 @@ def search_all(
                 seen.add((photo["provider"], photo["id"]))
                 results.append(photo)
     caps = {provider.name: provider.max_results for provider in chosen}
-    # A skipped provider keeps the page it was asked for, so "Load more" asks it again rather than losing it.
+    # A busy or slow provider keeps the page it was asked for, so "Load more" asks it again.
     next_pages = {n: p["next_page"] for n, p in found.items() if p["next_page"]}
-    next_pages.update({s["provider"]: pages[s["provider"]] for s in skipped})
+    # Not one that failed outright (a revoked key, say): asking it again would only fail again.
+    next_pages.update({s["provider"]: pages[s["provider"]] for s in skipped if s["reason"] != "unavailable"})
     payload: dict[str, Any] = {
         "configured": True,
         "provider": ALL,

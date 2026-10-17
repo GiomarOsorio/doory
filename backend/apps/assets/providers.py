@@ -311,7 +311,8 @@ class UnsplashProvider(StockProvider):
         return _UNSPLASH_ID.fullmatch(photo_id) is not None
 
     def search_options(self, lang: str = "") -> dict[str, str]:
-        return {"content_filter": "high" if self.config.safesearch else "low"}
+        # Off sends nothing, exactly the request Doory made before the setting existed.
+        return {"content_filter": "high"} if self.config.safesearch else {}
 
     def _photo(self, item: object) -> StockPhoto | None:
         if not isinstance(item, dict) or not isinstance(item.get("id"), str):

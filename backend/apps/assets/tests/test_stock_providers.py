@@ -127,6 +127,14 @@ class TestPixabaySearch:
         api.get(SEARCH, {"q": "Blume", **({"lang": lang} if lang else {})})
         assert last_params(net)["lang"] == sent
 
+    def test_unsplash_safe_search_when_turned_on(self, api, net, settings):
+        settings.UNSPLASH_ACCESS_KEY = "u"
+        values = settings.STOCK_PROVIDER_SETTINGS
+        settings.STOCK_PROVIDER_SETTINGS = {**values, "unsplash": {**values["unsplash"], "safesearch": True}}
+        net.add(UNSPLASH_SEARCH, FakeResponse(payload={"total": 1, "results": [unsplash_item()]}))
+        api.get(SEARCH, {"q": "x", "provider": "unsplash"})
+        assert last_params(net)["content_filter"] == "high"
+
     def test_ui_language_can_be_turned_off(self, api, pixabay, net, settings):
         settings.STOCK_LANG_FROM_UI = False
         net.add(PIXABAY_API, pixabay_page([pixabay_item()]))
@@ -302,9 +310,13 @@ class TestConfig:
         assert stocklimits.parse_rate(rate) == parsed
 
     def test_defaults(self, settings):
-        assert stocklimits.config_for("unsplash") == stocklimits.StockConfig(3600, "50/h", True)
-        assert stocklimits.config_for("pexels") == stocklimits.StockConfig(3600, "200/h", True)
-        assert stocklimits.config_for("pixabay") == stocklimits.StockConfig(86400, "100/m", True)
+        # No cap of our own unless STOCK_<P>_RATE is set, and Unsplash unfiltered as before.
+        assert stocklimits.config_for("unsplash") == stocklimits.StockConfig(3600, "", False)
+        assert stocklimits.config_for("pexels") == stocklimits.StockConfig(3600, "", True)
+        assert stocklimits.config_for("pixabay") == stocklimits.StockConfig(86400, "", True)
+
+    def test_no_cap_unless_a_rate_is_set(self, db):
+        assert all(stocklimits.acquire("pixabay", "") is None for _ in range(500))
 
     def test_stock_providers_sets_order_and_turns_providers_off(self, every, settings):
         settings.STOCK_PROVIDERS = ["Pixabay", "unsplash", "nope"]
@@ -345,6 +357,26 @@ class TestCaching:
         answer = {"configured": True, "provider": "pixabay", "total": 0, "next_page": None, "results": []}
         monkeypatch.setattr(stock.time, "sleep", lambda s: cache.set(key, answer, 60))
         assert api.get(SEARCH, {"q": "x"}).json() == answer and net.calls == []
+
+    def test_a_waiter_that_gives_up_leaves_the_holders_lock(self, api, pixabay, net, monkeypatch):
+        options = providers.PROVIDERS["pixabay"].search_options("")
+        lock = f"{stock._cache_key('pixabay', options, 'x', 1, stock.DEFAULT_PER_PAGE)}:lock"
+        cache.add(lock, 1, 30)
+        monkeypatch.setattr(stock, "LOCK_WAIT_SECONDS", 0.05)
+        monkeypatch.setattr(stock, "LOCK_POLL_SECONDS", 0.01)
+        net.add(PIXABAY_API, pixabay_page([pixabay_item()]))
+        api.get(SEARCH, {"q": "x"})
+        assert cache.get(lock) == 1
+
+    def test_without_caching_there_is_no_lock_and_no_wait(self, api, pixabay, net, monkeypatch, settings):
+        set_cache(settings, "pixabay", 0)
+        options = providers.PROVIDERS["pixabay"].search_options("")
+        cache.add(f"{stock._cache_key('pixabay', options, 'x', 1, stock.DEFAULT_PER_PAGE)}:lock", 1, 30)
+        monkeypatch.setattr(stock, "_wait_for", lambda key: pytest.fail("waited for a cache that is off"))
+        net.add(PIXABAY_API, pixabay_page([pixabay_item()]))
+        assert api.get(SEARCH, {"q": "x"}).status_code == 200
+        api.get(SEARCH, {"q": "x"})
+        assert len(net.calls) == 2
 
     def test_a_stuck_lock_does_not_block_forever(self, api, pixabay, net, monkeypatch):
         options = providers.PROVIDERS["pixabay"].search_options("")
@@ -500,6 +532,12 @@ class TestAllSearch:
         assert body["provider"] == "all" and body["skipped"] == [] and body["total"] == 60 + 2 + 500
         assert json.loads(base64.urlsafe_b64decode(body["next_page"] + "==")) == {"pixabay": 2, "unsplash": 2}
 
+    def test_searches_share_one_bounded_pool(self, api, every, net, monkeypatch):
+        monkeypatch.setattr(stock, "ThreadPoolExecutor", lambda *a, **k: pytest.fail("a pool per request"))
+        stub_all(net)
+        assert api.get(SEARCH, {"q": "x", "provider": "all"}).status_code == 200
+        assert stock._POOL._max_workers == stock.SEARCH_THREADS
+
     def test_no_duplicates(self, api, every, net):
         same = FakeResponse(
             payload={"total": 2, "results": [unsplash_item("uuuuu1"), unsplash_item("uuuuu1")]}
@@ -542,8 +580,34 @@ class TestAllSearch:
             {"provider": "pexels", "reason": "unavailable", "retry_after": None},
             {"provider": "pixabay", "reason": "busy", "retry_after": 9},
         ]
-        # The skipped providers stay in the cursor at the page they missed.
-        assert body["next_page"] == cursor({"pexels": 1, "pixabay": 1, "unsplash": 2})
+        # The busy provider stays in the cursor at the page it missed; the one that failed outright does not.
+        assert body["next_page"] == cursor({"pixabay": 1, "unsplash": 2})
+
+    def test_a_failing_provider_is_not_asked_again(self, api, every, net):
+        stub_all(net, pixabay=FakeResponse(status=403))
+        body = api.get(SEARCH, {"q": "x", "provider": "all", "cursor": cursor({"pixabay": 2})})
+        assert body.status_code == 502
+        body = api.get(
+            SEARCH, {"q": "x", "provider": "all", "cursor": cursor({"pixabay": 2, "unsplash": 2})}
+        ).json()
+        assert body["next_page"] == cursor({"unsplash": 3})
+
+    def test_a_timed_out_provider_keeps_its_page(self, api, every, net, settings):
+        settings.STOCK_ALL_TIMEOUT_SECONDS = 0.1
+        release = threading.Event()
+
+        def slow():
+            release.wait(5)
+            return pixabay_page([pixabay_item(7)])
+
+        stub_all(net, pixabay=slow)
+        try:
+            body = api.get(
+                SEARCH, {"q": "x", "provider": "all", "cursor": cursor({"pixabay": 3, "unsplash": 2})}
+            ).json()
+            assert body["next_page"] == cursor({"pixabay": 3, "unsplash": 3})
+        finally:
+            release.set()
 
     def test_a_skipped_provider_keeps_its_page(self, api, every, net):
         stub_all(net, pixabay=FakeResponse(status=429, headers={"Retry-After": "9"}))
