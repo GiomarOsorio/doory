@@ -101,7 +101,7 @@ describe('the sizes of the chosen pages', () => {
     expect(sizeLabel({ width: 794, height: 1123 }, 'px')).toBe('A4')
     expect(sizeLabel({ width: 1123, height: 794 }, 'px')).toBe('A4')
     expect(sizeLabel({ width: 816, height: 1056 }, 'px')).toBe('US Letter')
-    expect(sizeLabel({ width: 336, height: 192 }, 'px')).toBe('Business card')
+    expect(sizeLabel({ width: 336, height: 192 }, 'px')).toBe('Business Card')
     expect(sizeLabel({ width: 1080, height: 1080 }, 'px')).toBe('1080×1080')
     expect(sizeLabel({ width: 1080, height: 1080 }, 'mm')).toBe('285.8×285.8 mm')
     expect(sizeLabel({ width: 1000, height: 500 }, 'in')).toBe('10.42×5.21 in')

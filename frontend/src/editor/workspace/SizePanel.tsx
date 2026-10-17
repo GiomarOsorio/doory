@@ -3,7 +3,7 @@ import { useDocument, useEditor } from '../context'
 import type { ResizeMode } from '../engine/magicResize'
 import type { ResizeScope } from '../engine/api/pages'
 import { getPageSize, sameSize } from '../engine/pageSizes'
-import { SIZE_PRESETS } from '../engine/presets'
+import { useSizePresets, type SizePreset } from '@/lib/sizePresets'
 import { pxToUnit, unitDecimals, unitToPx } from '../engine/units'
 import { type DocUnit } from '@/types/document'
 import { t } from '../strings'
@@ -50,6 +50,7 @@ export function SizePanel({ close, pageId, defaultScope, showFlip = false }: Siz
   const [w, setW] = useState(() => show(current.width))
   const [h, setH] = useState(() => show(current.height))
   const [mode, setMode] = useState<ResizeMode>('scale')
+  const catalogue = useSizePresets()
 
   const rangeId = useId()
   // The limit as it reads in the chosen unit; a value typed outside it is pulled back in when the field is left.
@@ -90,7 +91,7 @@ export function SizePanel({ close, pageId, defaultScope, showFlip = false }: Siz
     close()
   }
   // A short list of paper sizes; the Resize dialog has the full catalogue.
-  const presets = QUICK_PRESETS.map((id) => SIZE_PRESETS.find((p) => p.id === id)).filter((p): p is (typeof SIZE_PRESETS)[number] => p !== undefined)
+  const presets = QUICK_PRESETS.map((id) => catalogue.byId.get(id)).filter((p): p is SizePreset => p !== undefined)
 
   return (
     <div className={styles.sizePop} role="group" aria-label={t.canvasSize.title} data-testid="ed-canvas-size-pop" data-page-id={pageId}>

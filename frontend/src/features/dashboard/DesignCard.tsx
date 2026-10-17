@@ -2,6 +2,7 @@ import { Copy, ExternalLink, FolderInput, MoreHorizontal, Pencil, Star, Trash2 }
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { designKind, getPreset } from '@/features/presets'
+import { useSizePresets } from '@/lib/sizePresets'
 import { formatRelative } from '@/lib/time'
 import type { DesignSummary } from '@/types/api'
 import { Checkbox, IconButton, Menu, MenuItem, MenuSeparator, Thumbnail } from '@/ui'
@@ -24,6 +25,7 @@ export interface DesignCardProps {
 
 export function DesignCard({ design, layout, selected, selectionActive, dragIds, onSelectChange, actions, onMoveRequest }: DesignCardProps) {
   const [renaming, setRenaming] = useState(false)
+  const catalogue = useSizePresets()
   const title = design.title || 'Untitled design'
 
   return (
@@ -64,9 +66,9 @@ export function DesignCard({ design, layout, selected, selectionActive, dragIds,
           </Link>
         )}
         <p className={styles.meta}>
-          {designKind(design)} · {formatRelative(design.updated_at)}
+          {designKind(design, catalogue)} · {formatRelative(design.updated_at)}
           <span className={styles.extra}>
-            {getPreset(design.preset) ? ` · ${design.width} × ${design.height}` : ''}
+            {getPreset(design.preset, catalogue) ? ` · ${design.width} × ${design.height}` : ''}
             {design.page_count > 1 ? ` · ${design.page_count} pages` : ''}
           </span>
         </p>

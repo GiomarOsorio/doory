@@ -2,7 +2,8 @@ import { ArrowRight } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { DesignTile } from '@/features/dashboard/DesignTile'
 import bunny from '@/assets/bunny-sticker.webp'
-import { createUrl, getPreset, presetParts, QUICK_PRESET_IDS } from '@/features/presets'
+import { createUrl, presetParts } from '@/features/presets'
+import { quickPresets, useSizePresets } from '@/lib/sizePresets'
 import { TemplateCard } from '@/features/templates/TemplateCard'
 import { useDesignsList, useTemplatesList } from '@/lib/api/hooks'
 import { usePageTitle } from '@/lib/usePageTitle'
@@ -24,6 +25,7 @@ function TileSkeletons({ count }: { count: number }) {
 }
 
 export default function HomePage() {
+  const catalogue = useSizePresets()
   usePageTitle('Home')
   const recent = useDesignsList({ ordering: '-updated_at', page_size: 8 })
   const starred = useDesignsList({ starred: true, ordering: '-updated_at', page_size: 4 })
@@ -45,14 +47,12 @@ export default function HomePage() {
           </div>
         </div>
         <ul className={homeStyles.chips}>
-          {QUICK_PRESET_IDS.map((id) => {
-            const preset = getPreset(id)
-            if (!preset) return null
+          {quickPresets(catalogue).map((preset) => {
             const { name, detail } = presetParts(preset)
             const wide = preset.width >= preset.height
             return (
-              <li key={id}>
-                <Link to={createUrl({ presetId: id })} className={homeStyles.chip}>
+              <li key={preset.id}>
+                <Link to={createUrl({ presetId: preset.id })} className={homeStyles.chip}>
                   <span className={homeStyles.shapeBox} aria-hidden="true">
                     <span className={homeStyles.shape} style={{ aspectRatio: `${preset.width} / ${preset.height}`, ...(wide ? { width: '100%' } : { height: '100%' }) }} />
                   </span>

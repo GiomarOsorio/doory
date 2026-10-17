@@ -4,6 +4,7 @@ import { EditorProblemPage, EditorSkeleton } from '@/features/editor/EditorState
 import { useAuth } from '@/features/auth/AuthProvider'
 import { resolveCreateSpec, type CreateSpec, type TemplateSpec } from '@/features/presets'
 import { designsApi, templatesApi } from '@/lib/api'
+import { getSizePresets, sizePresetsReady } from '@/lib/sizePresets'
 import { createBlankDocument } from '@/lib/document'
 import { createLocalDesign } from '@/lib/local'
 import { usePageMeta } from '@/lib/usePageMeta'
@@ -27,8 +28,9 @@ export default function CreatePage() {
   useEffect(() => {
     if (status === 'loading' || started.current) return
     started.current = true
-    const spec = resolveCreateSpec(params)
     void (async () => {
+      // A preset the server's catalogue adds is only known once that has loaded.
+      const spec = resolveCreateSpec(params, params.has('preset') ? await sizePresetsReady() : getSizePresets())
       try {
         const target = status === 'authenticated' ? await createAccountDesign(spec) : await createGuestDesign(spec)
         navigate(target, { replace: true })

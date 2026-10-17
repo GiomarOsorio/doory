@@ -3,7 +3,9 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import bunny from '@/assets/bunny-sticker.webp'
 import { CreateDesignDialog } from '@/features/create/CreateDesignDialog'
-import { createUrl, getPreset, QUICK_PRESET_IDS } from '@/features/presets'
+import { PresetIcon } from '@/features/PresetIcon'
+import { createUrl } from '@/features/presets'
+import { quickPresets, useSizePresets } from '@/lib/sizePresets'
 import { Button, LinkButton } from '@/ui'
 import { Doodles } from './Doodles'
 import { HeroCards } from './HeroCards'
@@ -13,6 +15,7 @@ const PERKS = ['No watermark', 'No ads', 'Open source']
 
 export function Hero() {
   const [customOpen, setCustomOpen] = useState(false)
+  const catalogue = useSizePresets()
   return (
     <section className={styles.hero} aria-labelledby="hero-title">
       <Doodles />
@@ -66,18 +69,14 @@ export function Hero() {
           Or start with a size
         </p>
         <ul className={styles.chips} aria-labelledby="hero-sizes">
-          {QUICK_PRESET_IDS.map((id) => {
-            const preset = getPreset(id)
-            if (!preset) return null
-            return (
-              <li key={id}>
-                <Link className={styles.chip} to={createUrl({ presetId: id })}>
-                  <preset.icon size={15} aria-hidden="true" />
-                  {preset.label}
-                </Link>
-              </li>
-            )
-          })}
+          {quickPresets(catalogue).map((preset) => (
+            <li key={preset.id}>
+              <Link className={styles.chip} to={createUrl({ presetId: preset.id })}>
+                <PresetIcon preset={preset} size={15} />
+                {preset.label}
+              </Link>
+            </li>
+          ))}
           <li>
             <Button variant="ghost" size="sm" className={styles.customChip} onClick={() => setCustomOpen(true)}>
               Custom size…
