@@ -1655,10 +1655,196 @@
     }
   },
   {
+    "name": "group of a rotated rectangle with a border and a circle",
+    "kind": "group",
+    "factory": {
+      "fn": "createGroup",
+      "children": [
+        {
+          "fn": "createRect",
+          "size": 120,
+          "radius": 12,
+          "set": {
+            "left": 250,
+            "top": 200,
+            "angle": 30,
+            "stroke": "#000000",
+            "strokeWidth": 6
+          }
+        },
+        {
+          "fn": "createEllipse",
+          "size": 90,
+          "set": {
+            "left": 500,
+            "top": 380
+          }
+        }
+      ]
+    },
+    "object": {
+      "id": "case-31",
+      "type": "group",
+      "originX": "center",
+      "originY": "center",
+      "left": 355.0192,
+      "top": 270.0192,
+      "width": 379.9615,
+      "height": 309.9615,
+      "strokeWidth": 0,
+      "layoutManager": {
+        "type": "layoutManager",
+        "strategy": "fit-content"
+      },
+      "interactive": false,
+      "subTargetCheck": false,
+      "objects": [
+        {
+          "id": "child-rect",
+          "type": "rect",
+          "originX": "center",
+          "originY": "center",
+          "left": -105.0192,
+          "top": -70.0192,
+          "fill": "#7a64e0",
+          "stroke": "#000000",
+          "strokeWidth": 6,
+          "strokeUniform": true,
+          "shapeKind": "rect",
+          "width": 120,
+          "height": 120,
+          "rx": 12,
+          "ry": 12,
+          "angle": 30
+        },
+        {
+          "id": "child-circle",
+          "type": "ellipse",
+          "originX": "center",
+          "originY": "center",
+          "left": 144.9808,
+          "top": 109.9808,
+          "fill": "#7a64e0",
+          "stroke": null,
+          "strokeWidth": 0,
+          "strokeUniform": true,
+          "shapeKind": "ellipse",
+          "width": 90,
+          "height": 90,
+          "rx": 45,
+          "ry": 45
+        }
+      ]
+    }
+  },
+  {
+    "name": "rotated, scaled group, ungrouped",
+    "kind": "group",
+    "object": {
+      "id": "case-32",
+      "type": "group",
+      "originX": "center",
+      "originY": "center",
+      "left": 355.0192,
+      "top": 270.0192,
+      "width": 379.9615,
+      "height": 309.9615,
+      "strokeWidth": 0,
+      "layoutManager": {
+        "type": "layoutManager",
+        "strategy": "fit-content"
+      },
+      "interactive": false,
+      "subTargetCheck": false,
+      "objects": [
+        {
+          "id": "child-rect",
+          "type": "rect",
+          "originX": "center",
+          "originY": "center",
+          "left": -105.0192,
+          "top": -70.0192,
+          "fill": "#7a64e0",
+          "stroke": "#000000",
+          "strokeWidth": 6,
+          "strokeUniform": true,
+          "shapeKind": "rect",
+          "width": 120,
+          "height": 120,
+          "rx": 12,
+          "ry": 12,
+          "angle": 30
+        },
+        {
+          "id": "child-circle",
+          "type": "ellipse",
+          "originX": "center",
+          "originY": "center",
+          "left": 144.9808,
+          "top": 109.9808,
+          "fill": "#7a64e0",
+          "stroke": null,
+          "strokeWidth": 0,
+          "strokeUniform": true,
+          "shapeKind": "ellipse",
+          "width": 90,
+          "height": 90,
+          "rx": 45,
+          "ry": 45
+        }
+      ],
+      "angle": 45,
+      "scaleX": 1.5,
+      "scaleY": 1.5
+    },
+    "ungrouped": [
+      {
+        "id": "child-rect",
+        "type": "rect",
+        "originX": "center",
+        "originY": "center",
+        "left": 317.8961,
+        "top": 84.3629,
+        "fill": "#7a64e0",
+        "stroke": "#000000",
+        "strokeWidth": 6,
+        "strokeUniform": true,
+        "shapeKind": "rect",
+        "width": 120,
+        "height": 120,
+        "rx": 12,
+        "ry": 12,
+        "angle": 75,
+        "scaleX": 1.5,
+        "scaleY": 1.5
+      },
+      {
+        "id": "child-circle",
+        "type": "ellipse",
+        "originX": "center",
+        "originY": "center",
+        "left": 392.1423,
+        "top": 540.4468,
+        "fill": "#7a64e0",
+        "stroke": null,
+        "strokeWidth": 0,
+        "strokeUniform": true,
+        "shapeKind": "ellipse",
+        "width": 90,
+        "height": 90,
+        "rx": 45,
+        "ry": 45,
+        "angle": 45,
+        "scaleX": 1.5,
+        "scaleY": 1.5
+      }
+    ]
+  },
+  {
     "name": "text with effects",
     "kind": "text",
     "object": {
-      "id": "case-31",
+      "id": "case-33",
       "type": "textbox",
       "text": "Glow up",
       "originX": "center",
@@ -1704,7 +1890,7 @@
     "name": "curved text",
     "kind": "text",
     "object": {
-      "id": "case-32",
+      "id": "case-34",
       "type": "textbox",
       "text": "Curved",
       "originX": "center",
@@ -1731,7 +1917,7 @@
     "name": "shape with a shadow",
     "kind": "shape",
     "object": {
-      "id": "case-33",
+      "id": "case-35",
       "type": "rect",
       "originX": "center",
       "originY": "center",

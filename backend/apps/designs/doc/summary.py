@@ -74,6 +74,8 @@ def summarize_object(obj: dict) -> dict:
     elif kind == "group":
         children = obj.get("objects") if isinstance(obj.get("objects"), list) else []
         out["children"] = len(children)
+        # For reference only: operations address the group as a whole until it is ungrouped.
+        out["child_ids"] = [child.get("id") for child in children if isinstance(child, dict)]
     if isinstance(obj.get("effects"), dict) and obj["effects"]:
         out["effects"] = sorted("highlight" if key == "background" else key for key in obj["effects"])
     return out

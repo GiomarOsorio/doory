@@ -6,7 +6,7 @@ import pytest
 from django.conf import settings
 from pydantic import TypeAdapter, ValidationError
 
-from apps.designs.doc import builders, contract
+from apps.designs.doc import builders, contract, groups
 from apps.designs.doc.builders import Page
 from apps.designs.doc.kinds import object_kind
 from apps.designs.doc.ops import EditError, ImageSource, Operation, apply_ops, box, place
@@ -361,6 +361,78 @@ def test_pictures_can_be_masked_and_unmasked():
     text = run(make_doc(), {"op": "add_text", "text": "Hi", "id": "t"}).document
     with pytest.raises(EditError, match="can be masked"):
         run(text, {"op": "update_object", "object_id": "t", "mask": "circle"})
+
+
+def test_objects_can_be_grouped_and_ungrouped_where_they_are():
+    document = run(
+        make_doc(),
+        {"op": "add_shape", "shape": "rect", "id": "a", "x": 100, "y": 100, "width": 100, "height": 50},
+        {"op": "add_text", "text": "Between", "id": "between"},
+        {"op": "add_shape", "shape": "ellipse", "id": "b", "x": 300, "y": 200, "width": 80, "height": 80},
+    ).document
+    before = {obj["id"]: box(obj) for obj in document["pages"][0]["objects"]}
+    outcome = run(document, {"op": "group_objects", "object_ids": ["b", "a"], "id": "g", "name": "Logo"})
+    objects = outcome.document["pages"][0]["objects"]
+    assert [obj["id"] for obj in objects] == ["g", "between"]  # the group takes the lowest child's place
+    group = objects[0]
+    assert [child["id"] for child in group["objects"]] == ["a", "b"]  # stacking order kept
+    assert box(group) == {"x": 100, "y": 100, "width": 280, "height": 180}
+    valid(outcome.document)
+    summary = summarize_document(outcome.document)["pages"][0]["objects"][0]
+    assert summary["kind"] == "group" and summary["child_ids"] == ["a", "b"]
+    for op in (
+        {"op": "update_object", "object_id": "a", "opacity": 0.5},
+        {"op": "delete_objects", "object_ids": ["b"]},
+    ):
+        with pytest.raises(EditError, match="inside the group 'g': ungroup it first"):
+            run(outcome.document, op)
+
+    ungrouped = run(outcome.document, {"op": "ungroup", "object_id": "g"}).document
+    objects = ungrouped["pages"][0]["objects"]
+    assert [obj["id"] for obj in objects] == ["a", "b", "between"]
+    for obj in objects:
+        assert box(obj) == pytest.approx(before[obj["id"]])
+
+
+def test_group_bounds_match_fabric():
+    # Measured in the editor: `new Group([rect, text])` of these two is 373.8013 x 183.4063 around
+    # (313.5994, 218.4019). The text has no strokeWidth, so Fabric's default of 1 counts.
+    rect = {
+        "type": "rect", "originX": "center", "originY": "center", "left": 200, "top": 200, "width": 100,
+        "height": 100, "angle": 30, "strokeWidth": 10, "strokeUniform": True,
+    }  # fmt: skip
+    text = {
+        "type": "textbox", "originX": "center", "originY": "center", "left": 400, "top": 300, "width": 200,
+        "height": 19.21, "strokeUniform": True,
+    }  # fmt: skip
+    group = groups.group([rect, text], "g")
+    assert (group["left"], group["top"]) == pytest.approx((313.5994, 218.4019), abs=1e-4)
+    assert (group["width"], group["height"]) == pytest.approx((373.8013, 183.4063), abs=1e-4)
+    assert (rect["left"], rect["top"]) == pytest.approx((-113.5994, -18.4019), abs=1e-4)
+
+
+def test_grouping_is_explained_when_it_cannot_be_done():
+    document = run(
+        make_doc(pages=2),
+        {"op": "add_shape", "shape": "rect", "id": "a"},
+        {"op": "add_shape", "shape": "rect", "id": "b", "page": 2},
+        {"op": "add_shape", "shape": "rect", "id": "c"},
+    ).document
+    for op, message in (
+        ({"op": "group_objects", "object_ids": ["a", "b"]}, "same page"),
+        ({"op": "group_objects", "object_ids": ["a", "a"]}, "two different"),
+        ({"op": "group_objects", "object_ids": ["a", "nope"]}, "no object"),
+        ({"op": "ungroup", "object_id": "a"}, "not a group"),
+        ({"op": "group_objects", "object_ids": ["a", "c"], "id": "c"}, "already used"),
+    ):
+        with pytest.raises(EditError, match=message):
+            run(document, op)
+    grouped = run(document, {"op": "group_objects", "object_ids": ["a", "c"], "id": "g"}).document
+    grouped["pages"][0]["objects"][0]["scaleX"] = 2  # stretched in the editor
+    with pytest.raises(EditError, match="stretched"):
+        run(grouped, {"op": "ungroup", "object_id": "g"})
+    with pytest.raises(EditError, match="already used"):
+        run(grouped, {"op": "add_text", "text": "x", "id": "a"})  # children's ids stay taken
 
 
 def test_text_height_cannot_be_set():

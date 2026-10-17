@@ -15,7 +15,7 @@ import json
 import sys
 from pathlib import Path
 
-from . import builders
+from . import builders, groups
 from .builders import Page
 
 FIXTURE = Path(__file__).resolve().parents[4] / "frontend/src/editor/engine/fixtures/backend-builders.json"
@@ -210,6 +210,18 @@ def _cases() -> list[dict]:
             ),
         },
         {
+            "name": "group of a rotated rectangle with a border and a circle",
+            "kind": "group",
+            "factory": {"fn": "createGroup", "children": [_RECT_FACTORY, _CIRCLE_FACTORY]},
+            "object": groups.group([_rect(), _circle()], "group"),
+        },
+        {
+            "name": "rotated, scaled group, ungrouped",
+            "kind": "group",
+            "object": _transformed_group(),
+            "ungrouped": groups.ungroup(_transformed_group()),
+        },
+        {
             "name": "text with effects",
             "kind": "text",
             "object": _with_effects(
@@ -241,6 +253,33 @@ def _cases() -> list[dict]:
             "expect": {"shadow": True},
         },
     ]
+
+
+_RECT_FACTORY = {
+    "fn": "createRect",
+    "size": 120,
+    "radius": 12,
+    "set": {"left": 250, "top": 200, "angle": 30, "stroke": "#000000", "strokeWidth": 6},
+}
+_CIRCLE_FACTORY = {"fn": "createEllipse", "size": 90, "set": {"left": 500, "top": 380}}
+
+
+def _rect() -> dict:
+    obj = builders.build_shape(PAGE, shape="rect", width=120, height=120, corner_radius=12)
+    obj.update(_RECT_FACTORY["set"], id="child-rect")
+    return obj
+
+
+def _circle() -> dict:
+    obj = builders.build_shape(PAGE, shape="ellipse", width=90, height=90)
+    obj.update(_CIRCLE_FACTORY["set"], id="child-circle")
+    return obj
+
+
+def _transformed_group() -> dict:
+    grouped = groups.group([_rect(), _circle()], "group")
+    grouped.update(angle=45, scaleX=1.5, scaleY=1.5)
+    return grouped
 
 
 def _with_effects(obj: dict, effects: dict, *, text: bool) -> dict:

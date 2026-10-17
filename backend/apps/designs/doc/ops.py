@@ -15,7 +15,7 @@ from typing import Annotated, Any, Literal, Protocol
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, TypeAdapter
 from pydantic import ValidationError as PydanticValidationError
 
-from . import builders
+from . import builders, groups
 from .builders import Page
 from .kinds import object_kind
 
@@ -272,6 +272,22 @@ class ArrangeObject(_Op):
     to: Literal["front", "back", "forward", "backward"]
 
 
+class GroupObjects(_Op):
+    """Group objects of one page so they move and scale together. The group takes the place of the lowest."""
+
+    op: Literal["group_objects"]
+    object_ids: list[ObjectId] = Field(min_length=2, max_length=200)
+    id: ObjectId | None = Field(None, description="Optional id for the new group.")
+    name: Annotated[str, StringConstraints(max_length=120)] | None = Field(None, description="Layer name.")
+
+
+class Ungroup(_Op):
+    """Break a group up: its objects go back on the page, where they appear, in its place in the stack."""
+
+    op: Literal["ungroup"]
+    object_id: ObjectId
+
+
 class AddPage(_Op):
     """Add a blank page."""
 
@@ -336,6 +352,8 @@ Operation = Annotated[
     | UpdateObject
     | DeleteObjects
     | ArrangeObject
+    | GroupObjects
+    | Ungroup
     | AddPage
     | DeletePage
     | MovePage
@@ -416,12 +434,42 @@ class _Editor:
             for position, obj in enumerate(page.get("objects", [])):
                 if obj.get("id") == object_id:
                     return page, position
+        group = self.group_of(object_id)
+        if group is not None:
+            raise self.fail(
+                f"Object {object_id!r} is inside the group {group!r}: ungroup it first (`ungroup`), "
+                "or change the whole group."
+            )
         raise self.fail(f"There is no object with id {object_id!r}.")
+
+    def group_of(self, object_id: str) -> str | None:
+        """The id of the top-level group that holds `object_id`, at any depth; None if no group does."""
+
+        def holds(objects: list) -> bool:
+            return any(
+                isinstance(child, dict)
+                and (child.get("id") == object_id or holds(child.get("objects") or []))
+                for child in objects
+            )
+
+        for page in self.pages:
+            for obj in page.get("objects", []):
+                if isinstance(obj, dict) and isinstance(obj.get("objects"), list) and holds(obj["objects"]):
+                    return obj.get("id")
+        return None
 
     def all_ids(self) -> set[str]:
         ids = {str(page.get("id")) for page in self.pages}
+
+        def collect(objects: list) -> None:
+            for obj in objects:
+                if isinstance(obj, dict):
+                    ids.add(str(obj.get("id")))
+                    if isinstance(obj.get("objects"), list):
+                        collect(obj["objects"])  # a group's children come back on ungroup
+
         for page in self.pages:
-            ids.update(str(obj.get("id")) for obj in page.get("objects", []))
+            collect(page.get("objects", []))
         return ids
 
     def own_id(self, wanted: str | None) -> str | None:
@@ -677,7 +725,7 @@ class _Editor:
             page["objects"] = kept
         missing = sorted(doomed - found)
         if missing:
-            raise self.fail(f"There is no object with id {missing[0]!r}.")
+            self.find(missing[0])  # raises, naming the group when the object is inside one
         return {"deleted": sorted(found)}
 
     def arrange_object(self, op: ArrangeObject) -> dict:
@@ -692,6 +740,43 @@ class _Editor:
         }[op.to]
         objects.insert(target, obj)
         return {"object_id": obj["id"], "index": target}
+
+    def group_objects(self, op: GroupObjects) -> dict:
+        wanted = list(dict.fromkeys(op.object_ids))
+        if len(wanted) < 2:
+            raise self.fail("Group at least two different objects.")
+        page, _ = self.find(wanted[0])
+        objects = page["objects"]
+        positions = []
+        for object_id in wanted:
+            other_page, position = self.find(object_id)
+            if other_page is not page:
+                raise self.fail("Only objects on the same page can be grouped.")
+            positions.append(position)
+        positions.sort()
+        children = [objects[position] for position in positions]  # keep their stacking order
+        try:
+            grouped = groups.group(children, self.own_id(op.id) or builders.new_id())
+        except groups.GroupError as exc:
+            raise self.fail(str(exc)) from exc
+        if op.name:
+            grouped["name"] = op.name
+        for position in reversed(positions):
+            del objects[position]
+        objects.insert(positions[0], grouped)
+        return {"object_id": grouped["id"], "page_id": page["id"], "box": box(grouped), "children": wanted}
+
+    def ungroup(self, op: Ungroup) -> dict:
+        page, position = self.find(op.object_id)
+        obj = page["objects"][position]
+        if object_kind(obj) != "group":
+            raise self.fail("That object is not a group.")
+        try:
+            children = groups.ungroup(obj)
+        except groups.GroupError as exc:
+            raise self.fail(str(exc)) from exc
+        page["objects"][position : position + 1] = children
+        return {"object_ids": [child.get("id") for child in children]}
 
     def add_page(self, op: AddPage) -> dict:
         if len(self.pages) >= self.max_pages:

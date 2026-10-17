@@ -191,7 +191,7 @@ def edit_design(
 ) -> dict[str, Any]:
     """Change a design with a list of operations, applied in order and all or nothing: add text, shapes
     (basic ones, or catalogue shapes such as heart, arrow-right, speech, cloud with shape `path`), lines,
-    pictures and QR codes; update, arrange or delete objects; add, move or delete pages; set
+    pictures and QR codes; update, arrange, group, ungroup or delete objects; add, move or delete pages; set
     backgrounds and speaker notes. Read the design first (get_design) to know page and object ids.
 
     Coordinates are page pixels from the top-left corner; x, y place the top-left corner of an object's box.
