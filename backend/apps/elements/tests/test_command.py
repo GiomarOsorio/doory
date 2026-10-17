@@ -176,3 +176,22 @@ def test_seed_elements_installs_shapes_and_graphics_offline():
         ElementPack.objects.filter(slug="charts").exists()
         and ElementPack.objects.filter(slug="basic-shapes").exists()
     )
+
+
+def test_brand_logos_follow_the_setting_and_the_option_overrides_it(settings):
+    pack = pack_entry("alpha", naming={"brand": "^brand-"})
+    manifest = make_manifest(pack)
+    files = demo_files(**{"icons/brand-facebook.svg": icon("M4 4h5v5z")})
+    source = FakeSource({manifest.packs[0].source.label: files})
+
+    settings.DOORY_ELEMENTS_BRAND_LOGOS = False
+    sync(source=source, manifest=manifest)
+    assert not Element.objects.filter(key="brand-facebook").exists()
+    assert "out of date" in sync("--list", "--brand-logos", source=source, manifest=manifest)
+
+    settings.DOORY_ELEMENTS_BRAND_LOGOS = True
+    assert "with brand logos" in sync(source=source, manifest=manifest)
+    assert Element.objects.filter(key="brand-facebook").exists()
+
+    sync("--no-brand-logos", source=source, manifest=manifest)
+    assert not Element.objects.get(key="brand-facebook").is_published

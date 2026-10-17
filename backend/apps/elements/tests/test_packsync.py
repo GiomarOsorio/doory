@@ -192,6 +192,54 @@ def test_naming_rules_strip_suffixes_and_skip_unwanted_icons():
     assert "house" in Element.objects.get(key="home").tags  # tag data keyed by the stripped name
 
 
+def brand_pack_and_source():
+    pack = make_pack(naming={"brand": "^brand-", "skip": "-dark$"})
+    files = demo_files(
+        **{"icons/brand-facebook.svg": icon("M4 4h5v5z"), "icons/home-dark.svg": icon("M5 5h5v5z")}
+    )
+    return pack, FakeSource({pack.source.label: files})
+
+
+def test_brand_logos_are_left_out_unless_turned_on_and_then_tagged_with_a_trademark_notice():
+    pack, source = brand_pack_and_source()
+    run([pack], source)
+    assert sorted(Element.objects.values_list("key", flat=True)) == ["home", "star"]
+    assert "trademark" not in ElementPack.objects.get(slug="demo").attribution
+    assert is_up_to_date(pack) and not is_up_to_date(pack, brand_logos=True)
+
+    report, _ = run([pack], source, brand_logos=True)
+    assert report.results[0].status == "synced" and report.results[0].created == 1
+    assert sorted(Element.objects.values_list("key", flat=True)) == ["brand-facebook", "home", "star"]
+    logo = Element.objects.get(key="brand-facebook")
+    assert logo.tags[:2] == ["brand", "logo"] and "facebook" in logo.tags
+    row = ElementPack.objects.get(slug="demo")
+    assert row.attribution.endswith("use them according to their brand guidelines.")
+    assert row.sync_fingerprint == pack.fingerprint_for(True) and is_up_to_date(pack, brand_logos=True)
+
+
+def test_turning_brand_logos_off_again_unpublishes_them_on_the_next_sync_without_pruning():
+    pack, source = brand_pack_and_source()
+    run([pack], source, brand_logos=True)
+
+    report, lines = run([pack], source)
+    assert report.results[0].logos_unpublished == 1 and report.results[0].stale == 0
+    assert not Element.objects.get(key="brand-facebook").is_published
+    assert Element.objects.filter(key="home", is_published=True).exists()
+    assert ElementPack.objects.get(slug="demo").attribution == "Demo: Copyright (c) 2026 Example (MIT)."
+    assert any("1 brand logo(s) unpublished" in line for line in lines)
+
+    report, _ = run([pack], source, prune=True)  # already done: nothing left for --prune
+    assert [r.status for r in report.results] == ["up-to-date"]
+
+
+def test_packs_without_brand_patterns_are_not_resynced_when_brand_logos_are_turned_on():
+    pack = make_pack()
+    source = source_for(pack)
+    run([pack], source)
+    report, _ = run([pack], source, brand_logos=True)
+    assert [r.status for r in report.results] == ["up-to-date"] and len(source.calls) == 1
+
+
 def test_the_bootstrap_packs_split_outline_and_fill_and_leave_out_brand_logos():
     from apps.elements.manifest import load_manifest
 

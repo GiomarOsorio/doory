@@ -39,6 +39,11 @@ from .tagdata import TagDataError, parse_tags
 Log = Callable[[str], None]
 
 MAX_SVG_BYTES = 2 * 1024 * 1024
+#: Added to the attribution of a pack that was synced with its brand logos.
+TRADEMARK_NOTICE = (
+    "Logos are trademarks of their respective owners; use them according to their brand guidelines."
+)
+BRAND_TAGS = ("brand", "logo")
 PRUNE_CHUNK = 500
 
 
@@ -52,6 +57,8 @@ class SyncOptions:
     force: bool = False
     dry_run: bool = False
     prune: bool = False
+    #: Keep the elements matching a pack's `naming.brand` (see `DOORY_ELEMENTS_BRAND_LOGOS`).
+    brand_logos: bool = False
     batch_size: int = DEFAULT_BATCH_SIZE
 
 
@@ -67,6 +74,8 @@ class PackResult:
     duplicates: int = 0
     stale: int = 0
     pruned: int = 0
+    #: Brand logos unpublished because the pack was synced with `brand_logos` off.
+    logos_unpublished: int = 0
     warnings: list[str] = field(default_factory=list)
     error: str = ""
     seconds: float = 0.0
@@ -151,13 +160,21 @@ def _name_words(key: str) -> list[str]:
 
 
 def _items(
-    pack: PackSpec, files: dict[str, bytes], warnings: list[str]
+    pack: PackSpec, files: dict[str, bytes], warnings: list[str], brand_logos: bool = False
 ) -> tuple[list[_Item], list[tuple[str, str]]]:
     """The named SVG documents of a downloaded pack (before normalisation) and the unusable files."""
     skipped: list[tuple[str, str]] = []
     table = _tag_table(pack, files, warnings)
     items: list[_Item] = []
     left_out = re.compile(pack.naming.skip).search if pack.naming.skip else (lambda _key: None)
+    is_brand = re.compile(pack.naming.brand).search if pack.naming.brand else (lambda _key: None)
+
+    def wanted(key: str) -> bool:
+        return not left_out(key) and (brand_logos or not is_brand(key))
+
+    def extra(key: str) -> list[str]:
+        return list(BRAND_TAGS) if is_brand(key) else []
+
     if pack.files.reader == "iconify-json":
         for path in _svg_paths(pack, files):
             try:
@@ -167,8 +184,8 @@ def _items(
                 continue
             for icon in icons:
                 key = slugify(icon.name)
-                if key and not left_out(key):
-                    hints = [alias.replace("-", " ") for alias in icon.aliases]
+                if key and wanted(key):
+                    hints = [*extra(key), *(alias.replace("-", " ") for alias in icon.aliases)]
                     items.append(_item(key, icon.name, icon.svg, table, hints))
         return items, skipped
     hints_by_stem: dict[str, list[str]] = {}
@@ -179,17 +196,18 @@ def _items(
         key = slugify(stem)
         if not key:
             skipped.append((path, "the file name has no usable letters or digits"))
-        elif left_out(key):
+        elif not wanted(key):
             continue
         elif len(files[path]) > MAX_SVG_BYTES:
             skipped.append((path, "the file is larger than 2 MB"))
         else:
-            items.append(_item(key, stem, files[path], table, hints_by_stem.get(stem, [])))
+            items.append(_item(key, stem, files[path], table, [*extra(key), *hints_by_stem.get(stem, [])]))
     return items, skipped
 
 
 def _item(key: str, stem: str, svg: bytes, table: dict[str, list[str]], hints: list[str]) -> _Item:
-    tags = clean_tags([*table.get(stem, []), *hints, *_name_words(key)], MAX_TAGS)
+    brand = [tag for tag in hints if tag in BRAND_TAGS]
+    tags = clean_tags([*brand, *table.get(stem, []), *hints, *_name_words(key)], MAX_TAGS)
     return _Item(
         key=key, name=element_name(stem), svg=svg, tags=tuple(tags), canonical=stem in table or not table
     )
@@ -214,7 +232,7 @@ def _generated_items(pack: PackSpec, files: dict[str, bytes]) -> tuple[list[_Ite
 
 
 def build_entries(
-    pack: PackSpec, files: dict[str, bytes], warnings: list[str]
+    pack: PackSpec, files: dict[str, bytes], warnings: list[str], brand_logos: bool = False
 ) -> tuple[list[ImportEntry], list[tuple[str, str]], int]:
     """Normalise the pack's files into import entries. Returns `(entries, skipped, duplicates merged)`.
 
@@ -225,7 +243,7 @@ def build_entries(
     if pack.is_generated:
         items, skipped = _generated_items(pack, files)
     else:
-        items, skipped = _items(pack, files, warnings)
+        items, skipped = _items(pack, files, warnings, brand_logos)
     prepared: list[tuple[_Item, bytes]] = []
     for item in items:
         try:
@@ -262,17 +280,33 @@ def build_entries(
 # ---- one pack ----------------------------------------------------------------------------------------------
 
 
-def is_up_to_date(pack: PackSpec) -> bool:
-    """True when the pack was synced from this exact manifest entry (and normaliser) and has elements."""
+def is_up_to_date(pack: PackSpec, brand_logos: bool = False) -> bool:
+    """True when the pack was synced from this exact manifest entry (and normaliser, and brand-logo choice)
+    and has elements."""
     row = ElementPack.objects.filter(slug=pack.id).first()
-    return bool(row is not None and row.sync_fingerprint == pack.fingerprint and row.elements.exists())
+    fingerprint = pack.fingerprint_for(brand_logos)
+    return bool(row is not None and row.sync_fingerprint == fingerprint and row.elements.exists())
+
+
+def _attribution(pack: PackSpec, brand_logos: bool) -> str:
+    if not (brand_logos and pack.has_brand):
+        return pack.attribution
+    return f"{pack.attribution} {TRADEMARK_NOTICE}".strip()
+
+
+def _unpublish(row: ElementPack, keys: list[str]) -> int:
+    count = 0
+    for start in range(0, len(keys), PRUNE_CHUNK):
+        chunk = keys[start : start + PRUNE_CHUNK]
+        count += row.elements.filter(key__in=chunk, is_published=True).update(is_published=False)
+    return count
 
 
 def import_pack(pack: PackSpec, files: dict[str, bytes], options: SyncOptions, log: Log) -> PackResult:
     """Import already-fetched `files` into the database. Raises `SourceError` (e.g. `LicenseMismatch`)."""
     result = PackResult(pack_id=pack.id, source_ref=pack.source_ref)
     started = time.monotonic()
-    entries, skipped, duplicates = build_entries(pack, files, result.warnings)
+    entries, skipped, duplicates = build_entries(pack, files, result.warnings, options.brand_logos)
     result.skipped, result.duplicates = skipped, duplicates
     if not entries:
         raise SourceError("the release contains no usable artwork (check the manifest's file patterns)")
@@ -295,7 +329,7 @@ def import_pack(pack: PackSpec, files: dict[str, bytes], options: SyncOptions, l
             description=pack.description,
             sort_order=pack.sort_order,
             license_url=pack.license.url,
-            attribution=pack.attribution,
+            attribution=_attribution(pack, options.brand_logos),
         )
         summary = Element.objects.bulk_import(
             row,
@@ -306,17 +340,21 @@ def import_pack(pack: PackSpec, files: dict[str, bytes], options: SyncOptions, l
         )
         produced = {entry.key for entry in entries}
         stale = sorted(set(row.elements.filter(is_published=True).values_list("key", flat=True)) - produced)
+        logos: list[str] = []
+        if pack.has_brand and not options.brand_logos:
+            # Logos left out by this sync are unpublished right away, not reported as stale: otherwise the
+            # fingerprint is current again and a later `--prune` would skip the pack and keep them.
+            is_brand = re.compile(pack.naming.brand).search
+            logos = [key for key in stale if is_brand(key)]
+            stale = [key for key in stale if not is_brand(key)]
         result.stale = len(stale)
-        if options.prune and stale:
-            for start in range(0, len(stale), PRUNE_CHUNK):
-                chunk = stale[start : start + PRUNE_CHUNK]
-                result.pruned += row.elements.filter(key__in=chunk, is_published=True).update(
-                    is_published=False
-                )
+        result.logos_unpublished = _unpublish(row, logos)
+        if options.prune:
+            result.pruned = _unpublish(row, stale)
         with transaction.atomic():
             row.source_ref, row.sync_fingerprint, row.synced_at = (
                 pack.source_ref,
-                pack.fingerprint,
+                pack.fingerprint_for(options.brand_logos),
                 timezone.now(),
             )
             row.save(update_fields=["source_ref", "sync_fingerprint", "synced_at", "updated_at"])
@@ -398,7 +436,7 @@ def sync_packs(
     width = len(str(total))
     todo: list[PackSpec] = []
     for index, pack in enumerate(packs, start=1):
-        if not options.force and is_up_to_date(pack):
+        if not options.force and is_up_to_date(pack, options.brand_logos):
             report.results.append(
                 PackResult(pack_id=pack.id, status="up-to-date", source_ref=pack.source_ref)
             )
@@ -443,6 +481,8 @@ def sync_packs(
                 log(f"    skipped {label}: {reason}")
             if len(result.skipped) > 5:
                 log(f"    ... and {len(result.skipped) - 5} more skipped")
+            if result.logos_unpublished:
+                log(f"    {result.logos_unpublished} brand logo(s) unpublished (brand logos are off).")
             if result.stale:
                 log(
                     f"    {result.stale} element(s) are no longer part of this pack"

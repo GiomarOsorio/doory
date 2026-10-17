@@ -217,7 +217,7 @@
         "file": "icons.json"
       },
       "naming": {
-        "skip": "^brand-"
+        "brand": "^brand-"
       }
     },
     {
@@ -256,7 +256,7 @@
         "file": "icons.json"
       },
       "naming": {
-        "skip": "^brand-"
+        "brand": "^brand-"
       }
     },
     {
@@ -295,7 +295,7 @@
         "file": "dist/index.mjs"
       },
       "naming": {
-        "skip": "-logo(?:-simple)?$"
+        "brand": "-logo(?:-simple)?$"
       }
     },
     {
@@ -331,7 +331,7 @@
       },
       "naming": {
         "strip_suffix": "-bold",
-        "skip": "-logo(?:-simple)?$"
+        "brand": "-logo(?:-simple)?$"
       },
       "tags": {
         "format": "phosphor-js",
@@ -371,7 +371,7 @@
       },
       "naming": {
         "strip_suffix": "-fill",
-        "skip": "-logo(?:-simple)?$"
+        "brand": "-logo(?:-simple)?$"
       },
       "tags": {
         "format": "phosphor-js",
@@ -411,7 +411,7 @@
       },
       "naming": {
         "strip_suffix": "-duotone",
-        "skip": "-logo(?:-simple)?$"
+        "brand": "-logo(?:-simple)?$"
       },
       "tags": {
         "format": "phosphor-js",
@@ -453,7 +453,7 @@
         "frame": true
       },
       "naming": {
-        "skip": "^(?:alexa|alipay|amazon|amd|android2?|anthropic|apple(?:-music)?|behance|bing|bluesky|bootstrap(?:-reboot)?|browser-(?:chrome|edge|firefox|safari)|claude|discord|dribbble|dropbox|facebook|git|github|gitlab|google(?:-play)?|instagram|javascript|line|linkedin|mastodon|medium|messenger|meta|microsoft(?:-teams)?|nintendo-switch|nvidia|openai|opencollective|paypal|perplexity|pinterest|playstation|quora|reddit|signal|sina-weibo|skype|slack|snapchat|sourceforge|spotify|stack-overflow|steam|strava|stripe|substack|telegram|tencent-qq|threads|tiktok|trello|twitch|twitter(?:-x)?|ubuntu|unity|vimeo|wechat|whatsapp|wikipedia|windows|wordpress|xbox|yelp|youtube)$"
+        "brand": "^(?:alexa|alipay|amazon|amd|android2?|anthropic|apple(?:-music)?|behance|bing|bluesky|bootstrap(?:-reboot)?|browser-(?:chrome|edge|firefox|safari)|claude|discord|dribbble|dropbox|facebook|git|github|gitlab|google(?:-play)?|instagram|javascript|line|linkedin|mastodon|medium|messenger|meta|microsoft(?:-teams)?|nintendo-switch|nvidia|openai|opencollective|paypal|perplexity|pinterest|playstation|quora|reddit|signal|sina-weibo|skype|slack|snapchat|sourceforge|spotify|stack-overflow|steam|strava|stripe|substack|telegram|tencent-qq|threads|tiktok|trello|twitch|twitter(?:-x)?|ubuntu|unity|vimeo|wechat|whatsapp|wikipedia|windows|wordpress|xbox|yelp|youtube)$"
       }
     },
     {
@@ -489,7 +489,7 @@
       },
       "naming": {
         "strip_suffix": "-fill",
-        "skip": "^(?:alexa|alipay|amazon|amd|android2?|anthropic|apple(?:-music)?|behance|bing|bluesky|bootstrap(?:-reboot)?|browser-(?:chrome|edge|firefox|safari)|claude|discord|dribbble|dropbox|facebook|git|github|gitlab|google(?:-play)?|instagram|javascript|line|linkedin|mastodon|medium|messenger|meta|microsoft(?:-teams)?|nintendo-switch|nvidia|openai|opencollective|paypal|perplexity|pinterest|playstation|quora|reddit|signal|sina-weibo|skype|slack|snapchat|sourceforge|spotify|stack-overflow|steam|strava|stripe|substack|telegram|tencent-qq|threads|tiktok|trello|twitch|twitter(?:-x)?|ubuntu|unity|vimeo|wechat|whatsapp|wikipedia|windows|wordpress|xbox|yelp|youtube)$"
+        "brand": "^(?:alexa|alipay|amazon|amd|android2?|anthropic|apple(?:-music)?|behance|bing|bluesky|bootstrap(?:-reboot)?|browser-(?:chrome|edge|firefox|safari)|claude|discord|dribbble|dropbox|facebook|git|github|gitlab|google(?:-play)?|instagram|javascript|line|linkedin|mastodon|medium|messenger|meta|microsoft(?:-teams)?|nintendo-switch|nvidia|openai|opencollective|paypal|perplexity|pinterest|playstation|quora|reddit|signal|sina-weibo|skype|slack|snapchat|sourceforge|spotify|stack-overflow|steam|strava|stripe|substack|telegram|tencent-qq|threads|tiktok|trello|twitch|twitter(?:-x)?|ubuntu|unity|vimeo|wechat|whatsapp|wikipedia|windows|wordpress|xbox|yelp|youtube)$"
       }
     },
     {
@@ -591,7 +591,7 @@
         "frame": true
       },
       "naming": {
-        "skip": "^(?:nest_|mfg_nest|google_|chromecast|stadia_|youtube_)|^(?:android|duo)$"
+        "brand": "^(?:nest_|mfg_nest|google_|chromecast|stadia_|youtube_)|^(?:android|duo)$"
       }
     },
     {
@@ -627,7 +627,7 @@
       },
       "naming": {
         "strip_suffix": "-fill",
-        "skip": "^(?:nest_|mfg_nest|google_|chromecast|stadia_|youtube_)|^(?:android|duo)$"
+        "brand": "^(?:nest_|mfg_nest|google_|chromecast|stadia_|youtube_)|^(?:android|duo)$"
       }
     },
     {

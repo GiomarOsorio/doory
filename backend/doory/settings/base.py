@@ -285,6 +285,10 @@ EXPORT_ALLOWED_ORIGINS = env.list(
 BACKGROUND_REMOVAL_ENABLED = env.bool("BACKGROUND_REMOVAL_ENABLED", default=True)
 BACKGROUND_REMOVAL_MODEL = env("BACKGROUND_REMOVAL_MODEL", default="")  # empty: the best installed model
 
+# ---- Element library (apps.elements) ----
+# Keep the brand logos (trademarks) the icon packs contain when `sync_element_packs` runs.
+DOORY_ELEMENTS_BRAND_LOGOS = env.bool("DOORY_ELEMENTS_BRAND_LOGOS", default=False)
+
 # ---- Real-time co-editing (apps.collab) ----
 REALTIME_ENABLED = env.bool("REALTIME_ENABLED", default=True)
 # Channel layer: in-memory (one server process only) unless REDIS_URL is set, which is mandatory as soon

@@ -129,6 +129,9 @@ class NamingSpec:
     strip_suffix: str = ""
     #: Regular expression; icons whose key (after stripping) matches are left out (e.g. skin-tone variants).
     skip: str = ""
+    #: Regular expression for brand logos (trademarks): left out unless the sync runs with brand logos on
+    #: (`DOORY_ELEMENTS_BRAND_LOGOS`). Kept apart from `skip`, which also holds variants that must always go.
+    brand: str = ""
 
 
 @dataclass(frozen=True)
@@ -172,6 +175,16 @@ class PackSpec:
     @property
     def source_ref(self) -> str:
         return self.source.label
+
+    @property
+    def has_brand(self) -> bool:
+        return bool(self.naming.brand)
+
+    def fingerprint_for(self, brand_logos: bool) -> str:
+        """The fingerprint of a sync with brand logos on or off; unchanged for packs without logos."""
+        if not (brand_logos and self.has_brand):
+            return self.fingerprint
+        return hashlib.sha256(f"{self.fingerprint}:brand-logos".encode()).hexdigest()
 
     @property
     def patterns(self) -> tuple[str, ...]:
@@ -419,16 +432,19 @@ def parse_pack(raw: Any) -> PackSpec:
         files = FilesSpec(include=include, exclude=_glob_list(files_raw, "exclude", where), reader=reader)
         naming_raw = raw.get("naming", {})
         _expect(isinstance(naming_raw, dict), f"{where}: naming must be an object")
-        _only(naming_raw, {"strip_prefix", "strip_suffix", "skip"}, f"{where}: naming")
+        _only(naming_raw, {"strip_prefix", "strip_suffix", "skip", "brand"}, f"{where}: naming")
         skip = _str(naming_raw, "skip", where, required=False)
-        try:
-            re.compile(skip)
-        except re.error as exc:
-            raise ManifestError(f"{where}: naming.skip is not a valid regular expression") from exc
+        brand = _str(naming_raw, "brand", where, required=False)
+        for key, pattern in (("skip", skip), ("brand", brand)):
+            try:
+                re.compile(pattern)
+            except re.error as exc:
+                raise ManifestError(f"{where}: naming.{key} is not a valid regular expression") from exc
         naming = NamingSpec(
             strip_prefix=_str(naming_raw, "strip_prefix", where, required=False),
             strip_suffix=_str(naming_raw, "strip_suffix", where, required=False),
             skip=skip,
+            brand=brand,
         )
         tags_raw = raw.get("tags", {})
         _expect(isinstance(tags_raw, dict), f"{where}: tags must be an object")
