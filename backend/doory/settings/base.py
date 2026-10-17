@@ -299,3 +299,4 @@ MCP_ENABLED = env.bool("MCP_ENABLED", default=False)  # opt-in; Docker also need
 MCP_PATH = "/mcp"
 MCP_CALLS_PER_MINUTE = env.int("MCP_CALLS_PER_MINUTE", default=120)  # per user; 0 = unlimited
 MCP_MAX_REQUEST_BYTES = env.int("MCP_MAX_REQUEST_BYTES", default=4 * 1024 * 1024)
+MCP_URL_UPLOADS = env.bool("MCP_URL_UPLOADS", default=True)  # upload_image_from_url (public https only)

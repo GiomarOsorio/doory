@@ -17,7 +17,7 @@ SCOPES: dict[str, str] = {
     DESIGNS_READ: "See your designs, their versions and comments, and browse templates, elements and fonts.",
     DESIGNS_WRITE: "Create, edit, rename, duplicate and organise your designs, and restore earlier versions.",
     DESIGNS_TRASH: "Move your designs to the trash and restore them.",
-    ASSETS_WRITE: "Add images to your uploads (stock photo import).",
+    ASSETS_WRITE: "Add images to your uploads (stock photos, images from a URL).",
     COMMENTS_WRITE: "Add comments to your designs.",
     COMMENTS_MANAGE: "Resolve and delete comments on your designs, including other people's.",
     BRAND_WRITE: "Create and change your brand kits.",

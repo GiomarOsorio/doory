@@ -363,6 +363,38 @@ def test_assets_and_stock(as_caller, user, other):
         assets.import_stock_photo("unsplash", "abc")
 
 
+def test_images_can_be_uploaded_from_a_url(as_caller, user, monkeypatch, settings):
+    from apps.assets import remote
+    from apps.assets.tests.helpers import image_bytes
+
+    monkeypatch.setattr(remote, "fetch_image", lambda url, max_bytes: image_bytes())
+    asset = assets.upload_image_from_url("https://img.example/photos/beach.png?w=800")
+    assert asset["name"] == "beach.png" and asset["width"] == 64
+    stored = Asset.objects.get(pk=asset["asset_id"], owner=user)
+    assert stored.meta["source_url"] == "https://img.example/photos/beach.png"  # no query: it may be signed
+
+    def refuse(url, max_bytes):
+        raise remote.RemoteImageError("That address is not on the public internet.")
+
+    monkeypatch.setattr(remote, "fetch_image", refuse)
+    with pytest.raises(ToolError, match=r"public internet\. Nothing was uploaded"):
+        assets.upload_image_from_url("https://10.0.0.1/x.png")
+    settings.MCP_URL_UPLOADS = False
+    with pytest.raises(ToolError, match="switched off"):
+        assets.upload_image_from_url("https://img.example/a.png")
+
+
+def test_url_uploads_share_the_upload_throttle(as_caller, monkeypatch):
+    from apps.assets import remote
+    from apps.assets.tests.helpers import image_bytes
+
+    monkeypatch.setattr(remote, "fetch_image", lambda url, max_bytes: image_bytes())
+    monkeypatch.setattr(UploadRateThrottle, "THROTTLE_RATES", {"upload": "1/min"})
+    assets.upload_image_from_url("https://img.example/a.png")
+    with pytest.raises(ToolError, match="Too many requests"):
+        assets.upload_image_from_url("https://img.example/b.png")
+
+
 # ---------------------------------------------------------------------------------------------
 # Scopes and limits
 # ---------------------------------------------------------------------------------------------
