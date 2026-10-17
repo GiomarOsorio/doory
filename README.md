@@ -307,8 +307,9 @@ The server is off by default. To turn it on, add `MCP_ENABLED=true` to `.env`; w
 `deploy/doory-mcp.service` too (see step 5 above) and restart `doory-api`.
 
 1. In Doory, open **Settings → AI assistants (MCP)** and create a token. Choose what it may do (read designs, edit
-   them, import stock photos, comment, change brand kits, manage share links) and when it expires (at most a
-   year), and confirm with your password. The token is shown once.
+   them, trash them, add images, comment, manage comments, change brand kits, manage share links) and when it
+   expires (at most a year), and confirm with your password. The token is shown once. Each permission is listed
+   with what it allows; a token never gains a permission it was not given, even when new tools are added.
 2. Add the server to your client with the URL `https://your-domain/mcp` and the header
    `Authorization: Bearer <token>`. For Claude Code:
 
@@ -320,13 +321,17 @@ The server is off by default. To turn it on, add `MCP_ENABLED=true` to `.env`; w
    `{"type": "http", "url": "https://your-domain/mcp", "headers": {"Authorization": "Bearer doory_…"}}`.
 
 The assistant can list, read, create, rename, duplicate and edit designs; star them, organise them in folders,
-trash and restore them; add text (curved, with shadows, outlines, glows or highlights), shapes, lines, pictures,
-QR codes and pages; set backgrounds and speaker notes; search templates, the element catalogue, fonts and stock
-photos; read, add, resolve and delete comments; create and change brand kits; create and revoke share links; and
-restore earlier versions. Designs are also MCP resources (`doory://designs/{id}`), and two
-prompts, "Make a design from a brief" and "Review a design", show up in clients that offer prompts. The state before every edit is kept in the design's
-version history, so anything an assistant did can be undone from there. If the design is open in your editor, the
-change appears live, like a co-editor's; with Redis it arrives at once, otherwise within a few seconds.
+trash and restore them; add text (curved, with shadows, outlines, glows or highlights), shapes (including the
+catalogue's hearts, arrows, speech bubbles…), lines, pictures (cropped to a shape if wanted), QR codes and
+pages; group and ungroup objects; set backgrounds and speaker notes; search templates, the element catalogue,
+fonts and stock photos, and copy images from public https URLs; read, add, edit, resolve and delete comments;
+create and change brand kits; create and revoke share links; and restore earlier versions. Designs are also MCP
+resources (`doory://designs/{id}`), and two prompts, "Make a design from a brief" and "Review a design", show up in
+clients that offer prompts. Creating or changing a share link is marked as destructive, so clients ask you before
+an assistant does it, and comment text reaches the assistant labelled as untrusted. The state before every edit is
+kept in the design's version history, so anything an assistant did can be undone from there. If the design is open
+in your editor, the change appears live, like a co-editor's; with Redis it arrives at once, otherwise within a few
+seconds.
 
 Text heights reported to the assistant are estimates until the design is opened in the editor, which measures
 text exactly. Revoke a token in the same settings page. Changing or resetting your password revokes all your
