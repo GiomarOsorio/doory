@@ -6,9 +6,12 @@ themselves are centred on their position (`originX/Y: center`), like every objec
 
 from __future__ import annotations
 
+import copy
+import json
 import math
 import uuid
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Literal
 
 SHAPE_FILL = "#7a64e0"
@@ -22,7 +25,12 @@ QR_MAX_TEXT = 1000
 
 TextPreset = Literal["heading", "subheading", "body"]
 TextAlign = Literal["left", "center", "right", "justify"]
-ShapeKind = Literal["rect", "ellipse", "triangle", "polygon", "star"]
+ShapeKind = Literal["rect", "ellipse", "triangle", "polygon", "star", "path"]
+
+# The editor's catalogue shapes (`shapeGeometry.ts` PATH_SHAPES) as Fabric stores them: the parsed path and
+# the size of its exact bounding box. Taken from the editor; the contract test fails if they drift apart.
+PATH_SHAPES: dict[str, dict] = json.loads((Path(__file__).with_name("path_shapes.json")).read_text())
+PathShapeId = Literal[tuple(PATH_SHAPES)]  # type: ignore[valid-type]
 ArrowHead = Literal["none", "triangle", "open", "circle", "diamond"]
 FontCategory = Literal["sans-serif", "serif", "display", "handwriting", "monospace"]
 
@@ -279,8 +287,13 @@ def build_shape(
     sides: int = 6,
     star_tips: int = 5,
     inner_ratio: float = 0.45,
+    path_shape: str | None = None,
 ) -> dict:
     size = default_shape_size(page)
+    if shape == "path":
+        return _build_path_shape(
+            page, path_shape or "", x, y, width, height, fill, stroke, stroke_width, size
+        )
     w = width if width is not None else (size if shape != "triangle" or height is None else height / 0.9)
     h = height if height is not None else (w * 0.9 if shape == "triangle" else w)
     left = x if x is not None else (page.width - w) / 2
@@ -312,6 +325,40 @@ def build_shape(
             obj["innerRatio"] = max(0.1, min(0.95, inner_ratio))
             obj["points"] = star_points(obj["starPoints"], obj["innerRatio"])
     return obj
+
+
+def _build_path_shape(page, shape_id, x, y, width, height, fill, stroke, stroke_width, size) -> dict:
+    """`createPathShape`: a catalogue shape, scaled so its longer side is `size` unless a box is given."""
+    if shape_id not in PATH_SHAPES:
+        raise ValueError(f"Unknown shape {shape_id!r}; choose one of {', '.join(PATH_SHAPES)}.")
+    data = PATH_SHAPES[shape_id]
+    natural_w, natural_h = data["width"], data["height"]
+    if width is not None and height is not None:
+        scale_x, scale_y = width / natural_w, height / natural_h
+    elif width is not None or height is not None:
+        scale_x = scale_y = width / natural_w if width is not None else height / natural_h
+    else:
+        scale_x = scale_y = size / max(natural_w, natural_h)
+    w, h = natural_w * scale_x, natural_h * scale_y
+    left = x if x is not None else (page.width - w) / 2
+    top = y if y is not None else (page.height - h) / 2
+    return {
+        "id": new_id(),
+        "type": "path",
+        **_centred(left, top, w, h),
+        "width": natural_w,
+        "height": natural_h,
+        "scaleX": round(scale_x, 6),
+        "scaleY": round(scale_y, 6),
+        "path": copy.deepcopy(data["path"]),
+        "fillRule": data["fillRule"],
+        "fill": fill or SHAPE_FILL,
+        "stroke": stroke,
+        "strokeWidth": _num(stroke_width if stroke else 0),
+        "strokeUniform": True,
+        "shapeKind": "path",
+        "shapeId": shape_id,
+    }
 
 
 # ---------------------------------------------------------------------------------------------

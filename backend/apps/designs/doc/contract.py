@@ -148,6 +148,34 @@ def _cases() -> list[dict]:
             "kind": "qr",
             "object": builders.build_qr(PAGE, text="https://doory.example/menu", size=200),
         },
+        *(
+            {
+                "name": f"{shape_id} shape",
+                "kind": "shape",
+                "factory": {
+                    "fn": "createPathShape",
+                    "shapeId": shape_id,
+                    "size": builders.default_shape_size(PAGE),
+                },
+                "object": builders.build_shape(PAGE, shape="path", path_shape=shape_id),
+            }
+            for shape_id in builders.PATH_SHAPES
+        ),
+        {
+            "name": "stretched heart with a border",
+            "kind": "shape",
+            "object": builders.build_shape(
+                PAGE,
+                shape="path",
+                path_shape="heart",
+                x=10,
+                y=20,
+                width=300,
+                height=120,
+                stroke="#000",
+                stroke_width=4,
+            ),
+        },
         {
             "name": "text with effects",
             "kind": "text",

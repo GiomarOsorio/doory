@@ -53,7 +53,7 @@ def summarize_object(obj: dict) -> dict:
         if obj.get("curveAmount"):
             out["curve"] = obj["curveAmount"]
     elif kind == "shape":
-        out["shape"] = obj.get("shapeKind") or obj.get("type")
+        out["shape"] = obj.get("shapeId") or obj.get("shapeKind") or obj.get("type")
         out["fill"] = obj.get("fill")
         if obj.get("stroke"):
             out["stroke"] = obj["stroke"]

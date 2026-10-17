@@ -325,6 +325,25 @@ def test_effects_and_curves_only_go_where_the_editor_supports_them():
         OPS.validate_python([{"op": "add_text", "text": "x", "curve": 401}])
 
 
+def test_catalogue_shapes_can_be_added_and_resized():
+    document = run(
+        make_doc(),
+        {"op": "add_shape", "shape": "path", "path_shape": "heart", "x": 0, "y": 0, "width": 184, "id": "h"},
+    ).document
+    heart = document["pages"][0]["objects"][0]
+    assert heart["type"] == "path" and heart["shapeId"] == "heart" and heart["path"][0] == ["M", 50, 90]
+    assert box(heart) == {"x": 0, "y": 0, "width": 184, "height": pytest.approx(166)}  # proportions kept
+    valid(document)
+    assert summarize_document(document)["pages"][0]["objects"][0]["shape"] == "heart"
+    stretched = run(document, {"op": "update_object", "object_id": "h", "height": 50}).document
+    assert box(stretched["pages"][0]["objects"][0])["height"] == pytest.approx(50)
+    for op in ({"shape": "path"}, {"shape": "rect", "path_shape": "heart"}):
+        with pytest.raises(EditError, match="path_shape"):
+            run(make_doc(), {"op": "add_shape", **op})
+    with pytest.raises(ValidationError):
+        OPS.validate_python([{"op": "add_shape", "shape": "path", "path_shape": "unicorn"}])
+
+
 def test_text_height_cannot_be_set():
     document = run(make_doc(), {"op": "add_text", "text": "Hi", "id": "t"}).document
     with pytest.raises(EditError, match="follows from its text"):

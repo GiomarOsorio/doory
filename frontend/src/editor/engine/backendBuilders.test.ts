@@ -14,6 +14,7 @@ import {
   createEllipse,
   createImage,
   createLine,
+  createPathShape,
   createPolygon,
   createRect,
   createStar,
@@ -35,6 +36,7 @@ interface Factory {
   innerRatio?: number
   src?: string
   fit?: number
+  shapeId?: string
 }
 
 interface Case {
@@ -65,6 +67,8 @@ async function fromFactory(f: Factory): Promise<FabricObject> {
       return createPolygon(at, f.size as number, f.sides)
     case 'createStar':
       return createStar(at, f.size as number, f.points, f.innerRatio)
+    case 'createPathShape':
+      return createPathShape(f.shapeId as string, at, f.size as number) as FabricObject
     case 'createLine':
       return createLine(at, f.opts as unknown as LineOptions)
     case 'createImage':

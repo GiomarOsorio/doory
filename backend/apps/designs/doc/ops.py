@@ -159,7 +159,8 @@ class AddShape(_Add):
     """Add a basic shape."""
 
     op: Literal["add_shape"]
-    shape: builders.ShapeKind
+    shape: builders.ShapeKind = Field(description="`path` = a catalogue shape, named in `path_shape`.")
+    path_shape: builders.PathShapeId | None = Field(None, description="With shape `path`.")
     x: Coordinate | None = Field(None, description=POSITION_HELP)
     y: Coordinate | None = None
     width: Length | None = None
@@ -460,9 +461,12 @@ class _Editor:
 
     def add_shape(self, op: AddShape) -> dict:
         page = self.page(op.page)
+        if (op.shape == "path") != (op.path_shape is not None):
+            raise self.fail("Use shape `path` together with `path_shape` (e.g. heart, arrow-right).")
         obj = builders.build_shape(
             self.page_size(page),
             shape=op.shape,
+            path_shape=op.path_shape,
             x=op.x,
             y=op.y,
             width=op.width,
@@ -605,7 +609,10 @@ class _Editor:
         if width is not None or height is not None:
             scale_x = abs(float(obj.get("scaleX", 1) or 1))
             scale_y = abs(float(obj.get("scaleY", 1) or 1))
-            if kind in ("image", "qr", "element", "group", "unknown") or obj.get("type") == "polygon":
+            if kind in ("image", "qr", "element", "group", "unknown") or obj.get("type") in (
+                "polygon",
+                "path",
+            ):
                 natural_w = float(obj.get("width") or 1)
                 natural_h = float(obj.get("height") or 1)
                 if kind in ("image", "qr", "element"):
