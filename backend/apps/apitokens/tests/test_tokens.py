@@ -322,3 +322,17 @@ def test_rehashing_an_unchanged_password_keeps_the_tokens(user):
     user.refresh_from_db()
     assert user.password != old_hash
     assert services.authenticate(issued.plaintext) is not None
+
+
+def test_rotating_the_secret_key_keeps_tokens_while_the_old_key_is_a_fallback(user, settings):
+    issued = issue(user)
+    old_key = settings.SECRET_KEY
+    with override_settings(SECRET_KEY="a-brand-new-key-" * 4, SECRET_KEY_FALLBACKS=[old_key]):
+        assert services.live_tokens(user).filter(pk=issued.token.pk).exists()
+        assert services.authenticate(issued.plaintext) is not None
+        moved = ApiToken.objects.get(pk=issued.token.pk).password_digest
+        assert moved == services.password_digest(user.password)  # moved to the new key on first use
+    with override_settings(SECRET_KEY="a-brand-new-key-" * 4, SECRET_KEY_FALLBACKS=[]):
+        assert services.authenticate(issued.plaintext) is not None  # survives dropping the fallback
+    with override_settings(SECRET_KEY="yet-another-key-" * 4, SECRET_KEY_FALLBACKS=[]):
+        assert services.authenticate(issued.plaintext) is None  # an unknown key still fails closed

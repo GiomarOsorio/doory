@@ -17,9 +17,9 @@ from types import SimpleNamespace
 from typing import Any
 
 from django.conf import settings
-from django.core.cache import cache
 from django.core.exceptions import ValidationError as DjangoValidationError
-from django.db import close_old_connections
+from django.db import IntegrityError, close_old_connections, transaction
+from django.db.models import F
 from django.http import Http404
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp_types import ToolAnnotations
@@ -31,6 +31,7 @@ from apps.designs.doc.ops import EditError
 from apps.designs.exceptions import RevisionConflict
 
 from . import context
+from .models import CallWindow
 
 log = logging.getLogger("doory.mcp")
 
@@ -92,7 +93,7 @@ def throttle(rate_throttle: Any) -> None:
         raise ToolError(f"Too many requests of this kind. Wait {wait} s and try again.")
 
 
-RATE_CLAIM_ATTEMPTS = 8
+RATE_CLAIM_ATTEMPTS = 3
 
 
 def _check_rate(caller: context.Caller) -> None:
@@ -100,21 +101,23 @@ def _check_rate(caller: context.Caller) -> None:
     if not limit:
         return
     window = int(time.time() // 60)
-    # Per user, not per token: holding several tokens must not multiply the budget.
-    key = f"mcp:rate:{caller.user.pk}:{window}"
-    # `incr` is a get-then-set on the database cache, so two parallel calls can read the same count. Each call
-    # also claims its number with `add` (atomic everywhere: an insert on the database cache); a call that
-    # loses the race counts again, so no more than `limit` calls get through.
+    # Per user, not per token: holding several tokens must not multiply the budget. Each step is one
+    # conditional UPDATE (or an INSERT on the primary key), atomic on every database, so parallel calls
+    # cannot both take the last slot.
+    rows = CallWindow.objects.filter(user_id=caller.user.pk)
     for _ in range(RATE_CLAIM_ATTEMPTS):
-        cache.add(key, 0, timeout=90)
-        try:
-            calls = cache.incr(key)
-        except ValueError:  # evicted between add and incr
-            continue
-        if calls > limit:
-            raise ToolError(f"Too many calls: at most {limit} a minute. Wait {60 - int(time.time() % 60)} s.")
-        if cache.add(f"{key}:{calls}", 1, timeout=90):
+        if rows.filter(window=window, calls__lt=limit).update(calls=F("calls") + 1):
             return
+        if rows.filter(window=window).exists():
+            raise ToolError(f"Too many calls: at most {limit} a minute. Wait {60 - int(time.time() % 60)} s.")
+        if rows.exclude(window=window).update(window=window, calls=1):
+            return
+        try:
+            with transaction.atomic():
+                CallWindow.objects.create(user_id=caller.user.pk, window=window, calls=1)
+            return
+        except IntegrityError:  # a parallel first call made the row; count again
+            continue
     raise ToolError("Too many calls at once. Try again in a moment.")
 
 

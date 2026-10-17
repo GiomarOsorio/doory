@@ -42,9 +42,19 @@ def _digest(plaintext: str) -> str:
     return hashlib.sha256(plaintext.encode("utf-8")).hexdigest()
 
 
-def password_digest(password: str) -> str:
+def password_digest(password: str, secret: str | None = None) -> str:
     """What a token remembers of its owner's password hash: an HMAC of it, never the hash itself."""
-    return salted_hmac("apitokens.password_state", password or "", algorithm="sha256").hexdigest()
+    return salted_hmac(
+        "apitokens.password_state", password or "", secret=secret, algorithm="sha256"
+    ).hexdigest()
+
+
+def _accepted_digests(password: str) -> list[str]:
+    """The current digest of `password`, then the ones made under `SECRET_KEY_FALLBACKS`, so rotating the
+    secret key (with the old one kept as a fallback) does not strand every token, as Django's session hash."""
+    return [password_digest(password)] + [
+        password_digest(password, secret) for secret in settings.SECRET_KEY_FALLBACKS
+    ]
 
 
 def live_tokens(owner) -> QuerySet[ApiToken]:
@@ -53,7 +63,7 @@ def live_tokens(owner) -> QuerySet[ApiToken]:
         Q(expires_at__isnull=True) | Q(expires_at__gt=timezone.now()),
         owner=owner,
         revoked_at__isnull=True,
-        password_digest=password_digest(owner.password),
+        password_digest__in=_accepted_digests(owner.password),
     )
 
 
@@ -100,8 +110,13 @@ def authenticate(plaintext: str) -> ApiToken | None:
         return None
     if not token.owner.is_active:
         return None
-    if not constant_time_compare(token.password_digest, password_digest(token.owner.password)):
+    accepted = _accepted_digests(token.owner.password)
+    matches = [constant_time_compare(token.password_digest, digest) for digest in accepted]
+    if not any(matches):
         return None  # the password was changed, reset or dropped since the token was made
+    if not matches[0]:  # made under a fallback key: move it to the current one
+        ApiToken.objects.filter(pk=token.pk).update(password_digest=accepted[0])
+        token.password_digest = accepted[0]
     if token.last_used_at is None or now - token.last_used_at >= LAST_USED_RESOLUTION:
         ApiToken.objects.filter(pk=token.pk).update(last_used_at=now)
         token.last_used_at = now
@@ -116,7 +131,7 @@ def revoke(token: ApiToken) -> None:
 
 def rebind(owner, old_password: str) -> None:
     """Carry `owner`'s tokens over when Django re-hashes an unchanged password (a hasher upgrade on login)."""
-    ApiToken.objects.filter(owner=owner, password_digest=password_digest(old_password)).update(
+    ApiToken.objects.filter(owner=owner, password_digest__in=_accepted_digests(old_password)).update(
         password_digest=password_digest(owner.password)
     )
 

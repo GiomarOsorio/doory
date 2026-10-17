@@ -215,21 +215,30 @@ def test_calls_are_rate_limited_per_user_across_tokens(as_caller, user):
 
 
 @override_settings(MCP_CALLS_PER_MINUTE=3)
-def test_the_rate_limit_holds_when_the_cache_loses_increments(as_caller, monkeypatch):
-    """The database cache's `incr` is get-then-set: parallel calls can all read the same count."""
+def test_the_rate_limit_resets_each_minute(as_caller, monkeypatch):
     from apps.mcp import registry
 
-    monkeypatch.setattr(
-        registry.cache, "incr", lambda key: 1
-    )  # every increment lost: always "the first call"
-    allowed = 0
-    for _ in range(10):
-        try:
-            designs.list_designs()
-            allowed += 1
-        except ToolError:
-            pass
-    assert allowed <= 3
+    now = [1_000_000 * 60.0]
+    monkeypatch.setattr(registry.time, "time", lambda: now[0])
+    for _ in range(3):
+        designs.list_designs()
+    with pytest.raises(ToolError, match="Too many calls"):
+        designs.list_designs()
+    now[0] += 60
+    designs.list_designs()
+
+
+@override_settings(MCP_CALLS_PER_MINUTE=1000)
+def test_mcp_calls_do_not_push_other_entries_out_of_the_cache(as_caller):
+    """Per-call rate keys once filled the cache and culled the login lockout counters."""
+    from django.core.cache import cache
+
+    cache.set("auth:failures:someone", 9, timeout=900)
+    keys_before = len(getattr(cache, "_cache", {}))
+    for _ in range(400):
+        designs.list_designs()
+    assert cache.get("auth:failures:someone") == 9
+    assert len(getattr(cache, "_cache", {})) <= keys_before
 
 
 def test_stock_tools_share_the_rest_throttles(as_caller, monkeypatch):
