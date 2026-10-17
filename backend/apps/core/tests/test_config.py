@@ -33,6 +33,7 @@ def test_config_is_public_and_has_the_documented_shape(api):
         "email_verification",
         "background_removal",
         "realtime",
+        "mcp",
     }
     assert set(body["limits"]) == {
         "max_upload_bytes",
@@ -206,3 +207,10 @@ def test_realtime_is_off_when_switched_off_or_without_a_channel_layer(api, setti
     settings.REALTIME_ENABLED = True
     settings.CHANNEL_LAYERS = {}
     assert api.get(URL).json()["features"]["realtime"] is False
+
+
+def test_the_mcp_flag_follows_the_setting(api, settings):
+    settings.MCP_ENABLED = False
+    assert api.get(URL).json()["features"]["mcp"] is False
+    settings.MCP_ENABLED = True
+    assert api.get(URL).json()["features"]["mcp"] is True

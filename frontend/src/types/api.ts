@@ -35,7 +35,7 @@ export interface BackgroundRemovalModel {
 export interface AppConfig {
   google_client_id: string
   /** `background_removal` is absent on servers that predate it. */
-  features: { stock_photos: boolean; server_pdf: boolean; google_login: boolean; email_verification: boolean; background_removal?: boolean; realtime?: boolean }
+  features: { stock_photos: boolean; server_pdf: boolean; google_login: boolean; email_verification: boolean; background_removal?: boolean; realtime?: boolean; mcp?: boolean }
   limits: { max_upload_bytes: number; max_pages: number; max_document_bytes: number; realtime_max_participants?: number }
   /** Files the browser downloads at run time; absent on servers that predate it. */
   assets?: { background_removal_model: BackgroundRemovalModel | null }
@@ -416,3 +416,25 @@ export interface UserFontUploadOptions {
 
 /** Error codes of `POST /fonts/mine/` (all carry a user-presentable `message`). */
 export type UserFontErrorCode = 'variant_exists' | 'font_name_taken' | 'font_limit_reached' | 'font_storage_limit'
+
+/** A personal access token (for the MCP server). The secret itself is only in `IssuedApiToken`. */
+export interface ApiToken {
+  id: string
+  name: string
+  prefix: string
+  scopes: string[]
+  created_at: string
+  last_used_at: string | null
+  expires_at: string | null
+  revoked_at: string | null
+}
+
+export interface IssuedApiToken extends ApiToken {
+  /** The full token, shown only once. */
+  token: string
+}
+
+export interface ApiTokenScope {
+  id: string
+  description: string
+}

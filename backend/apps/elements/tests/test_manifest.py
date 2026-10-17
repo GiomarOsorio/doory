@@ -38,6 +38,8 @@ def test_the_shipped_manifest_has_the_planned_packs():
         "phosphor-bold",
         "phosphor-fill",
         "phosphor-duotone",
+        "bootstrap-outline",
+        "bootstrap-fill",
         "heroicons-outline",
         "heroicons-solid",
         "material-outlined",
@@ -102,9 +104,18 @@ def test_brand_logos_are_marked_as_brand_and_not_mixed_into_skip():
         *(f"phosphor-{w}" for w in ("regular", "bold", "fill", "duotone")),
         "material-outlined",
         "material-filled",
+        "bootstrap-outline",
+        "bootstrap-fill",
     }
     assert re.search(skips["noto-emoji"], "waving-hand-dark-skin-tone") and not brands["noto-emoji"]
     assert not any(skip and re.search(skip, "brand-facebook") for skip in skips.values())
+    assert brands["bootstrap-outline"] == brands["bootstrap-fill"]
+    assert all(
+        re.search(brands["bootstrap-fill"], name) for name in ("facebook", "github", "twitter-x", "apple")
+    )
+    assert not any(
+        re.search(brands["bootstrap-fill"], name) for name in ("heart", "alarm", "credit-card", "git-branch")
+    )
 
 
 def test_the_brand_logo_choice_changes_the_fingerprint_only_of_packs_with_logos():

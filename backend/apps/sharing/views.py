@@ -1,5 +1,4 @@
 from django.conf import settings
-from django.db import transaction
 from django.db.models import Q
 from django.shortcuts import get_object_or_404
 from django.utils.cache import add_never_cache_headers, patch_vary_headers
@@ -37,18 +36,18 @@ from .serializers import (
     ShareLinkUpdateSerializer,
 )
 from .services import (
-    MAX_ACTIVE_LINKS_PER_DESIGN,
     MAX_COMMENTS_PER_DESIGN,
     DesignUnavailable,
     PasswordLocked,
     PasswordRequired,
     RevisionConflict,
     ShareLinkNotFound,
-    count_active_links,
+    create_link,
     enforce_link_password,
     record_access,
     resolve_link,
     save_shared_document,
+    update_link,
 )
 from .throttling import UploadScopeThrottleMixin, client_ip
 
@@ -96,14 +95,7 @@ class ShareLinkListCreateView(OwnerAPIView):
             raise bad_request("design_trashed", "Restore the design before sharing it.")
         serializer = ShareLinkCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        with transaction.atomic():
-            Design.objects.select_for_update().only("id").get(pk=design.pk)
-            if count_active_links(design) >= MAX_ACTIVE_LINKS_PER_DESIGN:
-                raise bad_request(
-                    "share_link_limit",
-                    f"A design can have at most {MAX_ACTIVE_LINKS_PER_DESIGN} active share links.",
-                )
-            link = serializer.save(design=design, created_by=request.user)
+        link = create_link(design, serializer, request.user)
         return Response(ShareLinkSerializer(link).data, status=status.HTTP_201_CREATED)
 
 
@@ -123,8 +115,7 @@ class ShareLinkDetailView(OwnerAPIView):
         link = self.get_link()
         serializer = ShareLinkUpdateSerializer(link, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
-        link = serializer.save()
-        return Response(ShareLinkSerializer(link).data)
+        return Response(ShareLinkSerializer(update_link(link, serializer)).data)
 
     @extend_schema(responses={204: None}, tags=["sharing"])
     def delete(self, request, design_id, pk):
@@ -164,12 +155,12 @@ class DesignCommentDetailView(OwnerAPIView):
 
     @extend_schema(request=CommentUpdateSerializer, responses=CommentSerializer, tags=["comments"])
     def patch(self, request, design_id, pk):
-        """Owner only: mark a thread as resolved / re-open it, and/or move its pin."""
+        """Owner only: mark a thread as resolved / re-open it, move its pin, or edit one's own comment."""
         comment = get_object_or_404(
             Comment.objects.filter(design_id=design_id, design__owner=request.user).select_related("author"),
             pk=pk,
         )
-        serializer = CommentUpdateSerializer(comment, data=request.data)
+        serializer = CommentUpdateSerializer(comment, data=request.data, context={"user": request.user})
         serializer.is_valid(raise_exception=True)
         comment = serializer.save()
         return Response(CommentSerializer(comment).data)

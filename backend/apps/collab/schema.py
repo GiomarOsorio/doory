@@ -377,3 +377,172 @@ def repair(ydoc: Doc, anomalies: Anomalies) -> None:
         blank = {"background": {"type": "solid", "color": "#ffffff"}, "objects": []}
         pages_map[RESTORED_PAGE_ID] = _page_map(blank, RESTORED_PAGE_ID)
         order.append(RESTORED_PAGE_ID)
+
+
+# ---------------------------------------------------------------------------------------------
+# document change -> Y operations (mirror of editor/collab/diff.ts)
+# ---------------------------------------------------------------------------------------------
+
+_MISSING = object()
+SKIP_ID = frozenset({"id"})
+SKIP_PAGE = frozenset({"id", KEY_OBJECTS, KEY_OBJECT_ORDER})
+SKIP_DOC = frozenset({"pages"})
+
+
+def json_equal(left: Any, right: Any) -> bool:
+    """Equality of JSON values: 1 == 1.0, but True is not 1 (Python's own == says it is)."""
+    if isinstance(left, bool) or isinstance(right, bool):
+        return isinstance(left, bool) and isinstance(right, bool) and left == right
+    if isinstance(left, int | float) and isinstance(right, int | float):
+        return left == right
+    if isinstance(left, list) and isinstance(right, list):
+        return len(left) == len(right) and all(json_equal(a, b) for a, b in zip(left, right, strict=True))
+    if isinstance(left, dict) and isinstance(right, dict):
+        return left.keys() == right.keys() and all(
+            json_equal(value, right[key]) for key, value in left.items()
+        )
+    return type(left) is type(right) and left == right
+
+
+def longest_increasing(values: list[int]) -> list[int]:
+    """Positions of a longest increasing subsequence of `values`."""
+    tails: list[int] = []
+    previous = [-1] * len(values)
+    for i, value in enumerate(values):
+        low, high = 0, len(tails)
+        while low < high:
+            mid = (low + high) // 2
+            if values[tails[mid]] < value:
+                low = mid + 1
+            else:
+                high = mid
+        if low > 0:
+            previous[i] = tails[low - 1]
+        if low == len(tails):
+            tails.append(i)
+        else:
+            tails[low] = i
+    out: list[int] = []
+    at = tails[-1] if tails else -1
+    while at >= 0:
+        out.append(at)
+        at = previous[at]
+    return out[::-1]
+
+
+def sync_order(array: Array, target: list[str], known: set[str]) -> None:
+    """Make `array` list `target` in order with the fewest operations (`syncOrder` in diff.ts).
+
+    Entries already in the right relative order stay; duplicates and moved entries are deleted and inserted
+    again; ids neither in `target` nor in `known` are somebody else's additions and are left alone.
+    """
+    current = array_values(array)
+    wanted = {item: index for index, item in enumerate(target)}
+    first: list[int] = []
+    seen: set[str] = set()
+    for position, item in enumerate(current):
+        if item in wanted and item not in seen:
+            seen.add(item)
+            first.append(position)
+    kept = {first[i] for i in longest_increasing([wanted[current[p]] for p in first])}
+    doomed = [
+        position
+        for position, item in enumerate(current)
+        if position not in kept and (item in wanted or item in known)
+    ]
+    _remove_entries(array, doomed)
+    removed = set(doomed)
+    after = [item for position, item in enumerate(current) if position not in removed]
+    present = set(after)
+    cursor = 0
+    for item in target:
+        if item in present:
+            cursor = after.index(item, cursor) + 1
+        else:
+            array.insert(cursor, item)
+            after.insert(cursor, item)
+            present.add(item)
+            cursor += 1
+
+
+def _write_props(target: Map, prev: dict | None, nxt: dict, skip: frozenset[str]) -> None:
+    before = prev or {}
+    for key in {*before.keys(), *nxt.keys()}:
+        if key in skip:
+            continue
+        was, now = before.get(key, _MISSING), nxt.get(key, _MISSING)
+        if prev is not None and was is not _MISSING and now is not _MISSING and json_equal(was, now):
+            continue
+        if now is _MISSING:
+            if key in target:
+                del target[key]
+            continue
+        value = _clean(now)
+        if key in target and json_equal(to_json(target[key]), value):
+            continue
+        target[str(key)] = value
+
+
+def _page_parts(page_map: Map) -> tuple[Map, Array]:
+    objects = page_map.get(KEY_OBJECTS)
+    if not isinstance(objects, Map):
+        objects = page_map[KEY_OBJECTS] = Map()
+    order = page_map.get(KEY_OBJECT_ORDER)
+    if not isinstance(order, Array):
+        order = page_map[KEY_OBJECT_ORDER] = Array()
+    return objects, order
+
+
+def _write_page(pages: Map, page: dict, prev: dict | None) -> None:
+    page_id = page["id"]
+    existing = pages.get(page_id)
+    if not isinstance(existing, Map):
+        if prev is None:
+            pages[page_id] = _page_map(page, page_id)
+        return  # the page was deleted by somebody else meanwhile: the edit goes with it
+    _write_props(existing, prev, page, SKIP_PAGE)
+    objects, order = _page_parts(existing)
+    before = {obj["id"]: obj for obj in (prev or {}).get("objects", [])}
+    ids: list[str] = []
+    for obj in page.get("objects", []):
+        object_id = obj.get("id")
+        if not _valid_id(object_id):
+            continue
+        old = before.get(object_id)
+        if old is None or not json_equal(old, obj):
+            current = objects.get(object_id)
+            if isinstance(current, Map):
+                _write_props(current, old, obj, SKIP_ID)
+            elif old is None:
+                objects[object_id] = _object_map(obj, object_id)
+        if object_id in objects:
+            ids.append(object_id)
+    wanted = {obj.get("id") for obj in page.get("objects", [])}
+    for object_id in before:
+        if object_id not in wanted and object_id in objects:
+            del objects[object_id]
+    sync_order(order, ids, set(before))
+
+
+def write_changes(ydoc: Doc, prev: dict, nxt: dict) -> None:
+    """Write only what differs between two documents into `ydoc` (`writeChanges`), in the open transaction.
+
+    `prev` is what the writer started from (normally read from `ydoc` itself), `nxt` what it wants. A property
+    is written when it differs between the two and from what the shared state holds, so changes others made
+    in the meantime survive unless this edit touches the very same property.
+    """
+    meta = ydoc.get(ROOT_META, type=Map)
+    order = ydoc.get(ROOT_PAGE_ORDER, type=Array)
+    pages = ydoc.get(ROOT_PAGES, type=Map)
+    _write_props(meta, prev, nxt, SKIP_DOC)
+    before = {page["id"]: page for page in prev.get("pages", [])}
+    ids = [page["id"] for page in nxt.get("pages", [])]
+    wanted = set(ids)
+    for page_id in before:
+        if page_id not in wanted and page_id in pages:
+            del pages[page_id]
+    for page in nxt.get("pages", []):
+        old = before.get(page["id"])
+        if old is None or not json_equal(old, page):
+            _write_page(pages, page, old)
+    sync_order(order, ids, set(before))

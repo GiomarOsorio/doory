@@ -7,6 +7,7 @@ import uuid
 from django.core.files.base import ContentFile
 from django.db import IntegrityError, transaction
 
+from apps.apitokens.services import revoke_all as revoke_all_tokens
 from apps.core.exceptions import ApiError
 from apps.core.images import process_image_upload, square_crop_webp
 from apps.core.storage import delete_file_after_commit
@@ -75,6 +76,8 @@ def _link_or_create(identity: GoogleIdentity) -> tuple[User, bool]:
             user.is_email_verified = True
             fields += ["password", "is_email_verified"]
         user.save(update_fields=fields)
+        if "password" in fields:
+            revoke_all_tokens(user)  # and so may any token made with it
         return user, False
 
     user = User.objects.create_user(

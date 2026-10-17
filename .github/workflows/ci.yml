@@ -127,6 +127,7 @@ jobs:
           sed -i "s|^DJANGO_SECRET_KEY=.*|DJANGO_SECRET_KEY=$(openssl rand -hex 32)|" .env
           sed -i "s|^POSTGRES_PASSWORD=.*|POSTGRES_PASSWORD=$(openssl rand -hex 16)|" .env
           sed -i "s|^INSTALL_CHROMIUM=.*|INSTALL_CHROMIUM=false|" .env
+          printf 'MCP_ENABLED=true\nCOMPOSE_PROFILES=mcp\n' >> .env  # the MCP server is opt-in
       - name: Validate the compose files
         run: |
           docker compose config --quiet
@@ -149,6 +150,13 @@ jobs:
             -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' -H 'Origin: http://localhost:8080' \
             http://localhost:8080/ws/designs/00000000-0000-4000-8000-000000000000/ || true)
           test "$status" = "101"
+      - name: MCP endpoint answers through nginx
+        run: |
+          # Without a token the MCP server answers 401 with a Bearer challenge: proves nginx reaches it.
+          status=$(curl --silent --output /dev/null --write-out '%{http_code}' --max-time 5 \
+            -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' \
+            -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' http://localhost:8080/mcp || true)
+          test "$status" = "401"
       - name: Show logs on failure
         if: failure()
         run: docker compose logs --no-color --tail 200

@@ -1,3 +1,5 @@
+import { useAuth } from '@/features/auth/AuthProvider'
+import { ApiTokensSection } from '@/features/settings/ApiTokensSection'
 import { DangerSection } from '@/features/settings/DangerSection'
 import { EmailSection } from '@/features/settings/EmailSection'
 import { PasswordSection } from '@/features/settings/PasswordSection'
@@ -8,16 +10,19 @@ import settingsStyles from './SettingsPage.module.css'
 
 export default function SettingsPage() {
   usePageTitle('Settings')
+  const { config } = useAuth()
+  const mcp = config.features.mcp === true // the MCP server is opt-in on the server
   return (
     <div className={styles.page}>
       <header className={styles.heading}>
         <h1 className={styles.title}>Settings</h1>
-        <p className={styles.lead}>Manage your profile, email and security.</p>
+        <p className={styles.lead}>{mcp ? 'Manage your profile, email, security and AI assistant access.' : 'Manage your profile, email and security.'}</p>
       </header>
       <div className={settingsStyles.stack}>
         <ProfileSection />
         <EmailSection />
         <PasswordSection />
+        {mcp ? <ApiTokensSection /> : null}
         <DangerSection />
       </div>
     </div>

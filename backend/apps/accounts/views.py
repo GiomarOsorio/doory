@@ -20,6 +20,7 @@ from rest_framework.response import Response
 from rest_framework.throttling import AnonRateThrottle, ScopedRateThrottle, UserRateThrottle
 from rest_framework.views import APIView
 
+from apps.apitokens.services import revoke_all as revoke_all_tokens
 from apps.core.csrf import CsrfProtectedMixin
 from apps.core.exceptions import ApiError
 from apps.core.images import ImageError
@@ -181,12 +182,7 @@ class MeView(CsrfProtectedMixin, GenericAPIView):
         data = serializer.validated_data
         user = request.user
 
-        if user.has_usable_password():
-            _verify_password(user, data.get("password", ""), "password")
-        elif data.get("confirm_email", "").strip().lower() != user.email:
-            raise _field_error(
-                "confirm_email", "Type your account's email address to confirm.", "confirm_email_mismatch"
-            )
+        confirm_identity(user, data)
         others = User.objects.filter(is_superuser=True, is_active=True).exclude(pk=user.pk)
         if user.is_superuser and not others.exists():
             raise ApiError("last_superuser", "The last administrator account cannot be deleted here.")
@@ -194,6 +190,17 @@ class MeView(CsrfProtectedMixin, GenericAPIView):
         user.delete()  # cascades to the user's data; the avatar file is removed after commit
         logout(request)
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+def confirm_identity(user: User, data: dict) -> None:
+    """Ask a signed-in user to prove it is them before a sensitive step: their password, or for accounts
+    without one (Google), their email address typed out. `data` holds `password` / `confirm_email`."""
+    if user.has_usable_password():
+        _verify_password(user, data.get("password", ""), "password")
+    elif data.get("confirm_email", "").strip().lower() != user.email.lower():
+        raise _field_error(
+            "confirm_email", "Type your account's email address to confirm.", "confirm_email_mismatch"
+        )
 
 
 def _verify_password(user: User, password: str, field: str) -> None:
@@ -222,6 +229,7 @@ class PasswordChangeView(AuthView):
         user.set_password(new_password)
         user.save(update_fields=["password", "updated_at"])
         update_session_auth_hash(request, user)  # this session stays valid; every other one is dropped
+        revoke_all_tokens(user)  # a token minted by whoever knew the old password must not outlive it
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
@@ -262,6 +270,7 @@ class PasswordResetConfirmView(AuthView):
         user.is_email_verified = True  # the reset link proves control of the mailbox
         user.save(update_fields=["password", "is_email_verified", "updated_at"])
         PasswordAttemptGuard(user.email).reset()
+        revoke_all_tokens(user)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 

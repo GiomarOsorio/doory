@@ -250,6 +250,7 @@ OFL-1.1, CC0-1.0, BSD and Unlicense are accepted by the manifest loader; the lic
 | "Lucide" | npm `lucide-static@1.52.0`, https://lucide.dev | ISC (Lucide) and MIT (icons derived from Feather), notice below |
 | "Tabler Outline", "Tabler Filled" | npm `@tabler/icons@3.48.0`, https://tabler.io/icons | MIT, notice below |
 | "Phosphor Regular", "Phosphor Bold", "Phosphor Fill", "Phosphor Duotone" | npm `@phosphor-icons/core@2.1.1`, https://phosphoricons.com | MIT, notice below |
+| "Bootstrap Icons", "Bootstrap Icons Fill" | npm `bootstrap-icons@1.13.2`, https://icons.getbootstrap.com | MIT, notice below |
 | "Heroicons Outline", "Heroicons Solid" | npm `heroicons@2.2.0`, https://heroicons.com | MIT, notice below |
 | "Material Outlined", "Material Filled" | npm `@material-symbols/svg-400@0.47.6`, https://fonts.google.com/icons | Apache-2.0, notice below |
 | "Noto Emoji" | npm `@iconify-json/noto@1.2.9` (Iconify packaging of the Noto Emoji SVGs), https://github.com/googlefonts/noto-emoji | Apache-2.0 (artwork licence: `svg/LICENSE` in the repository), notice below |
@@ -318,6 +319,7 @@ served to browsers are in [NOTICE](NOTICE) and [licenses/bundled-licenses.txt](l
   project are Copyright (c) 2013-present Cole Bemis (The MIT License).
 - **Tabler Icons** — Copyright (c) 2020-2026 Paweł Kuna (MIT License).
 - **Phosphor Icons** — Copyright (c) 2023 Phosphor Icons (MIT License).
+- **Bootstrap Icons** — Copyright (c) 2019-2024 The Bootstrap Authors (MIT License).
 - **Heroicons** — Copyright (c) Tailwind Labs, Inc. (MIT License).
 - **Material Symbols** — Copyright Google LLC, licensed under the Apache License, Version 2.0.
 - **Noto Emoji** — Copyright 2013 Google, Inc., licensed under the Apache License, Version 2.0.

@@ -48,6 +48,8 @@ const defaultHandlers: RequestHandler[] = [
   http.get('*/api/v1/brand-kits/', () => HttpResponse.json([])),
   http.get('*/api/v1/fonts/', empty),
   http.get('*/api/v1/fonts/mine/', empty),
+  http.get('*/api/v1/auth/tokens/', () => HttpResponse.json([])),
+  http.get('*/api/v1/auth/tokens/scopes/', () => HttpResponse.json([])),
 ]
 
 /** Renders the real route table inside the real providers, with `/auth/me/` and `/config/` stubbed. */

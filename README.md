@@ -45,7 +45,7 @@ reports are very welcome.
 | | |
 |---|---|
 | **Text** | Headings, curved text, effects, font pairings, lists, an open-licensed font catalogue and your own fonts |
-| **Elements** | Shapes, lines and arrows, about 25,000 icons, emoji and illustrations, stickers, QR codes |
+| **Elements** | Shapes, lines and arrows, about 27,500 icons, emoji and illustrations, stickers, QR codes |
 | **Photos** | Upload, crop, masks and filters, background removal that runs in the browser, stock photo search with an Unsplash or Pexels key |
 | **Layout** | Layers, groups, alignment guides, snapping, rulers, several pages per design (each its own size), resize to another format |
 | **Motion and sound** | 27 enter and exit animations, 12 emphasis animations, 16 page transitions, 24 music loops and 88 sound effects (CC0), voiceover recording |
@@ -76,8 +76,8 @@ docker compose up -d --build
 docker compose exec api python manage.py createsuperuser   # your admin account; nothing creates one for you
 ```
 
-Open <http://localhost:8080> and start designing. The `web` container serves the app and forwards `/api` and
-`/ws` to the backend, so the browser only ever talks to one address.
+Open <http://localhost:8080> and start designing. The `web` container serves the app and forwards `/api`, `/ws`
+and `/mcp` to the backend, so the browser only ever talks to one address.
 
 <details>
 <summary><b>The admin site</b> (templates, users, content)</summary>
@@ -262,6 +262,8 @@ sudo -u doory npm ci && sudo -u doory npm run build    # writes frontend/dist
 ```bash
 sudo cp /opt/doory/deploy/doory-api.service /opt/doory/deploy/doory-realtime.service /etc/systemd/system/
 sudo systemctl daemon-reload && sudo systemctl enable --now doory-api doory-realtime
+# Optional, for AI assistants (MCP_ENABLED=true in .env): the MCP server
+# sudo cp /opt/doory/deploy/doory-mcp.service /etc/systemd/system/ && sudo systemctl enable --now doory-mcp
 sudo cp /opt/doory/deploy/nginx.conf /etc/nginx/conf.d/doory.conf    # set server_name in it
 sudo rm -f /etc/nginx/sites-enabled/default
 sudo -u doory mkdir -p /opt/doory/media       # uploads; nginx serves them from here
@@ -269,10 +271,10 @@ sudo nginx -t && sudo systemctl reload nginx
 ```
 
 Open your domain. For HTTPS, `sudo apt install certbot python3-certbot-nginx && sudo certbot --nginx`, then remove the
-two `SECURE_` lines from `.env` and `sudo systemctl restart doory-api doory-realtime`.
+two `SECURE_` lines from `.env` and `sudo systemctl restart doory-api doory-realtime` (and `doory-mcp` if you run it).
 
 **Updating:** `sudo -u doory git pull`, then repeat `pip install`, `manage migrate`, `manage collectstatic --noinput` and
-`npm ci && npm run build`, and `sudo systemctl restart doory-api doory-realtime`.
+`npm ci && npm run build`, and `sudo systemctl restart doory-api doory-realtime` (and `doory-mcp` if you run it).
 
 **Optional:** server-side PDF export needs a headless Chromium: `sudo .venv/bin/playwright install-deps chromium`, then
 `sudo -u doory .venv/bin/playwright install chromium`. Without it, set `SERVER_PDF_ENABLED=false` in `.env`.
@@ -293,6 +295,47 @@ make dev-web   # app on http://localhost:5173 (second terminal)
 `make help` lists the other targets (tests, lint, content).
 
 </details>
+
+## Use it from an AI assistant (MCP)
+
+Doory runs a [Model Context Protocol](https://modelcontextprotocol.io) server at `/mcp` on your domain, so Claude,
+Cursor and other MCP clients can create and edit your designs: "make a 1080 x 1350 poster for our summer sale with
+the brand colours", "translate the headlines on every page", "move the logo to the bottom right".
+
+The server is off by default. To turn it on, add `MCP_ENABLED=true` to `.env`; with Docker also add
+`COMPOSE_PROFILES=mcp` (it starts the `mcp` service), then `docker compose up -d`. Without Docker, install
+`deploy/doory-mcp.service` too (see step 5 above) and restart `doory-api`.
+
+1. In Doory, open **Settings → AI assistants (MCP)** and create a token. Choose what it may do (read designs, edit
+   them, trash them, add images, comment, manage comments, change brand kits, manage share links) and when it
+   expires (at most a year), and confirm with your password. The token is shown once. Each permission is listed
+   with what it allows; a token never gains a permission it was not given, even when new tools are added.
+2. Add the server to your client with the URL `https://your-domain/mcp` and the header
+   `Authorization: Bearer <token>`. For Claude Code:
+
+   ```bash
+   claude mcp add --transport http doory https://your-domain/mcp --header "Authorization: Bearer doory_…"
+   ```
+
+   In a JSON configuration (Claude Code's `.mcp.json`, Cursor and others) that is
+   `{"type": "http", "url": "https://your-domain/mcp", "headers": {"Authorization": "Bearer doory_…"}}`.
+
+The assistant can list, read, create, rename, duplicate and edit designs; star them, organise them in folders,
+trash and restore them; add text (curved, with shadows, outlines, glows or highlights), shapes (including the
+catalogue's hearts, arrows, speech bubbles…), lines, pictures (cropped to a shape if wanted), QR codes and
+pages; group and ungroup objects; set backgrounds and speaker notes; search templates, the element catalogue,
+fonts and stock photos, and copy images from public https URLs; read, add, edit, resolve and delete comments;
+create and change brand kits; create and revoke share links; and restore earlier versions. Designs are also MCP
+resources (`doory://designs/{id}`), and two prompts, "Make a design from a brief" and "Review a design", show up in
+clients that offer prompts. Creating or changing a share link is marked as destructive, so clients ask you before
+an assistant does it, and comment text reaches the assistant labelled as untrusted. The state before every edit is
+kept in the design's version history, so anything an assistant did can be undone from there. If the design is open
+in your editor, the change appears live, like a co-editor's; with Redis it arrives at once, otherwise within a few
+seconds.
+
+Text heights reported to the assistant are estimates until the design is opened in the editor, which measures
+text exactly. Revoke a token in the same settings page. Changing or resetting your password revokes all your
+tokens.
 
 ## FAQ
 

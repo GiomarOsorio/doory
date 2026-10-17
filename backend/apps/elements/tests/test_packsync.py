@@ -237,6 +237,29 @@ def test_packs_without_brand_patterns_are_not_resynced_when_brand_logos_are_turn
     assert [r.status for r in report.results] == ["up-to-date"] and len(source.calls) == 1
 
 
+def test_the_bootstrap_packs_split_outline_and_fill_and_leave_out_brand_logos():
+    from apps.elements.manifest import load_manifest
+
+    packs = [p for p in load_manifest().packs if p.id in ("bootstrap-outline", "bootstrap-fill")]
+    files = {
+        "LICENSE": b"The MIT License (MIT)\n\nCopyright (c) 2019-2024 The Bootstrap Authors\n",
+        "icons/heart.svg": icon("M8 2.7 7.3 2C5.6.3 2.5.9 1.4 3z"),
+        "icons/heart-fill.svg": icon("M8 1.3C12.4-3.2 23.5 4.6 8 15z"),
+        "icons/credit-card.svg": icon("M0 4a2 2 0 0 1 2-2h12z"),
+        "icons/facebook.svg": icon("M16 8.05A8.02 8.02 0 0 0 8 0z"),
+        "icons/twitter-x.svg": icon("M12.6.75h2.454l-5.36 6.142z"),
+    }
+
+    report, _ = run(packs, FakeSource({packs[0].source.label: files}))
+
+    assert all(r.status == "synced" for r in report.results)
+    keys = {
+        slug: sorted(Element.objects.filter(pack__slug=slug).values_list("key", flat=True))
+        for slug in ("bootstrap-outline", "bootstrap-fill")
+    }
+    assert keys == {"bootstrap-outline": ["credit-card", "heart"], "bootstrap-fill": ["heart"]}
+
+
 def test_iconify_json_packs_are_expanded_and_skin_tone_variants_left_out():
     data = {
         "width": 32,
