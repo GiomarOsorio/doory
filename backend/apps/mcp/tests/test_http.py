@@ -78,6 +78,22 @@ def test_tools_are_listed_with_schemas(issued):
     assert "add_text" in ops and "set_background" in ops
 
 
+def test_designs_are_resources_and_prompts_are_listed(issued, user):
+    design = Design.objects.create(owner=user, title="Poster", document={"version": 1, "pages": []})
+    templates = rpc(issued.plaintext, "resources/templates/list").json()["result"]["resourceTemplates"]
+    assert [t["uriTemplate"] for t in templates] == ["doory://designs/{design_id}"]
+    read = rpc(issued.plaintext, "resources/read", {"uri": f"doory://designs/{design.pk}"}).json()
+    assert json.loads(read["result"]["contents"][0]["text"])["title"] == "Poster"
+    missing = rpc(issued.plaintext, "resources/read", {"uri": "doory://designs/nope"}).json()
+    assert "Not found" in missing["error"]["message"]
+    prompts = rpc(issued.plaintext, "prompts/list").json()["result"]["prompts"]
+    assert {p["name"] for p in prompts} == {"make_design", "review_design"}
+    got = rpc(
+        issued.plaintext, "prompts/get", {"name": "make_design", "arguments": {"brief": "A sale"}}
+    ).json()
+    assert "A sale" in got["result"]["messages"][0]["content"]["text"]
+
+
 def test_a_tool_call_creates_and_edits_a_design(issued, user):
     created = call(issued.plaintext, "create_design", {"title": "Poster", "width": 800, "height": 1000})
     assert created["isError"] is False

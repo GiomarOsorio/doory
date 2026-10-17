@@ -3,16 +3,28 @@
 from __future__ import annotations
 
 from typing import Annotated, Any, Literal
+from urllib.parse import unquote, urlsplit, urlunsplit
 
+from django.conf import settings
+from mcp.server.mcpserver.exceptions import ToolError
 from pydantic import Field
 
 from apps.apitokens.scopes import ASSETS_WRITE, DESIGNS_READ
-from apps.assets import stock
+from apps.assets import remote, stock
+from apps.assets.audio import looks_like_audio
 from apps.assets.models import Asset
+from apps.assets.services import create_asset
 from apps.assets.throttling import StockRateThrottle, UploadRateThrottle
+from apps.assets.uploads import clean_name
 
 from ..context import current
 from ..registry import throttle, tool
+
+
+def _bare(url: str) -> str:
+    """`url` without its query and fragment: they can hold a signature or token that must not be kept."""
+    parts = urlsplit(url)
+    return urlunsplit((parts.scheme, parts.netloc, parts.path, "", ""))
 
 
 def _asset(asset: Asset) -> dict[str, Any]:
@@ -65,4 +77,27 @@ def import_stock_photo(
     """Copy a stock photo into your uploads (once; importing it again returns the same asset)."""
     throttle(UploadRateThrottle())
     asset, _ = stock.import_photo(current().user, provider, photo_id)
+    return _asset(asset)
+
+
+@tool(scope=ASSETS_WRITE, title="Upload an image from a URL")
+def upload_image_from_url(
+    url: Annotated[str, Field(min_length=8, max_length=2048, description="A public https link to an image.")],
+    name: Annotated[str | None, Field(max_length=120)] = None,
+) -> dict[str, Any]:
+    """Copy an image from a public https URL into your uploads; it is checked like any upload. Only use
+    images the user has the right to use."""
+    if not settings.MCP_URL_UPLOADS:
+        raise ToolError("Uploading from a URL is switched off on this server.")
+    throttle(UploadRateThrottle())
+    try:
+        data = remote.fetch_image(url, max_bytes=settings.MAX_UPLOAD_BYTES)
+    except remote.RemoteImageError as exc:
+        raise ToolError(f"{exc} Nothing was uploaded.") from exc
+    if looks_like_audio(data):
+        raise ToolError("That URL is not an image. Nothing was uploaded.")
+    fallback = unquote(urlsplit(url).path.rsplit("/", 1)[-1]) or "Image"  # the path only, never the query
+    asset = create_asset(
+        current().user, data, name=clean_name(name or fallback), meta={"source_url": _bare(url)}
+    )
     return _asset(asset)

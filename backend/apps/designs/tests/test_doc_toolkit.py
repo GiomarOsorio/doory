@@ -6,7 +6,7 @@ import pytest
 from django.conf import settings
 from pydantic import TypeAdapter, ValidationError
 
-from apps.designs.doc import builders, contract
+from apps.designs.doc import builders, contract, groups
 from apps.designs.doc.builders import Page
 from apps.designs.doc.kinds import object_kind
 from apps.designs.doc.ops import EditError, ImageSource, Operation, apply_ops, box, place
@@ -268,6 +268,171 @@ def test_a_text_box_keeps_its_height_when_nothing_about_its_layout_changes():
     assert outcome.document["pages"][0]["objects"][0]["height"] == 300
     outcome = run(document, {"op": "update_object", "object_id": "t", "text": "Hello there"})
     assert outcome.document["pages"][0]["objects"][0]["height"] < 300  # re-estimated for the new text
+
+
+def test_text_effects_and_curves_are_stored_like_the_editor_stores_them():
+    document = run(
+        make_doc(),
+        {
+            "op": "add_text",
+            "text": "Sale",
+            "id": "t",
+            "curve": -150,
+            "effects": {"outline": {"color": "#ff0000", "width": 3}, "highlight": {}, "shadow": {"blur": 4}},
+        },
+        {"op": "add_shape", "shape": "rect", "id": "r", "shadow": {"color": "#000000"}},
+    ).document
+    text, rect = document["pages"][0]["objects"]
+    assert text["curveAmount"] == -150
+    assert text["effects"] == {
+        "shadow": {"color": "#00000066", "blur": 4, "offsetX": 4, "offsetY": 6},
+        "outline": {"color": "#ff0000", "width": 3},
+        "background": {"color": "#fde047"},
+    }
+    assert (text["stroke"], text["strokeWidth"], text["paintFirst"]) == ("#ff0000", 3, "stroke")
+    assert text["textBackgroundColor"] == "#fde047"
+    assert rect["effects"] == {"shadow": {"color": "#000000", "blur": 12, "offsetX": 4, "offsetY": 6}}
+    valid(document)
+    summary = summarize_document(document)["pages"][0]["objects"]
+    assert summary[0]["curve"] == -150
+    assert summary[0]["effects"] == ["highlight", "outline", "shadow"]
+
+    cleared = run(
+        document,
+        {"op": "update_object", "object_id": "t", "effects": {}, "curve": 0},
+        {"op": "update_object", "object_id": "r", "effects": {"shadow": {"blur": 20}}},
+    ).document
+    text, rect = cleared["pages"][0]["objects"]
+    assert not {"effects", "curveAmount", "textBackgroundColor", "shadow"} & set(text)
+    assert text["stroke"] is None and text["strokeWidth"] == 0  # the outline does not linger
+    assert rect["effects"]["shadow"]["blur"] == 20
+
+
+def test_effects_and_curves_only_go_where_the_editor_supports_them():
+    document = run(
+        make_doc(),
+        {"op": "add_shape", "shape": "rect", "id": "r"},
+        {"op": "add_image", "asset_id": "asset-1", "id": "img"},
+    ).document
+    for op, message in (
+        ({"object_id": "r", "effects": {"glow": {}}}, "only take a shadow"),
+        ({"object_id": "img", "effects": {"shadow": {}}}, "Only text and shapes"),
+        ({"object_id": "r", "curve": 100}, "Only text can be curved"),
+    ):
+        with pytest.raises(EditError, match=message):
+            run(document, {"op": "update_object", **op})
+    with pytest.raises(ValidationError):
+        OPS.validate_python([{"op": "add_text", "text": "x", "curve": 401}])
+
+
+def test_catalogue_shapes_can_be_added_and_resized():
+    document = run(
+        make_doc(),
+        {"op": "add_shape", "shape": "path", "path_shape": "heart", "x": 0, "y": 0, "width": 184, "id": "h"},
+    ).document
+    heart = document["pages"][0]["objects"][0]
+    assert heart["type"] == "path" and heart["shapeId"] == "heart" and heart["path"][0] == ["M", 50, 90]
+    assert box(heart) == {"x": 0, "y": 0, "width": 184, "height": pytest.approx(166)}  # proportions kept
+    valid(document)
+    assert summarize_document(document)["pages"][0]["objects"][0]["shape"] == "heart"
+    stretched = run(document, {"op": "update_object", "object_id": "h", "height": 50}).document
+    assert box(stretched["pages"][0]["objects"][0])["height"] == pytest.approx(50)
+    for op in ({"shape": "path"}, {"shape": "rect", "path_shape": "heart"}):
+        with pytest.raises(EditError, match="path_shape"):
+            run(make_doc(), {"op": "add_shape", **op})
+    with pytest.raises(ValidationError):
+        OPS.validate_python([{"op": "add_shape", "shape": "path", "path_shape": "unicorn"}])
+
+
+def test_pictures_can_be_masked_and_unmasked():
+    document = run(
+        make_doc(),
+        {"op": "add_image", "asset_id": "asset-1", "id": "img", "mask": "rounded", "mask_radius": 0.3},
+    ).document
+    image = document["pages"][0]["objects"][0]
+    assert (image["maskShape"], image["maskRadius"]) == ("rounded", 0.3)
+    assert summarize_document(document)["pages"][0]["objects"][0]["mask"] == "rounded"
+    hearted = run(document, {"op": "update_object", "object_id": "img", "mask": "heart"}).document
+    image = hearted["pages"][0]["objects"][0]
+    assert image["maskShape"] == "heart" and "maskRadius" not in image
+    image["clipPath"] = {"type": "path"}  # as an editor-saved picture might carry
+    plain = run(hearted, {"op": "update_object", "object_id": "img", "mask": "none"}).document
+    assert not {"maskShape", "clipPath"} & set(plain["pages"][0]["objects"][0])
+    text = run(make_doc(), {"op": "add_text", "text": "Hi", "id": "t"}).document
+    with pytest.raises(EditError, match="can be masked"):
+        run(text, {"op": "update_object", "object_id": "t", "mask": "circle"})
+
+
+def test_objects_can_be_grouped_and_ungrouped_where_they_are():
+    document = run(
+        make_doc(),
+        {"op": "add_shape", "shape": "rect", "id": "a", "x": 100, "y": 100, "width": 100, "height": 50},
+        {"op": "add_text", "text": "Between", "id": "between"},
+        {"op": "add_shape", "shape": "ellipse", "id": "b", "x": 300, "y": 200, "width": 80, "height": 80},
+    ).document
+    before = {obj["id"]: box(obj) for obj in document["pages"][0]["objects"]}
+    outcome = run(document, {"op": "group_objects", "object_ids": ["b", "a"], "id": "g", "name": "Logo"})
+    objects = outcome.document["pages"][0]["objects"]
+    assert [obj["id"] for obj in objects] == ["g", "between"]  # the group takes the lowest child's place
+    group = objects[0]
+    assert [child["id"] for child in group["objects"]] == ["a", "b"]  # stacking order kept
+    assert box(group) == {"x": 100, "y": 100, "width": 280, "height": 180}
+    valid(outcome.document)
+    summary = summarize_document(outcome.document)["pages"][0]["objects"][0]
+    assert summary["kind"] == "group" and summary["child_ids"] == ["a", "b"]
+    for op in (
+        {"op": "update_object", "object_id": "a", "opacity": 0.5},
+        {"op": "delete_objects", "object_ids": ["b"]},
+    ):
+        with pytest.raises(EditError, match="inside the group 'g': ungroup it first"):
+            run(outcome.document, op)
+
+    ungrouped = run(outcome.document, {"op": "ungroup", "object_id": "g"}).document
+    objects = ungrouped["pages"][0]["objects"]
+    assert [obj["id"] for obj in objects] == ["a", "b", "between"]
+    for obj in objects:
+        assert box(obj) == pytest.approx(before[obj["id"]])
+
+
+def test_group_bounds_match_fabric():
+    # Measured in the editor: `new Group([rect, text])` of these two is 373.8013 x 183.4063 around
+    # (313.5994, 218.4019). The text has no strokeWidth, so Fabric's default of 1 counts.
+    rect = {
+        "type": "rect", "originX": "center", "originY": "center", "left": 200, "top": 200, "width": 100,
+        "height": 100, "angle": 30, "strokeWidth": 10, "strokeUniform": True,
+    }  # fmt: skip
+    text = {
+        "type": "textbox", "originX": "center", "originY": "center", "left": 400, "top": 300, "width": 200,
+        "height": 19.21, "strokeUniform": True,
+    }  # fmt: skip
+    group = groups.group([rect, text], "g")
+    assert (group["left"], group["top"]) == pytest.approx((313.5994, 218.4019), abs=1e-4)
+    assert (group["width"], group["height"]) == pytest.approx((373.8013, 183.4063), abs=1e-4)
+    assert (rect["left"], rect["top"]) == pytest.approx((-113.5994, -18.4019), abs=1e-4)
+
+
+def test_grouping_is_explained_when_it_cannot_be_done():
+    document = run(
+        make_doc(pages=2),
+        {"op": "add_shape", "shape": "rect", "id": "a"},
+        {"op": "add_shape", "shape": "rect", "id": "b", "page": 2},
+        {"op": "add_shape", "shape": "rect", "id": "c"},
+    ).document
+    for op, message in (
+        ({"op": "group_objects", "object_ids": ["a", "b"]}, "same page"),
+        ({"op": "group_objects", "object_ids": ["a", "a"]}, "two different"),
+        ({"op": "group_objects", "object_ids": ["a", "nope"]}, "no object"),
+        ({"op": "ungroup", "object_id": "a"}, "not a group"),
+        ({"op": "group_objects", "object_ids": ["a", "c"], "id": "c"}, "already used"),
+    ):
+        with pytest.raises(EditError, match=message):
+            run(document, op)
+    grouped = run(document, {"op": "group_objects", "object_ids": ["a", "c"], "id": "g"}).document
+    grouped["pages"][0]["objects"][0]["scaleX"] = 2  # stretched in the editor
+    with pytest.raises(EditError, match="stretched"):
+        run(grouped, {"op": "ungroup", "object_id": "g"})
+    with pytest.raises(EditError, match="already used"):
+        run(grouped, {"op": "add_text", "text": "x", "id": "a"})  # children's ids stay taken
 
 
 def test_text_height_cannot_be_set():

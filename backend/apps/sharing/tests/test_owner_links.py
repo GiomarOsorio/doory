@@ -165,6 +165,27 @@ def test_expired_and_disabled_links_do_not_count_towards_the_limit(owner_client,
     assert owner_client.post(list_url, {"role": "view"}, format="json").status_code == 201
 
 
+@pytest.mark.parametrize("revive", [{"is_active": True}, {"expires_at": "future"}])
+def test_reviving_a_link_counts_towards_the_limit(owner_client, design, make_link, revive):
+    for _ in range(MAX_ACTIVE_LINKS_PER_DESIGN):
+        make_link("view")
+    dormant = (
+        make_link("view", is_active=False) if "is_active" in revive else make_link("view", expires_at=past())
+    )
+    body = {"expires_at": future(5).isoformat()} if "expires_at" in revive else revive
+    response = owner_client.patch(detail_url(design, dormant), body, format="json")
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "share_link_limit"
+    dormant.refresh_from_db()
+    assert (dormant.is_active, dormant.is_expired()) != (True, False)  # nothing was saved
+
+
+def test_an_active_link_can_still_be_changed_at_the_limit(owner_client, design, make_link):
+    links = [make_link("view") for _ in range(MAX_ACTIVE_LINKS_PER_DESIGN)]
+    response = owner_client.patch(detail_url(design, links[0]), {"role": "edit"}, format="json")
+    assert response.status_code == 200
+
+
 def test_patch_changes_role_and_expiry(owner_client, design, view_link):
     response = owner_client.patch(
         detail_url(design, view_link), {"role": "edit", "expires_at": future(5).isoformat()}, format="json"

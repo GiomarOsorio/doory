@@ -15,7 +15,7 @@ import json
 import sys
 from pathlib import Path
 
-from . import builders
+from . import builders, groups
 from .builders import Page
 
 FIXTURE = Path(__file__).resolve().parents[4] / "frontend/src/editor/engine/fixtures/backend-builders.json"
@@ -144,11 +144,157 @@ def _cases() -> list[dict]:
             ),
         },
         {
+            "name": "photo cropped to a heart",
+            "kind": "image",
+            "object": _masked(
+                builders.build_image(
+                    PAGE,
+                    src="/media/assets/a/b.png",
+                    natural_width=10,
+                    natural_height=10,
+                    width=100,
+                    height=100,
+                ),
+                "heart",
+            ),
+            "expect": {"clipPath": True},
+        },
+        {
+            "name": "photo with rounded corners",
+            "kind": "image",
+            "object": _masked(
+                builders.build_image(
+                    PAGE,
+                    src="/media/assets/a/b.png",
+                    natural_width=10,
+                    natural_height=10,
+                    width=100,
+                    height=100,
+                ),
+                "rounded",
+                0.3,
+            ),
+            "expect": {"clipPath": True},
+        },
+        {
             "name": "qr code",
             "kind": "qr",
             "object": builders.build_qr(PAGE, text="https://doory.example/menu", size=200),
         },
+        *(
+            {
+                "name": f"{shape_id} shape",
+                "kind": "shape",
+                "factory": {
+                    "fn": "createPathShape",
+                    "shapeId": shape_id,
+                    "size": builders.default_shape_size(PAGE),
+                },
+                "object": builders.build_shape(PAGE, shape="path", path_shape=shape_id),
+            }
+            for shape_id in builders.PATH_SHAPES
+        ),
+        {
+            "name": "stretched heart with a border",
+            "kind": "shape",
+            "object": builders.build_shape(
+                PAGE,
+                shape="path",
+                path_shape="heart",
+                x=10,
+                y=20,
+                width=300,
+                height=120,
+                stroke="#000",
+                stroke_width=4,
+            ),
+        },
+        {
+            "name": "group of a rotated rectangle with a border and a circle",
+            "kind": "group",
+            "factory": {"fn": "createGroup", "children": [_RECT_FACTORY, _CIRCLE_FACTORY]},
+            "object": groups.group([_rect(), _circle()], "group"),
+        },
+        {
+            "name": "rotated, scaled group, ungrouped",
+            "kind": "group",
+            "object": _transformed_group(),
+            "ungrouped": groups.ungroup(_transformed_group()),
+        },
+        {
+            "name": "text with effects",
+            "kind": "text",
+            "object": _with_effects(
+                builders.build_text(PAGE, text="Glow up", preset="heading"),
+                {
+                    "glow": {"color": "#7a64e0", "blur": 18},
+                    "outline": {"color": "#ff0000", "width": 3},
+                    "background": {"color": "#fde047"},
+                },
+                text=True,
+            ),
+            # What the editor must have drawn once the object is loaded.
+            "expect": {"shadow": True, "stroke": "#ff0000", "textBackgroundColor": "#fde047"},
+        },
+        {
+            "name": "curved text",
+            "kind": "text",
+            "object": _curved(builders.build_text(PAGE, text="Curved", preset="heading"), -150),
+            "expect": {"path": True},
+        },
+        {
+            "name": "shape with a shadow",
+            "kind": "shape",
+            "object": _with_effects(
+                builders.build_shape(PAGE, shape="rect", width=120, height=80),
+                {"shadow": {"color": "#00000066", "blur": 12, "offsetX": 4, "offsetY": 6}},
+                text=False,
+            ),
+            "expect": {"shadow": True},
+        },
     ]
+
+
+_RECT_FACTORY = {
+    "fn": "createRect",
+    "size": 120,
+    "radius": 12,
+    "set": {"left": 250, "top": 200, "angle": 30, "stroke": "#000000", "strokeWidth": 6},
+}
+_CIRCLE_FACTORY = {"fn": "createEllipse", "size": 90, "set": {"left": 500, "top": 380}}
+
+
+def _rect() -> dict:
+    obj = builders.build_shape(PAGE, shape="rect", width=120, height=120, corner_radius=12)
+    obj.update(_RECT_FACTORY["set"], id="child-rect")
+    return obj
+
+
+def _circle() -> dict:
+    obj = builders.build_shape(PAGE, shape="ellipse", width=90, height=90)
+    obj.update(_CIRCLE_FACTORY["set"], id="child-circle")
+    return obj
+
+
+def _transformed_group() -> dict:
+    grouped = groups.group([_rect(), _circle()], "group")
+    grouped.update(angle=45, scaleX=1.5, scaleY=1.5)
+    return grouped
+
+
+def _with_effects(obj: dict, effects: dict, *, text: bool) -> dict:
+    builders.apply_effects(obj, effects, text=text)
+    return obj
+
+
+def _masked(obj: dict, shape: str, radius: float | None = None) -> dict:
+    builders.apply_mask(obj, shape, radius)
+    return obj
+
+
+def _curved(obj: dict, amount: float) -> dict:
+    builders.apply_curve(obj, amount)
+    return obj
 
 
 def build_fixture() -> list[dict]:

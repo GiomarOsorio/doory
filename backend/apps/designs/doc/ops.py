@@ -15,7 +15,7 @@ from typing import Annotated, Any, Literal, Protocol
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, TypeAdapter
 from pydantic import ValidationError as PydanticValidationError
 
-from . import builders
+from . import builders, groups
 from .builders import Page
 from .kinds import object_kind
 
@@ -81,6 +81,59 @@ class _Add(_Op):
     index: int | None = Field(None, ge=0, description="Stacking position (0 = bottom). Default: on top.")
 
 
+class _Effect(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
+class ShadowEffect(_Effect):
+    color: Color = "#00000066"
+    blur: Annotated[float, Field(ge=0, le=500)] = 12
+    offset_x: Annotated[float, Field(ge=-1000, le=1000)] = 4
+    offset_y: Annotated[float, Field(ge=-1000, le=1000)] = 6
+
+
+class OutlineEffect(_Effect):
+    color: Color = "#000000"
+    width: Annotated[float, Field(gt=0, le=200)] = 2
+
+
+class GlowEffect(_Effect):
+    color: Color = "#7a64e0"
+    blur: Annotated[float, Field(ge=0, le=500)] = 18
+
+
+class HighlightEffect(_Effect):
+    color: Color = "#fde047"
+
+
+class Effects(_Effect):
+    """Text takes every effect; shapes only `shadow`. A glow replaces the shadow when both are set."""
+
+    shadow: ShadowEffect | None = None
+    outline: OutlineEffect | None = Field(None, description="A stroke around the letters.")
+    glow: GlowEffect | None = None
+    highlight: HighlightEffect | None = Field(None, description="A marker-style colour behind the text.")
+
+    def document(self) -> dict:
+        """The editor's `ObjectEffects` (camelCase, `background` for the highlight)."""
+        out: dict = {}
+        if self.shadow:
+            s = self.shadow
+            out["shadow"] = {"color": s.color, "blur": s.blur, "offsetX": s.offset_x, "offsetY": s.offset_y}
+        if self.outline:
+            out["outline"] = {"color": self.outline.color, "width": self.outline.width}
+        if self.glow:
+            out["glow"] = {"color": self.glow.color, "blur": self.glow.blur}
+        if self.highlight:
+            out["background"] = {"color": self.highlight.color}
+        return out
+
+
+Curve = Annotated[float, Field(ge=-builders.CURVE_MAX, le=builders.CURVE_MAX)]
+CURVE_HELP = "Bend the text into an arc: negative arches up, positive curves down, 0 = straight. Try ±150."
+EFFECTS_HELP = "Replaces the object's effects; {} removes them."
+
+
 class AddText(_Add):
     """Add a text box. The text wraps inside `width`; its height follows from the text."""
 
@@ -98,13 +151,16 @@ class AddText(_Add):
     color: Color | None = None
     align: builders.TextAlign = "center"
     line_height: Annotated[float, Field(gt=0, le=10)] | None = None
+    effects: Effects | None = None
+    curve: Curve | None = Field(None, description=CURVE_HELP)
 
 
 class AddShape(_Add):
     """Add a basic shape."""
 
     op: Literal["add_shape"]
-    shape: builders.ShapeKind
+    shape: builders.ShapeKind = Field(description="`path` = a catalogue shape, named in `path_shape`.")
+    path_shape: builders.PathShapeId | None = Field(None, description="With shape `path`.")
     x: Coordinate | None = Field(None, description=POSITION_HELP)
     y: Coordinate | None = None
     width: Length | None = None
@@ -116,6 +172,7 @@ class AddShape(_Add):
     sides: Annotated[int, Field(ge=3, le=12)] = Field(6, description="polygon only.")
     star_tips: Annotated[int, Field(ge=3, le=24)] = Field(5, description="star only.")
     inner_ratio: Annotated[float, Field(ge=0.1, le=0.95)] = Field(0.45, description="star only.")
+    shadow: ShadowEffect | None = None
 
 
 class AddLine(_Add):
@@ -133,6 +190,11 @@ class AddLine(_Add):
     dash: list[Annotated[float, Field(ge=0, le=1000)]] | None = Field(None, max_length=8)
 
 
+MaskRadius = Annotated[float, Field(ge=0, le=0.5)]
+MASK_HELP = "Crop the picture to a shape (uploaded pictures only)."
+RADIUS_HELP = "Corner radius of the `rounded` mask, as a fraction of the shorter side (default 0.18)."
+
+
 class AddImage(_Add):
     """Add a picture: one of your uploads (`asset_id`) or a catalogue graphic (`element_id`). It is scaled
     to fit inside width x height with its proportions kept."""
@@ -144,6 +206,8 @@ class AddImage(_Add):
     y: Coordinate | None = None
     width: Length | None = None
     height: Length | None = None
+    mask: builders.MaskShape | None = Field(None, description=MASK_HELP)
+    mask_radius: MaskRadius | None = Field(None, description=RADIUS_HELP)
 
 
 class AddQrCode(_Add):
@@ -177,6 +241,12 @@ class UpdateObject(_Op):
     font_size: Annotated[float, Field(gt=0, le=2000)] | None = None
     font_weight: Annotated[int, Field(ge=100, le=900)] | None = None
     align: builders.TextAlign | None = None
+    effects: Effects | None = Field(None, description=EFFECTS_HELP + " Shapes take only a shadow.")
+    curve: Curve | None = Field(None, description="Text only. " + CURVE_HELP)
+    mask: builders.MaskShape | Literal["none"] | None = Field(
+        None, description=MASK_HELP + " `none` removes it."
+    )
+    mask_radius: MaskRadius | None = Field(None, description=RADIUS_HELP)
     name: Annotated[str, StringConstraints(max_length=120)] | None = None
     locked: bool | None = None
     visible: bool | None = None
@@ -200,6 +270,22 @@ class ArrangeObject(_Op):
     op: Literal["arrange_object"]
     object_id: ObjectId
     to: Literal["front", "back", "forward", "backward"]
+
+
+class GroupObjects(_Op):
+    """Group objects of one page so they move and scale together. The group takes the place of the lowest."""
+
+    op: Literal["group_objects"]
+    object_ids: list[ObjectId] = Field(min_length=2, max_length=200)
+    id: ObjectId | None = Field(None, description="Optional id for the new group.")
+    name: Annotated[str, StringConstraints(max_length=120)] | None = Field(None, description="Layer name.")
+
+
+class Ungroup(_Op):
+    """Break a group up: its objects go back on the page, where they appear, in its place in the stack."""
+
+    op: Literal["ungroup"]
+    object_id: ObjectId
 
 
 class AddPage(_Op):
@@ -266,6 +352,8 @@ Operation = Annotated[
     | UpdateObject
     | DeleteObjects
     | ArrangeObject
+    | GroupObjects
+    | Ungroup
     | AddPage
     | DeletePage
     | MovePage
@@ -346,12 +434,42 @@ class _Editor:
             for position, obj in enumerate(page.get("objects", [])):
                 if obj.get("id") == object_id:
                     return page, position
+        group = self.group_of(object_id)
+        if group is not None:
+            raise self.fail(
+                f"Object {object_id!r} is inside the group {group!r}: ungroup it first (`ungroup`), "
+                "or change the whole group."
+            )
         raise self.fail(f"There is no object with id {object_id!r}.")
+
+    def group_of(self, object_id: str) -> str | None:
+        """The id of the top-level group that holds `object_id`, at any depth; None if no group does."""
+
+        def holds(objects: list) -> bool:
+            return any(
+                isinstance(child, dict)
+                and (child.get("id") == object_id or holds(child.get("objects") or []))
+                for child in objects
+            )
+
+        for page in self.pages:
+            for obj in page.get("objects", []):
+                if isinstance(obj, dict) and isinstance(obj.get("objects"), list) and holds(obj["objects"]):
+                    return obj.get("id")
+        return None
 
     def all_ids(self) -> set[str]:
         ids = {str(page.get("id")) for page in self.pages}
+
+        def collect(objects: list) -> None:
+            for obj in objects:
+                if isinstance(obj, dict):
+                    ids.add(str(obj.get("id")))
+                    if isinstance(obj.get("objects"), list):
+                        collect(obj["objects"])  # a group's children come back on ungroup
+
         for page in self.pages:
-            ids.update(str(obj.get("id")) for obj in page.get("objects", []))
+            collect(page.get("objects", []))
         return ids
 
     def own_id(self, wanted: str | None) -> str | None:
@@ -394,13 +512,20 @@ class _Editor:
             align=op.align,
             line_height=op.line_height,
         )
+        if op.effects:
+            builders.apply_effects(obj, op.effects.document(), text=True)
+        if op.curve:
+            builders.apply_curve(obj, op.curve)
         return self.insert(op, obj) | {"height_estimated": True}
 
     def add_shape(self, op: AddShape) -> dict:
         page = self.page(op.page)
+        if (op.shape == "path") != (op.path_shape is not None):
+            raise self.fail("Use shape `path` together with `path_shape` (e.g. heart, arrow-right).")
         obj = builders.build_shape(
             self.page_size(page),
             shape=op.shape,
+            path_shape=op.path_shape,
             x=op.x,
             y=op.y,
             width=op.width,
@@ -413,6 +538,8 @@ class _Editor:
             star_tips=op.star_tips,
             inner_ratio=op.inner_ratio,
         )
+        if op.shadow:
+            builders.apply_effects(obj, Effects(shadow=op.shadow).document(), text=False)
         return self.insert(op, obj)
 
     def add_line(self, op: AddLine) -> dict:
@@ -449,6 +576,10 @@ class _Editor:
             asset_id=source.asset_id,
             name=source.name,
         )
+        if op.mask:
+            if object_kind(obj) != "image":
+                raise self.fail("Only uploaded pictures can be masked, not catalogue graphics.")
+            builders.apply_mask(obj, op.mask, op.mask_radius)
         return self.insert(op, obj)
 
     def add_qr_code(self, op: AddQrCode) -> dict:
@@ -495,6 +626,24 @@ class _Editor:
             obj["stroke"] = op.stroke
         if op.stroke_width is not None:
             obj["strokeWidth"] = op.stroke_width
+        if op.effects is not None:
+            if kind not in ("text", "shape"):
+                raise self.fail("Only text and shapes have effects.")
+            effects = op.effects.document()
+            if kind == "shape" and set(effects) - {"shadow"}:
+                raise self.fail("Shapes only take a shadow.")
+            builders.apply_effects(obj, effects, text=kind == "text")
+        if op.mask is not None or op.mask_radius is not None:
+            if kind not in ("image", "placeholder"):
+                raise self.fail("Only uploaded pictures and photo placeholders can be masked.")
+            if obj.get("slot"):
+                raise self.fail("This picture fills a photo frame; the frame decides its crop.")
+            shape = obj.get("maskShape") if op.mask is None else (None if op.mask == "none" else op.mask)
+            builders.apply_mask(obj, shape, op.mask_radius)
+        if op.curve is not None:
+            if kind != "text":
+                raise self.fail("Only text can be curved.")
+            builders.apply_curve(obj, op.curve)
         if op.props:
             for key, value in op.props.items():
                 adapter = PROPS.get(key)
@@ -530,7 +679,10 @@ class _Editor:
         if width is not None or height is not None:
             scale_x = abs(float(obj.get("scaleX", 1) or 1))
             scale_y = abs(float(obj.get("scaleY", 1) or 1))
-            if kind in ("image", "qr", "element", "group", "unknown") or obj.get("type") == "polygon":
+            if kind in ("image", "qr", "element", "group", "unknown") or obj.get("type") in (
+                "polygon",
+                "path",
+            ):
                 natural_w = float(obj.get("width") or 1)
                 natural_h = float(obj.get("height") or 1)
                 if kind in ("image", "qr", "element"):
@@ -573,7 +725,7 @@ class _Editor:
             page["objects"] = kept
         missing = sorted(doomed - found)
         if missing:
-            raise self.fail(f"There is no object with id {missing[0]!r}.")
+            self.find(missing[0])  # raises, naming the group when the object is inside one
         return {"deleted": sorted(found)}
 
     def arrange_object(self, op: ArrangeObject) -> dict:
@@ -588,6 +740,43 @@ class _Editor:
         }[op.to]
         objects.insert(target, obj)
         return {"object_id": obj["id"], "index": target}
+
+    def group_objects(self, op: GroupObjects) -> dict:
+        wanted = list(dict.fromkeys(op.object_ids))
+        if len(wanted) < 2:
+            raise self.fail("Group at least two different objects.")
+        page, _ = self.find(wanted[0])
+        objects = page["objects"]
+        positions = []
+        for object_id in wanted:
+            other_page, position = self.find(object_id)
+            if other_page is not page:
+                raise self.fail("Only objects on the same page can be grouped.")
+            positions.append(position)
+        positions.sort()
+        children = [objects[position] for position in positions]  # keep their stacking order
+        try:
+            grouped = groups.group(children, self.own_id(op.id) or builders.new_id())
+        except groups.GroupError as exc:
+            raise self.fail(str(exc)) from exc
+        if op.name:
+            grouped["name"] = op.name
+        for position in reversed(positions):
+            del objects[position]
+        objects.insert(positions[0], grouped)
+        return {"object_id": grouped["id"], "page_id": page["id"], "box": box(grouped), "children": wanted}
+
+    def ungroup(self, op: Ungroup) -> dict:
+        page, position = self.find(op.object_id)
+        obj = page["objects"][position]
+        if object_kind(obj) != "group":
+            raise self.fail("That object is not a group.")
+        try:
+            children = groups.ungroup(obj)
+        except groups.GroupError as exc:
+            raise self.fail(str(exc)) from exc
+        page["objects"][position : position + 1] = children
+        return {"object_ids": [child.get("id") for child in children]}
 
     def add_page(self, op: AddPage) -> dict:
         if len(self.pages) >= self.max_pages:
