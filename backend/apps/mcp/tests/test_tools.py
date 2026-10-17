@@ -18,8 +18,8 @@ from apps.elements.tests.factories import make_element
 from apps.fonts.tests.factories import make_family
 from apps.gallery.tests.factories import make_category, make_template
 from apps.mcp import context, resources
-from apps.mcp.tools import assets, brand, catalog, comments, designs, history, organize
-from apps.sharing.models import Comment
+from apps.mcp.tools import assets, brand, catalog, comments, designs, history, organize, sharing
+from apps.sharing.models import Comment, ShareLink
 
 pytestmark = pytest.mark.django_db
 
@@ -192,6 +192,30 @@ def test_designs_can_be_starred_and_moved_to_folders(as_caller, user, other, des
         organize.move_design(str(design.pk), str(theirs.pk))
 
 
+def test_folders_can_be_created_renamed_moved_and_deleted(as_caller, other, design):
+    clients = organize.create_folder("Clients")
+    acme = organize.create_folder("  Acme  ", parent_id=clients["id"])
+    assert acme == {"id": acme["id"], "name": "Acme", "parent_id": clients["id"]}
+    with pytest.raises(ToolError, match="already exists"):
+        organize.create_folder("acme", parent_id=clients["id"])
+    assert organize.rename_folder(acme["id"], "Acme Inc")["name"] == "Acme Inc"
+    assert organize.move_folder(acme["id"], None)["parent_id"] is None
+    with pytest.raises(ToolError, match="into itself"):
+        organize.move_folder(clients["id"], clients["id"])
+    organize.move_design(str(design.pk), acme["id"])
+    assert organize.delete_folder(acme["id"])["deleted"] is True
+    assert designs.get_design(str(design.pk))["folder_id"] is None  # the design moved up, not away
+    theirs = Folder.objects.create(owner=other, name="Theirs")
+    for call in (
+        lambda: organize.rename_folder(str(theirs.pk), "Mine"),
+        lambda: organize.delete_folder(str(theirs.pk)),
+    ):
+        with pytest.raises(ToolError, match="Not found"):
+            call()
+    with pytest.raises(ToolError, match="parent"):
+        organize.create_folder("Inside theirs", parent_id=str(theirs.pk))
+
+
 def test_trashed_designs_can_be_restored(as_caller, design):
     assert organize.trash_design(str(design.pk)) == {"id": str(design.pk), "trashed": True}
     assert designs.list_designs()["total"] == 0
@@ -259,6 +283,75 @@ def test_comments_can_be_resolved_and_deleted(as_caller, other, design):
     ):
         with pytest.raises(ToolError, match="Not found"):
             call()
+
+
+def test_share_links(as_caller, other, design):
+    link = sharing.create_share_link(str(design.pk), password="open sesame")
+    assert link["role"] == "view" and link["has_password"] is True
+    assert link["url"].endswith(f"/s/{link['token']}")
+    assert [row["id"] for row in sharing.list_share_links(str(design.pk))["share_links"]] == [link["id"]]
+    changed = sharing.update_share_link(str(design.pk), link["id"], role="edit", active=False, password="")
+    assert (changed["role"], changed["is_active"], changed["has_password"]) == ("edit", False, False)
+    with pytest.raises(ToolError, match="future"):
+        sharing.create_share_link(str(design.pk), expires_at="2020-01-01T00:00:00Z")
+    expiring = sharing.update_share_link(str(design.pk), link["id"], expires_at="2099-01-01T00:00:00Z")
+    assert expiring["expires_at"] is not None
+    assert (
+        sharing.update_share_link(str(design.pk), link["id"], role="view")["expires_at"] is not None
+    )  # kept
+    assert sharing.update_share_link(str(design.pk), link["id"], expires_at="never")["expires_at"] is None
+    assert sharing.revoke_share_link(str(design.pk), link["id"])["revoked"] is True
+    assert not ShareLink.objects.filter(design=design).exists()
+    theirs = make_design(other)
+    their_link = ShareLink.objects.create(design=theirs)
+    for call in (
+        lambda: sharing.create_share_link(str(theirs.pk)),
+        lambda: sharing.revoke_share_link(str(design.pk), str(their_link.pk)),
+    ):
+        with pytest.raises(ToolError, match="Not found"):
+            call()
+
+
+def test_share_link_tools_that_let_people_in_ask_first():
+    from apps.mcp.registry import TOOLS
+
+    hints = {spec.name: spec.annotations.destructive_hint for spec in TOOLS}
+    assert hints["create_share_link"] and hints["update_share_link"] and hints["revoke_share_link"]
+
+
+def test_reactivating_a_link_respects_the_limit(as_caller, design, monkeypatch):
+    from apps.sharing import services
+
+    monkeypatch.setattr(services, "MAX_ACTIVE_LINKS_PER_DESIGN", 1)
+    first = sharing.create_share_link(str(design.pk))
+    sharing.update_share_link(str(design.pk), first["id"], active=False)
+    sharing.create_share_link(str(design.pk))
+    with pytest.raises(ToolError, match="at most 1 active"):
+        sharing.update_share_link(str(design.pk), first["id"], active=True)
+    assert ShareLink.objects.get(pk=first["id"]).is_active is False
+
+
+def test_share_links_need_their_own_scope(as_caller, design):
+    as_caller.token.scopes = ["designs:read", "designs:write"]
+    with pytest.raises(ToolError, match="`sharing:write` scope"):
+        sharing.list_share_links(str(design.pk))
+
+
+def test_text_effects_and_curves_through_edit_design(as_caller, design):
+    text_id = design.document["pages"][0]["objects"][0]["id"]
+    designs.edit_design(
+        str(design.pk),
+        [
+            {
+                "op": "update_object",
+                "object_id": text_id,
+                "curve": 120,
+                "effects": {"glow": {"color": "#ff00ff"}},
+            }
+        ],
+    )
+    summary = designs.get_design(str(design.pk))["pages"][0]["objects"][0]
+    assert summary["curve"] == 120 and summary["effects"] == ["glow"]
 
 
 def test_assets_and_stock(as_caller, user, other):

@@ -27,14 +27,15 @@ heights the server reports for new or changed text are estimates until the desig
 Pictures must be in the user's uploads (list_assets, import_stock_photo) or the element catalogue
 (search_elements) before they can be placed. Fonts come from search_fonts. Every edit keeps the previous state
 as a version (list_versions, restore_version), so mistakes can be undone; trashed designs come back with
-restore_design. Designs open in someone's editor
-change live in front of them. Give the user the design's editor_url to open it."""
+restore_design. Designs open in someone's editor change live in front of them. Give the user the design's
+editor_url to open it. Share links (create_share_link) let anyone with the URL in, so create one only when the
+user asks for it."""
 
 
 def _register() -> None:
     # Importing the modules runs their @tool and @resource decorators.
     from . import resources  # noqa: F401
-    from .tools import assets, brand, catalog, comments, designs, history, organize  # noqa: F401
+    from .tools import assets, brand, catalog, comments, designs, history, organize, sharing  # noqa: F401
 
 
 def _transport_security() -> TransportSecuritySettings:

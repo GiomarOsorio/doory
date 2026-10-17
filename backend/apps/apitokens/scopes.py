@@ -11,6 +11,7 @@ COMMENTS_WRITE = "comments:write"
 DESIGNS_TRASH = "designs:trash"
 COMMENTS_MANAGE = "comments:manage"
 BRAND_WRITE = "brand:write"
+SHARING_WRITE = "sharing:write"
 
 SCOPES: dict[str, str] = {
     DESIGNS_READ: "See your designs, their versions and comments, and browse templates, elements and fonts.",
@@ -20,5 +21,6 @@ SCOPES: dict[str, str] = {
     COMMENTS_WRITE: "Add comments to your designs.",
     COMMENTS_MANAGE: "Resolve and delete comments on your designs, including other people's.",
     BRAND_WRITE: "Create and change your brand kits.",
+    SHARING_WRITE: "See, create and revoke share links to your designs (they let other people in).",
 }
 DEFAULT_SCOPES = (DESIGNS_READ, DESIGNS_WRITE)

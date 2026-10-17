@@ -178,6 +178,48 @@ def build_text(
     }
 
 
+CURVE_MAX = 400  # frontend/src/editor/engine/text/curve.ts
+
+
+def apply_curve(obj: dict, amount: float) -> None:
+    """Bend a text's baseline into an arc (negative = arch, positive = valley), as the editor stores it: only
+    `curveAmount`; the editor rebuilds the arc when it loads the text. 0 straightens it."""
+    amount = max(-CURVE_MAX, min(CURVE_MAX, amount))
+    if amount:
+        obj["curveAmount"] = _num(amount)
+    else:
+        obj.pop("curveAmount", None)
+
+
+def apply_effects(obj: dict, effects: dict, *, text: bool) -> None:
+    """Set an object's effects (`effects.ts` `applyEffects`): the declarative `effects` the editor reads,
+    plus the native text props they imply, so an outline or highlight that is removed does not linger.
+    The editor recreates the shadow from `effects` when it loads the object."""
+    if effects:
+        obj["effects"] = effects
+    else:
+        obj.pop("effects", None)
+    obj.pop("shadow", None)
+    if not text:
+        return
+    outline = effects.get("outline")
+    if outline:
+        obj.update(
+            stroke=outline["color"],
+            strokeWidth=_num(outline["width"]),
+            paintFirst="stroke",
+            strokeLineJoin="round",
+            strokeUniform=True,
+        )
+    elif obj.get("stroke") is not None:
+        obj.update(stroke=None, strokeWidth=0)
+    background = effects.get("background")
+    if background:
+        obj["textBackgroundColor"] = background["color"]
+    else:
+        obj.pop("textBackgroundColor", None)
+
+
 # ---------------------------------------------------------------------------------------------
 # Shapes
 # ---------------------------------------------------------------------------------------------

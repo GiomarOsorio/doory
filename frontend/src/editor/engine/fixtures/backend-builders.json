@@ -452,5 +452,110 @@
       "scaleX": 0.391,
       "scaleY": 0.391
     }
+  },
+  {
+    "name": "text with effects",
+    "kind": "text",
+    "object": {
+      "id": "case-14",
+      "type": "textbox",
+      "text": "Glow up",
+      "originX": "center",
+      "originY": "center",
+      "left": 400,
+      "top": 300,
+      "width": 576,
+      "height": 44.07,
+      "fontFamily": "\"Plus Jakarta Sans\", sans-serif",
+      "fontSize": 39,
+      "fontWeight": 700,
+      "fill": "#1a1a2e",
+      "textAlign": "center",
+      "lineHeight": 1.16,
+      "splitByGrapheme": false,
+      "strokeUniform": true,
+      "effects": {
+        "glow": {
+          "color": "#7a64e0",
+          "blur": 18
+        },
+        "outline": {
+          "color": "#ff0000",
+          "width": 3
+        },
+        "background": {
+          "color": "#fde047"
+        }
+      },
+      "stroke": "#ff0000",
+      "strokeWidth": 3,
+      "paintFirst": "stroke",
+      "strokeLineJoin": "round",
+      "textBackgroundColor": "#fde047"
+    },
+    "expect": {
+      "shadow": true,
+      "stroke": "#ff0000",
+      "textBackgroundColor": "#fde047"
+    }
+  },
+  {
+    "name": "curved text",
+    "kind": "text",
+    "object": {
+      "id": "case-15",
+      "type": "textbox",
+      "text": "Curved",
+      "originX": "center",
+      "originY": "center",
+      "left": 400,
+      "top": 300,
+      "width": 576,
+      "height": 44.07,
+      "fontFamily": "\"Plus Jakarta Sans\", sans-serif",
+      "fontSize": 39,
+      "fontWeight": 700,
+      "fill": "#1a1a2e",
+      "textAlign": "center",
+      "lineHeight": 1.16,
+      "splitByGrapheme": false,
+      "strokeUniform": true,
+      "curveAmount": -150
+    },
+    "expect": {
+      "path": true
+    }
+  },
+  {
+    "name": "shape with a shadow",
+    "kind": "shape",
+    "object": {
+      "id": "case-16",
+      "type": "rect",
+      "originX": "center",
+      "originY": "center",
+      "left": 400,
+      "top": 300,
+      "fill": "#7a64e0",
+      "stroke": null,
+      "strokeWidth": 0,
+      "strokeUniform": true,
+      "shapeKind": "rect",
+      "width": 120,
+      "height": 80,
+      "rx": 0,
+      "ry": 0,
+      "effects": {
+        "shadow": {
+          "color": "#00000066",
+          "blur": 12,
+          "offsetX": 4,
+          "offsetY": 6
+        }
+      }
+    },
+    "expect": {
+      "shadow": true
+    }
   }
 ]

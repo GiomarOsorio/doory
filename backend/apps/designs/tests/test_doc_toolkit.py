@@ -270,6 +270,61 @@ def test_a_text_box_keeps_its_height_when_nothing_about_its_layout_changes():
     assert outcome.document["pages"][0]["objects"][0]["height"] < 300  # re-estimated for the new text
 
 
+def test_text_effects_and_curves_are_stored_like_the_editor_stores_them():
+    document = run(
+        make_doc(),
+        {
+            "op": "add_text",
+            "text": "Sale",
+            "id": "t",
+            "curve": -150,
+            "effects": {"outline": {"color": "#ff0000", "width": 3}, "highlight": {}, "shadow": {"blur": 4}},
+        },
+        {"op": "add_shape", "shape": "rect", "id": "r", "shadow": {"color": "#000000"}},
+    ).document
+    text, rect = document["pages"][0]["objects"]
+    assert text["curveAmount"] == -150
+    assert text["effects"] == {
+        "shadow": {"color": "#00000066", "blur": 4, "offsetX": 4, "offsetY": 6},
+        "outline": {"color": "#ff0000", "width": 3},
+        "background": {"color": "#fde047"},
+    }
+    assert (text["stroke"], text["strokeWidth"], text["paintFirst"]) == ("#ff0000", 3, "stroke")
+    assert text["textBackgroundColor"] == "#fde047"
+    assert rect["effects"] == {"shadow": {"color": "#000000", "blur": 12, "offsetX": 4, "offsetY": 6}}
+    valid(document)
+    summary = summarize_document(document)["pages"][0]["objects"]
+    assert summary[0]["curve"] == -150
+    assert summary[0]["effects"] == ["highlight", "outline", "shadow"]
+
+    cleared = run(
+        document,
+        {"op": "update_object", "object_id": "t", "effects": {}, "curve": 0},
+        {"op": "update_object", "object_id": "r", "effects": {"shadow": {"blur": 20}}},
+    ).document
+    text, rect = cleared["pages"][0]["objects"]
+    assert not {"effects", "curveAmount", "textBackgroundColor", "shadow"} & set(text)
+    assert text["stroke"] is None and text["strokeWidth"] == 0  # the outline does not linger
+    assert rect["effects"]["shadow"]["blur"] == 20
+
+
+def test_effects_and_curves_only_go_where_the_editor_supports_them():
+    document = run(
+        make_doc(),
+        {"op": "add_shape", "shape": "rect", "id": "r"},
+        {"op": "add_image", "asset_id": "asset-1", "id": "img"},
+    ).document
+    for op, message in (
+        ({"object_id": "r", "effects": {"glow": {}}}, "only take a shadow"),
+        ({"object_id": "img", "effects": {"shadow": {}}}, "Only text and shapes"),
+        ({"object_id": "r", "curve": 100}, "Only text can be curved"),
+    ):
+        with pytest.raises(EditError, match=message):
+            run(document, {"op": "update_object", **op})
+    with pytest.raises(ValidationError):
+        OPS.validate_python([{"op": "add_text", "text": "x", "curve": 401}])
+
+
 def test_text_height_cannot_be_set():
     document = run(make_doc(), {"op": "add_text", "text": "Hi", "id": "t"}).document
     with pytest.raises(EditError, match="follows from its text"):

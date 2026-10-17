@@ -22,6 +22,7 @@ from apps.designs.models import Design
 from apps.designs.services import record_auto_version_if_due
 from apps.designs.validators import describe_document, validate_document
 
+from .exceptions import bad_request
 from .models import ShareLink
 
 TOKEN_PATTERN = re.compile(r"^[A-Za-z0-9_-]{16,64}$")
@@ -68,6 +69,36 @@ def resolve_link(token: str, *, with_document: bool = False) -> ShareLink:
 
 def count_active_links(design: Design) -> int:
     return active_links(ShareLink.objects.filter(design=design)).count()
+
+
+def create_link(design: Design, serializer, actor) -> ShareLink:
+    """Save a validated `ShareLinkCreateSerializer` for `design`, within the active-link limit."""
+    if design.trashed_at is not None:
+        raise bad_request("design_trashed", "Restore the design before sharing it.")
+    with transaction.atomic():
+        Design.objects.select_for_update().only("id").get(pk=design.pk)
+        if count_active_links(design) >= MAX_ACTIVE_LINKS_PER_DESIGN:
+            raise bad_request(
+                "share_link_limit",
+                f"A design can have at most {MAX_ACTIVE_LINKS_PER_DESIGN} active share links.",
+            )
+        return serializer.save(design=design, created_by=actor)
+
+
+def update_link(link: ShareLink, serializer) -> ShareLink:
+    """Save a validated `ShareLinkUpdateSerializer` for `link`, within the active-link limit: turning a link
+    back on (or giving an expired one a new expiry) counts like creating one."""
+    with transaction.atomic():
+        Design.objects.select_for_update().only("id").get(pk=link.design_id)
+        was_active = active_links(ShareLink.objects.filter(pk=link.pk)).exists()
+        saved = serializer.save()
+        now_active = active_links(ShareLink.objects.filter(pk=saved.pk)).exists()
+        if not was_active and now_active and count_active_links(saved.design) > MAX_ACTIVE_LINKS_PER_DESIGN:
+            raise bad_request(  # raised inside the transaction, so the change is rolled back
+                "share_link_limit",
+                f"A design can have at most {MAX_ACTIVE_LINKS_PER_DESIGN} active share links.",
+            )
+        return saved
 
 
 def record_access(link: ShareLink) -> None:

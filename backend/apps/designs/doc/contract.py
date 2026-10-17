@@ -148,7 +148,48 @@ def _cases() -> list[dict]:
             "kind": "qr",
             "object": builders.build_qr(PAGE, text="https://doory.example/menu", size=200),
         },
+        {
+            "name": "text with effects",
+            "kind": "text",
+            "object": _with_effects(
+                builders.build_text(PAGE, text="Glow up", preset="heading"),
+                {
+                    "glow": {"color": "#7a64e0", "blur": 18},
+                    "outline": {"color": "#ff0000", "width": 3},
+                    "background": {"color": "#fde047"},
+                },
+                text=True,
+            ),
+            # What the editor must have drawn once the object is loaded.
+            "expect": {"shadow": True, "stroke": "#ff0000", "textBackgroundColor": "#fde047"},
+        },
+        {
+            "name": "curved text",
+            "kind": "text",
+            "object": _curved(builders.build_text(PAGE, text="Curved", preset="heading"), -150),
+            "expect": {"path": True},
+        },
+        {
+            "name": "shape with a shadow",
+            "kind": "shape",
+            "object": _with_effects(
+                builders.build_shape(PAGE, shape="rect", width=120, height=80),
+                {"shadow": {"color": "#00000066", "blur": 12, "offsetX": 4, "offsetY": 6}},
+                text=False,
+            ),
+            "expect": {"shadow": True},
+        },
     ]
+
+
+def _with_effects(obj: dict, effects: dict, *, text: bool) -> dict:
+    builders.apply_effects(obj, effects, text=text)
+    return obj
+
+
+def _curved(obj: dict, amount: float) -> dict:
+    builders.apply_curve(obj, amount)
+    return obj
 
 
 def build_fixture() -> list[dict]:

@@ -50,6 +50,8 @@ def summarize_object(obj: dict) -> dict:
             out["font_weight"] = obj["fontWeight"]
         out["color"] = obj.get("fill")
         out["align"] = obj.get("textAlign")
+        if obj.get("curveAmount"):
+            out["curve"] = obj["curveAmount"]
     elif kind == "shape":
         out["shape"] = obj.get("shapeKind") or obj.get("type")
         out["fill"] = obj.get("fill")
@@ -70,6 +72,8 @@ def summarize_object(obj: dict) -> dict:
     elif kind == "group":
         children = obj.get("objects") if isinstance(obj.get("objects"), list) else []
         out["children"] = len(children)
+    if isinstance(obj.get("effects"), dict) and obj["effects"]:
+        out["effects"] = sorted("highlight" if key == "background" else key for key in obj["effects"])
     return out
 
 
