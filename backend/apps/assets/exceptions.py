@@ -1,7 +1,7 @@
 """API errors shared by the workspace apps (assets, designs, brand). Codes are part of the contract."""
 
 from rest_framework import status
-from rest_framework.exceptions import APIException
+from rest_framework.exceptions import APIException, Throttled
 
 
 class InvalidFile(APIException):
@@ -38,6 +38,15 @@ class StockUnavailable(APIException):
     status_code = status.HTTP_502_BAD_GATEWAY
     default_code = "stock_unavailable"
     default_detail = "The stock photo provider could not be reached. Try again shortly."
+
+
+class StockBusy(Throttled):
+    """429 with Retry-After: the provider's limit for this server's key is used up for now."""
+
+    default_code = "stock_busy"
+    default_detail = "The stock photo provider is busy."
+    extra_detail_singular = "Try again in {wait} second."
+    extra_detail_plural = "Try again in {wait} seconds."
 
 
 class ServerBusy(APIException):

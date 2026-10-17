@@ -211,13 +211,17 @@ class TestSearch:
     def test_parameter_validation(self, api, unsplash, params):
         assert api.get(SEARCH, params).status_code == 400
 
-    def test_results_are_cached_for_ten_minutes(self, api, unsplash, net, monkeypatch):
+    def test_results_are_cached_for_the_providers_cache_time(self, api, unsplash, net, monkeypatch):
         net.add(unsplash_search_url(), FakeResponse(payload={"total": 1, "results": [unsplash_item()]}))
         stored = {}
         monkeypatch.setattr("apps.assets.stock.cache.set", lambda k, v, t: stored.update({k: (v, t)}))
         api.get(SEARCH, {"q": "Cat"})
-        ttl = [t for key, (_, t) in stored.items() if key.startswith("stock:v1:unsplash:")]
-        assert ttl == [600]
+        ttl = {
+            key.rsplit(":", 1)[-1]: t
+            for key, (_, t) in stored.items()
+            if key.startswith("stock:v2:unsplash:")
+        }
+        assert ttl == {"24": 3600, "stale": 7200}
 
     def test_second_identical_search_hits_the_cache(self, api, unsplash, net):
         net.add(unsplash_search_url(), FakeResponse(payload={"total": 1, "results": [unsplash_item()]}))
@@ -230,9 +234,11 @@ class TestSearch:
         res = api.get(SEARCH, {"q": "cat"})
         assert res.status_code == 502 and res.json()["error"]["code"] == "stock_unavailable"
 
-    def test_rate_limited_by_provider_is_a_502(self, api, unsplash, net):
-        net.add(unsplash_search_url(), FakeResponse(status=429))
-        assert api.get(SEARCH, {"q": "cat"}).status_code == 502
+    def test_rate_limited_by_provider_is_a_429_with_retry_after(self, api, unsplash, net):
+        net.add(unsplash_search_url(), FakeResponse(status=429, headers={"Retry-After": "30"}))
+        res = api.get(SEARCH, {"q": "cat"})
+        assert res.status_code == 429 and res["Retry-After"] == "30"
+        assert res.json()["error"]["code"] == "stock_busy" and res.json()["error"]["retry_after"] == 30
 
     def test_network_error_is_a_502_and_not_cached(self, api, unsplash, net):
         net.add(unsplash_search_url(), requests.ConnectTimeout())

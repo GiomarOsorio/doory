@@ -8,16 +8,20 @@ and re-checked), so a hostile response or client can never aim the server at an 
 from __future__ import annotations
 
 import logging
+import math
 import re
 import time
 from abc import ABC, abstractmethod
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass
 from typing import Any
-from urllib.parse import parse_qsl, urlencode, urljoin, urlsplit, urlunsplit
+from urllib.parse import parse_qsl, quote, urlencode, urljoin, urlsplit, urlunsplit
 
 import requests
 from django.conf import settings
+from requests.structures import CaseInsensitiveDict
+
+from . import stocklimits
 
 API_TIMEOUT = (3.05, 10)
 DOWNLOAD_TIMEOUT = (3.05, 10)
@@ -30,8 +34,23 @@ _REDIRECT_CODES = frozenset({301, 302, 303, 307, 308})
 _UNSAFE_URL_CHARS = re.compile(r"[\x00-\x20\x7f-\uffff\\]")
 _UNSPLASH_ID = re.compile(r"[A-Za-z0-9_-]{5,40}")
 _PEXELS_ID = re.compile(r"[0-9]{1,12}")
+_PIXABAY_ID = re.compile(r"[0-9]{1,12}")
+_KEY_IN_URL = re.compile(r"([?&]key=)[^&\s\"']+")
 
 logger = logging.getLogger(__name__)
+
+
+class _RedactKeys(logging.Filter):
+    """urllib3 logs request URLs at DEBUG; Pixabay's key is a query parameter, so it is masked there."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        message = record.getMessage()
+        if "key=" in message:
+            record.msg, record.args = _KEY_IN_URL.sub(r"\1***", message), ()
+        return True
+
+
+logging.getLogger("urllib3.connectionpool").addFilter(_RedactKeys())
 
 http_get: Callable[..., Any] = requests.get
 
@@ -42,6 +61,14 @@ class ProviderError(Exception):
 
 class PhotoTooLarge(ProviderError):
     """The photo exceeds the download cap."""
+
+
+class ProviderBusy(ProviderError):
+    """The provider's limit for our key is reached (by its own answer or our count); try again later."""
+
+    def __init__(self, retry_after: int):
+        super().__init__("The provider is busy.")
+        self.retry_after = max(1, int(retry_after))
 
 
 @dataclass(frozen=True)
@@ -137,7 +164,13 @@ def _as_str(value: object, limit: int = 200) -> str:
     return value[:limit] if isinstance(value, str) else ""
 
 
-def _get_json(url: str, *, headers: dict[str, str], params: dict[str, Any] | None = None) -> Any:
+def _get_json(
+    url: str,
+    *,
+    headers: dict[str, str],
+    params: dict[str, Any] | None = None,
+    on_response: Callable[[int, Mapping[str, str]], None] | None = None,
+) -> Any:
     try:
         response = http_get(
             url,
@@ -146,9 +179,12 @@ def _get_json(url: str, *, headers: dict[str, str], params: dict[str, Any] | Non
             timeout=API_TIMEOUT,
             allow_redirects=False,
         )
-    except requests.RequestException as exc:
-        raise ProviderError("Provider request failed.") from exc
+    except requests.RequestException:
+        # Not chained: a requests error repeats the URL, and some providers take the key as a query parameter.
+        raise ProviderError("Provider request failed.") from None
     try:
+        if on_response is not None:
+            on_response(response.status_code, CaseInsensitiveDict(response.headers or {}))
         if response.status_code != 200:
             raise ProviderError(f"Provider answered {response.status_code}.")
         return response.json()
@@ -162,13 +198,65 @@ def _next_page(total: int, page: int, per_page: int) -> int | None:
     return page + 1 if page * per_page < total else None
 
 
+def _seconds(value: object) -> float | None:
+    try:
+        number = float(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return None
+    return number if math.isfinite(number) and number >= 0 else None
+
+
 class StockProvider(ABC):
     name: str
+    label: str
+    attribution: str
+    home_url: str
     image_hosts: frozenset[str]
+    max_results: int | None = None  # the most a search can page through, when the provider caps it
+    url_lifetime_seconds: int | None = None  # how long the image URLs in a search answer keep working
+    pause_fallback_seconds = 60  # how long to back off when the provider says "stop" without saying how long
 
     @property
     def configured(self) -> bool:
-        return bool(self._key())
+        """On: it has a key and `STOCK_PROVIDERS` lists it."""
+        return bool(self._key()) and self.name in _enabled_names()
+
+    @property
+    def config(self) -> stocklimits.StockConfig:
+        return stocklimits.config_for(self.name)
+
+    def search_options(self, lang: str = "") -> dict[str, str]:
+        """Settings that change what a search returns; part of the search cache key."""
+        return {}
+
+    def _reset_seconds(self, headers: Mapping[str, str]) -> float | None:
+        """Seconds until the quota renews, from the provider's rate-limit headers."""
+        return None
+
+    def wait_from(self, status: int, headers: Mapping[str, str]) -> float | None:
+        """How long to pause after this answer: on a 429, or when the quota left reaches zero."""
+        remaining = _seconds(headers.get("X-RateLimit-Remaining"))
+        if status != 429 and not (status == 200 and remaining == 0):
+            return None
+        return (
+            _seconds(headers.get("Retry-After"))
+            or self._reset_seconds(headers)
+            or self.pause_fallback_seconds
+        )
+
+    def _note_response(self, status: int, headers: Mapping[str, str]) -> None:
+        wait = self.wait_from(status, headers)
+        if wait:
+            stocklimits.pause(self.name, wait)
+            if status == 429:
+                raise ProviderBusy(int(min(wait, stocklimits.MAX_PAUSE_SECONDS)))
+
+    def _api(self, url: str, params: dict[str, Any] | None = None) -> Any:
+        """One counted call to the provider's API: refused up front when the key's budget is spent."""
+        wait = stocklimits.acquire(self.name, self.config.rate)
+        if wait:
+            raise ProviderBusy(wait)
+        return _get_json(url, headers=self._headers(), params=params, on_response=self._note_response)
 
     @abstractmethod
     def _key(self) -> str: ...
@@ -177,7 +265,9 @@ class StockProvider(ABC):
     def valid_id(self, photo_id: str) -> bool: ...
 
     @abstractmethod
-    def search(self, query: str, page: int, per_page: int) -> SearchPage: ...
+    def search(
+        self, query: str, page: int, per_page: int, options: Mapping[str, str] | None = None
+    ) -> SearchPage: ...
 
     @abstractmethod
     def resolve(self, photo_id: str) -> ResolvedPhoto: ...
@@ -203,6 +293,10 @@ class StockProvider(ABC):
 
 class UnsplashProvider(StockProvider):
     name = "unsplash"
+    label = "Unsplash"
+    attribution = "Photos from Unsplash"
+    home_url = _with_query("https://unsplash.com/", UTM)
+    pause_fallback_seconds = 10 * 60  # Unsplash's window is an hour and it sends no reset time
     image_hosts = frozenset({"images.unsplash.com"})
     api_hosts = frozenset({"api.unsplash.com"})
     api = "https://api.unsplash.com"
@@ -215,6 +309,10 @@ class UnsplashProvider(StockProvider):
 
     def valid_id(self, photo_id: str) -> bool:
         return _UNSPLASH_ID.fullmatch(photo_id) is not None
+
+    def search_options(self, lang: str = "") -> dict[str, str]:
+        # Off sends nothing, exactly the request Doory made before the setting existed.
+        return {"content_filter": "high"} if self.config.safesearch else {}
 
     def _photo(self, item: object) -> StockPhoto | None:
         if not isinstance(item, dict) or not isinstance(item.get("id"), str):
@@ -237,17 +335,18 @@ class UnsplashProvider(StockProvider):
             source_url=_with_query(source_url, UTM) if source_url else "",
         )
 
-    def search(self, query: str, page: int, per_page: int) -> SearchPage:
+    def search(
+        self, query: str, page: int, per_page: int, options: Mapping[str, str] | None = None
+    ) -> SearchPage:
         params: dict[str, Any] = {"page": page, "per_page": per_page}
         if query:
-            data = _get_json(
-                f"{self.api}/search/photos", headers=self._headers(), params={**params, "query": query}
-            )
+            options = self.search_options() if options is None else options
+            data = self._api(f"{self.api}/search/photos", params={**params, "query": query, **options})
             if not isinstance(data, dict) or not isinstance(data.get("results"), list):
                 raise ProviderError("Unexpected provider response.")
             total = _as_int(data.get("total"))
             return SearchPage(total, _next_page(total, page, per_page), self._photos(data["results"]))
-        data = _get_json(f"{self.api}/photos", headers=self._headers(), params=params)
+        data = self._api(f"{self.api}/photos", params=params)
         if not isinstance(data, list):
             raise ProviderError("Unexpected provider response.")
         more = page + 1 if len(data) == per_page else None
@@ -257,7 +356,7 @@ class UnsplashProvider(StockProvider):
         return [photo for photo in map(self._photo, items) if photo]
 
     def resolve(self, photo_id: str) -> ResolvedPhoto:
-        data = _get_json(f"{self.api}/photos/{photo_id}", headers=self._headers())
+        data = self._api(f"{self.api}/photos/{photo_id}")
         photo = self._photo(data)
         if photo is None:
             raise ProviderError("Unexpected provider response.")
@@ -277,6 +376,9 @@ class UnsplashProvider(StockProvider):
 
 class PexelsProvider(StockProvider):
     name = "pexels"
+    label = "Pexels"
+    attribution = "Photos provided by Pexels"
+    home_url = "https://www.pexels.com/"
     image_hosts = frozenset({"images.pexels.com"})
     api = "https://api.pexels.com/v1"
 
@@ -288,6 +390,10 @@ class PexelsProvider(StockProvider):
 
     def valid_id(self, photo_id: str) -> bool:
         return _PEXELS_ID.fullmatch(photo_id) is not None
+
+    def _reset_seconds(self, headers: Mapping[str, str]) -> float | None:
+        reset = _seconds(headers.get("X-RateLimit-Reset"))  # the Unix time the monthly quota renews
+        return reset - time.time() if reset and reset > time.time() else None
 
     def _photo(self, item: object) -> StockPhoto | None:
         if not isinstance(item, dict) or not _is_count(item.get("id")):
@@ -308,12 +414,14 @@ class PexelsProvider(StockProvider):
             source_url=_https_link(item.get("url")),
         )
 
-    def search(self, query: str, page: int, per_page: int) -> SearchPage:
+    def search(
+        self, query: str, page: int, per_page: int, options: Mapping[str, str] | None = None
+    ) -> SearchPage:
         params: dict[str, Any] = {"page": page, "per_page": per_page}
         if query:
-            data = _get_json(f"{self.api}/search", headers=self._headers(), params={**params, "query": query})
+            data = self._api(f"{self.api}/search", params={**params, "query": query})
         else:
-            data = _get_json(f"{self.api}/curated", headers=self._headers(), params=params)
+            data = self._api(f"{self.api}/curated", params=params)
         if not isinstance(data, dict) or not isinstance(data.get("photos"), list):
             raise ProviderError("Unexpected provider response.")
         photos = [photo for photo in map(self._photo, data["photos"]) if photo]
@@ -324,7 +432,7 @@ class PexelsProvider(StockProvider):
         return SearchPage((page - 1) * per_page + len(data["photos"]), more, photos)
 
     def resolve(self, photo_id: str) -> ResolvedPhoto:
-        data = _get_json(f"{self.api}/photos/{photo_id}", headers=self._headers())
+        data = self._api(f"{self.api}/photos/{photo_id}")
         photo = self._photo(data)
         if photo is None:
             raise ProviderError("Unexpected provider response.")
@@ -335,11 +443,157 @@ class PexelsProvider(StockProvider):
         return ResolvedPhoto(photo=photo, download_url=download)
 
 
-PROVIDERS: dict[str, StockProvider] = {p.name: p for p in (UnsplashProvider(), PexelsProvider())}
+PIXABAY_IMAGE_TYPES = frozenset({"photo", "illustration", "vector", "all"})
+PIXABAY_LANGS = frozenset(
+    [
+        "cs",
+        "da",
+        "de",
+        "en",
+        "es",
+        "fr",
+        "id",
+        "it",
+        "hu",
+        "nl",
+        "no",
+        "pl",
+        "pt",
+        "ro",
+        "sk",
+        "fi",
+        "sv",
+        "tr",
+        "vi",
+        "th",
+        "bg",
+        "ru",
+        "el",
+        "ja",
+        "ko",
+        "zh",
+    ]
+)
+
+
+class PixabayProvider(StockProvider):
+    """Pixabay takes its key as a query parameter, so it must never be logged or shown (see `_get_json`)."""
+
+    name = "pixabay"
+    label = "Pixabay"
+    attribution = "Images from Pixabay"
+    home_url = "https://pixabay.com/"
+    image_hosts = frozenset({"cdn.pixabay.com", "pixabay.com"})
+    api = "https://pixabay.com/api/"
+    max_results = 500  # the API pages through at most 500 hits per query
+    url_lifetime_seconds = 24 * 60 * 60  # webformatURL, our thumbnail and preview, expires after 24 h
+    min_per_page, max_per_page, max_query = 3, 200, 100
+
+    def _key(self) -> str:
+        return settings.PIXABAY_API_KEY
+
+    def _headers(self) -> dict[str, str]:
+        return {}
+
+    def _api(self, url: str, params: dict[str, Any] | None = None) -> Any:
+        return super()._api(url, {"key": self._key(), **(params or {})})
+
+    def valid_id(self, photo_id: str) -> bool:
+        return _PIXABAY_ID.fullmatch(photo_id) is not None
+
+    def _reset_seconds(self, headers: Mapping[str, str]) -> float | None:
+        return _seconds(headers.get("X-RateLimit-Reset"))  # seconds left in the 60 s window
+
+    def search_options(self, lang: str = "") -> dict[str, str]:
+        image_type = settings.STOCK_PIXABAY_IMAGE_TYPE
+        use_lang = settings.STOCK_LANG_FROM_UI and lang in PIXABAY_LANGS
+        return {
+            "image_type": image_type if image_type in PIXABAY_IMAGE_TYPES else "photo",
+            "safesearch": "true" if self.config.safesearch else "false",
+            "lang": lang if use_lang else "en",
+        }
+
+    def _checked(self, url: object) -> str | None:
+        checked = super()._checked(url)
+        if (
+            checked
+            and urlsplit(checked).hostname == "pixabay.com"
+            and not urlsplit(checked).path.startswith("/get/")
+        ):
+            return None
+        return checked
+
+    def _photo(self, item: object) -> StockPhoto | None:
+        if not isinstance(item, dict) or not _is_count(item.get("id")):
+            return None
+        web = item.get("webformatURL")
+        smaller = web.replace("_640.", "_340.") if isinstance(web, str) else None
+        preview = self._checked(web)
+        thumb = self._checked(smaller) or self._checked(item.get("previewURL")) or preview
+        if not thumb or not preview:
+            return None
+        user, user_id = _as_str(item.get("user"), 100), item.get("user_id")
+        author_url = (
+            f"https://pixabay.com/users/{quote(user, safe='')}-{user_id}/"
+            if user and _is_count(user_id)
+            else ""
+        )
+        return StockPhoto(
+            id=str(item["id"]),
+            provider=self.name,
+            thumb_url=thumb,
+            preview_url=preview,
+            width=_as_int(item.get("imageWidth")),
+            height=_as_int(item.get("imageHeight")),
+            author=user,
+            author_url=author_url,
+            source_url=_https_link(item.get("pageURL")),
+        )
+
+    def search(
+        self, query: str, page: int, per_page: int, options: Mapping[str, str] | None = None
+    ) -> SearchPage:
+        options = self.search_options() if options is None else options
+        asked = min(max(per_page, self.min_per_page), self.max_per_page)
+        params: dict[str, Any] = {"page": page, "per_page": asked, **options}
+        if query:
+            params["q"] = query[: self.max_query]
+        data = self._api(self.api, params=params)
+        if not isinstance(data, dict) or not isinstance(data.get("hits"), list):
+            raise ProviderError("Unexpected provider response.")
+        total = min(_as_int(data.get("totalHits")), self.max_results)
+        photos = [photo for photo in map(self._photo, data["hits"]) if photo][:per_page]
+        # A page smaller than Pixabay's minimum is cut from a bigger one, so it can't be paged on from.
+        return SearchPage(total, _next_page(total, page, per_page) if asked == per_page else None, photos)
+
+    def resolve(self, photo_id: str) -> ResolvedPhoto:
+        data = self._api(self.api, params={"id": photo_id})
+        hits = data.get("hits") if isinstance(data, dict) else None
+        item = hits[0] if isinstance(hits, list) and hits else None
+        photo = self._photo(item)
+        if photo is None or photo.id != photo_id:
+            raise ProviderError("Unexpected provider response.")
+        item = _dict(item)
+        # fullHDURL / imageURL only come with Pixabay's full API access.
+        download = self._checked(item.get("fullHDURL")) or self._checked(item.get("largeImageURL"))
+        if not download:
+            raise ProviderError("The provider gave no downloadable image.")
+        return ResolvedPhoto(photo=photo, download_url=download)
+
+
+PROVIDERS: dict[str, StockProvider] = {
+    p.name: p for p in (UnsplashProvider(), PexelsProvider(), PixabayProvider())
+}
+
+
+def _enabled_names() -> list[str]:
+    names = (name.strip().lower() for name in settings.STOCK_PROVIDERS)
+    return list(dict.fromkeys(name for name in names if name in PROVIDERS))
 
 
 def configured_providers() -> list[StockProvider]:
-    return [provider for provider in PROVIDERS.values() if provider.configured]
+    """The providers that are on, in the order of `STOCK_PROVIDERS`."""
+    return [PROVIDERS[name] for name in _enabled_names() if PROVIDERS[name].configured]
 
 
 def _redirect_target(current: str, location: str, hosts: frozenset[str]) -> str:

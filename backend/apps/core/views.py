@@ -9,6 +9,7 @@ from rest_framework.decorators import api_view, authentication_classes, permissi
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
+from apps.assets.providers import configured_providers as configured_stock_providers
 from apps.collab.availability import max_participants, realtime_enabled
 
 from .mlmodels.availability import background_removal_model
@@ -105,7 +106,7 @@ def config(request):
         {
             "google_client_id": settings.GOOGLE_CLIENT_ID,
             "features": {
-                "stock_photos": bool(settings.UNSPLASH_ACCESS_KEY or settings.PEXELS_API_KEY),
+                "stock_photos": bool(configured_stock_providers()),
                 "server_pdf": settings.SERVER_PDF_ENABLED,
                 "google_login": bool(settings.GOOGLE_CLIENT_ID),
                 "email_verification": email_delivers(),

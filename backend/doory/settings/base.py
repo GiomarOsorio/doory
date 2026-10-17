@@ -163,6 +163,30 @@ EMAIL_SEND_ASYNC = env.bool("EMAIL_SEND_ASYNC", default=True)  # send off the re
 GOOGLE_CLIENT_ID = env("GOOGLE_CLIENT_ID", default="")
 UNSPLASH_ACCESS_KEY = env("UNSPLASH_ACCESS_KEY", default="")
 PEXELS_API_KEY = env("PEXELS_API_KEY", default="")
+PIXABAY_API_KEY = env("PIXABAY_API_KEY", default="")
+
+# ---- Stock photos (apps.assets.stock). A provider is on when its key is set and it is listed here; the
+# order is the order of the tabs. The per-key limits and cache times only hold across workers with a shared
+# cache (CACHE_URL=redis://… or dbcache://…). ----
+STOCK_PROVIDERS = env.list("STOCK_PROVIDERS", default=["unsplash", "pexels", "pixabay"])
+STOCK_ALL_PROVIDERS = env.list("STOCK_ALL_PROVIDERS", default=[])  # searched by the "All" tab; empty: all
+STOCK_ALL_TIMEOUT_SECONDS = env.float("STOCK_ALL_TIMEOUT_SECONDS", default=4.0)
+STOCK_DEFAULT_TAB = env("STOCK_DEFAULT_TAB", default="all")  # "all" or a provider name
+STOCK_LANG_FROM_UI = env.bool("STOCK_LANG_FROM_UI", default=True)
+# photo, illustration, vector or all
+STOCK_PIXABAY_IMAGE_TYPE = env("STOCK_PIXABAY_IMAGE_TYPE", default="photo")
+# Per provider: search cache time; calls allowed per API key, all users together ("100/m", "5000/h"; empty: no
+# cap of our own, Doory still pauses a provider when it answers 429 or reports its quota used up); safe search
+# (Unsplash: content_filter=high; Pixabay: safesearch). Unsplash keeps its previous unfiltered default.
+_STOCK_DEFAULTS = {"unsplash": (3600, False), "pexels": (3600, True), "pixabay": (86400, True)}
+STOCK_PROVIDER_SETTINGS = {
+    name: {
+        "cache_seconds": env.int(f"STOCK_{name.upper()}_CACHE_SECONDS", default=cache_seconds),
+        "rate": env(f"STOCK_{name.upper()}_RATE", default=""),
+        "safesearch": env.bool(f"STOCK_{name.upper()}_SAFESEARCH", default=safesearch),
+    }
+    for name, (cache_seconds, safesearch) in _STOCK_DEFAULTS.items()
+}
 
 # ---- DRF ----
 REST_FRAMEWORK = {
