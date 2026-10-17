@@ -178,6 +178,7 @@
   padding-top: 10px;
 }
 .cell {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -210,6 +211,60 @@
   max-height: 100%;
   object-fit: contain;
   pointer-events: none;
+}
+.packs {
+  display: flex;
+  flex: none;
+  gap: 4px;
+  margin: 2px -14px 0;
+  padding: 2px 14px;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--ed-border) transparent;
+}
+.pack {
+  flex: none;
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid var(--ed-border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ed-text-dim);
+  font: 600 11px / 1 var(--font-sans);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.pack:hover {
+  color: var(--ed-text);
+}
+.pack[aria-pressed='true'] {
+  border-color: var(--ed-accent);
+  color: var(--ed-accent);
+}
+.pack:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+.badge {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  max-width: calc(100% - 8px);
+  padding: 2px 5px;
+  overflow: hidden;
+  border-radius: 4px;
+  background: var(--color-overlay);
+  color: var(--color-on-brand);
+  font: 600 9px / 1.2 var(--font-sans);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--ed-dur) var(--ed-ease);
+}
+.cell:hover .badge,
+.cell:focus-visible .badge {
+  opacity: 1;
 }
 .skel {
   aspect-ratio: 1 / 1;

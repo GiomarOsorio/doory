@@ -178,7 +178,7 @@ export function createMemoryAdapter(options: MemoryAdapterOptions = {}): MemoryA
         },
         async list(q) {
           const needle = q.q?.toLowerCase().trim()
-          const filtered = elements.filter((e) => (!needle || e.name.toLowerCase().includes(needle) || e.tags.some((tg) => tg.includes(needle))) && (!q.kind || e.kind === q.kind))
+          const filtered = elements.filter((e) => (!needle || e.name.toLowerCase().includes(needle) || e.tags.some((tg) => tg.includes(needle))) && (!q.kind || e.kind === q.kind) && (!q.pack || e.pack.slug === q.pack))
           return page(filtered, q)
         },
       },
