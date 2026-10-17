@@ -1,4 +1,4 @@
-"""Read-only tools for what designs are made from: templates, catalogue graphics, fonts and brand kits."""
+"""Read-only tools for what designs are made from: templates, catalogue graphics and fonts."""
 
 from __future__ import annotations
 
@@ -8,7 +8,6 @@ from mcp.server.mcpserver.exceptions import ToolError
 from pydantic import Field
 
 from apps.apitokens.scopes import DESIGNS_READ
-from apps.brand.models import BrandKit
 from apps.elements.filters import ElementFilter
 from apps.elements.views import ElementListView
 from apps.fonts.filters import FontFilter
@@ -16,7 +15,6 @@ from apps.fonts.views import PublicFontList
 from apps.gallery.filters import TemplateFilter
 from apps.gallery.views import TemplateListView
 
-from ..context import current
 from ..registry import tool
 
 Limit = Annotated[int, Field(ge=1, le=50)]
@@ -107,27 +105,5 @@ def search_fonts(
                 "italic": any(v.style == "italic" for v in f.variants.all()),
             }
             for f in rows
-        ]
-    }
-
-
-@tool(scope=DESIGNS_READ, title="List brand kits", read_only=True)
-def list_brand_kits() -> dict[str, Any]:
-    """Your brand kits: named colours, font roles and logos (logo ids work as asset_id in add_image)."""
-    kits = BrandKit.objects.filter(owner=current().user).prefetch_related("logos")
-    return {
-        "brand_kits": [
-            {
-                "id": str(kit.pk),
-                "name": kit.name,
-                "is_default": kit.is_default,
-                "colors": kit.colors,
-                "fonts": kit.fonts,
-                "logos": [
-                    {"asset_id": str(logo.pk), "name": logo.name, "url": logo.file.url}
-                    for logo in kit.logos.all()
-                ],
-            }
-            for kit in kits
         ]
     }

@@ -1,8 +1,9 @@
-"""How tools are declared: `@tool(scope=…)` adds scope checks, rate limits, database hygiene and error
-translation around a plain synchronous function, and records it for `server.build_server`.
+"""How tools and resources are declared: `@tool(scope=…)` and `@resource(uri, scope=…)` add scope checks,
+rate limits, database hygiene and error translation around a plain synchronous function, and record it for
+`server.build_server`.
 
-Tools are synchronous Django code; the SDK runs them on worker threads. A tool calls the same services the
-REST API uses and never trusts its arguments beyond their declared types.
+Tools and resources are synchronous Django code; the SDK runs them on worker threads. They call the same
+services the REST API uses and never trust their arguments beyond their declared types.
 """
 
 from __future__ import annotations
@@ -21,7 +22,7 @@ from django.core.cache import cache
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import close_old_connections
 from django.http import Http404
-from mcp.server.mcpserver.exceptions import ToolError
+from mcp.server.mcpserver.exceptions import ResourceError, ToolError
 from mcp_types import ToolAnnotations
 from pydantic import ValidationError as PydanticValidationError
 from rest_framework.exceptions import APIException
@@ -44,7 +45,17 @@ class ToolSpec:
     annotations: ToolAnnotations
 
 
+@dataclass(frozen=True)
+class ResourceSpec:
+    fn: Callable[..., Any]
+    uri: str
+    name: str
+    title: str
+    mime_type: str
+
+
 TOOLS: list[ToolSpec] = []
+RESOURCES: list[ResourceSpec] = []
 
 
 def _flatten(detail: Any, prefix: str = "") -> list[str]:
@@ -118,50 +129,62 @@ def _check_rate(caller: context.Caller) -> None:
     raise ToolError("Too many calls at once. Try again in a moment.")
 
 
+def _guarded(fn: Callable[..., Any], scope: str, error: type[Exception]) -> Callable[..., Any]:
+    """`fn` behind the scope check, rate limit, database hygiene and error translation; failures raise `error`
+    (ToolError for tools, ResourceError for resources)."""
+
+    @functools.wraps(fn)
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
+        caller = context.current()
+        if caller is None:
+            raise error("Not signed in.")
+        if not caller.has(scope):
+            raise error(
+                f"This token lacks the `{scope}` scope. Create a token with it in Doory: "
+                "Account settings > API tokens."
+            )
+        try:
+            _check_rate(caller)
+        except ToolError as exc:
+            raise error(str(exc)) from exc
+        close_old_connections()
+        started = time.monotonic()
+        outcome = "ok"
+        try:
+            return fn(*args, **kwargs)
+        except error:
+            outcome = "refused"
+            raise
+        except Exception as exc:
+            message = explain(exc)
+            if message is None:
+                outcome = "error"
+                log.exception("%s failed", fn.__name__)
+                raise error(UNEXPECTED) from exc
+            outcome = "refused"
+            raise error(message) from exc
+        finally:
+            close_old_connections()
+            log.info(
+                "%s=%s user=%s token=%s outcome=%s ms=%d",
+                "tool" if error is ToolError else "resource",
+                fn.__name__,
+                caller.user.pk,
+                caller.token.prefix,
+                outcome,
+                (time.monotonic() - started) * 1000,
+            )
+
+    return wrapper
+
+
 def tool(
     *, scope: str, title: str, read_only: bool = False, destructive: bool = False, idempotent: bool = False
 ):
     """Register a tool that needs `scope`. The function's docstring is the description agents read."""
 
     def decorate(fn: Callable[..., Any]) -> Callable[..., Any]:
-        @functools.wraps(fn)
-        def wrapper(*args: Any, **kwargs: Any) -> Any:
-            caller = context.current()
-            if caller is None:
-                raise ToolError("Not signed in.")
-            if not caller.has(scope):
-                raise ToolError(
-                    f"This token lacks the `{scope}` scope. Create a token with it in Doory: "
-                    "Account settings > API tokens."
-                )
-            _check_rate(caller)
-            close_old_connections()
-            started = time.monotonic()
-            outcome = "ok"
-            try:
-                return fn(*args, **kwargs)
-            except ToolError:
-                outcome = "refused"
-                raise
-            except Exception as exc:
-                message = explain(exc)
-                if message is None:
-                    outcome = "error"
-                    log.exception("tool=%s failed", fn.__name__)
-                    raise ToolError(UNEXPECTED) from exc
-                outcome = "refused"
-                raise ToolError(message) from exc
-            finally:
-                close_old_connections()
-                log.info(
-                    "tool=%s user=%s token=%s outcome=%s ms=%d",
-                    fn.__name__,
-                    caller.user.pk,
-                    caller.token.prefix,
-                    outcome,
-                    (time.monotonic() - started) * 1000,
-                )
-
+        wrapper = _guarded(fn, scope, ToolError)
         TOOLS.append(
             ToolSpec(
                 wrapper,
@@ -177,6 +200,17 @@ def tool(
                 ),
             )
         )
+        return wrapper
+
+    return decorate
+
+
+def resource(uri: str, *, scope: str, title: str, mime_type: str = "application/json"):
+    """Register a resource (or, with `{params}` in `uri`, a resource template) that needs `scope`."""
+
+    def decorate(fn: Callable[..., Any]) -> Callable[..., Any]:
+        wrapper = _guarded(fn, scope, ResourceError)
+        RESOURCES.append(ResourceSpec(wrapper, uri, fn.__name__, title, mime_type))
         return wrapper
 
     return decorate

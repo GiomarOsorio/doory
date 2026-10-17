@@ -307,8 +307,8 @@ The server is off by default. To turn it on, add `MCP_ENABLED=true` to `.env`; w
 `deploy/doory-mcp.service` too (see step 5 above) and restart `doory-api`.
 
 1. In Doory, open **Settings → AI assistants (MCP)** and create a token. Choose what it may do (read designs, edit
-   them, import stock photos, comment) and when it expires (at most a year), and confirm with your password. The
-   token is shown once.
+   them, import stock photos, comment, change brand kits) and when it expires (at most a year), and confirm with
+   your password. The token is shown once.
 2. Add the server to your client with the URL `https://your-domain/mcp` and the header
    `Authorization: Bearer <token>`. For Claude Code:
 
@@ -319,9 +319,11 @@ The server is off by default. To turn it on, add `MCP_ENABLED=true` to `.env`; w
    In a JSON configuration (Claude Code's `.mcp.json`, Cursor and others) that is
    `{"type": "http", "url": "https://your-domain/mcp", "headers": {"Authorization": "Bearer doory_…"}}`.
 
-The assistant can list, read, create, rename, duplicate and edit designs; add text, shapes, lines, pictures, QR
-codes and pages; set backgrounds and speaker notes; search templates, the element catalogue, fonts and stock
-photos; read and add comments; and restore earlier versions. The state before every edit is kept in the design's
+The assistant can list, read, create, rename, duplicate and edit designs; star them, move them to folders, trash
+and restore them; add text, shapes, lines, pictures, QR codes and pages; set backgrounds and speaker notes; search
+templates, the element catalogue, fonts and stock photos; read, add, resolve and delete comments; create and
+change brand kits; and restore earlier versions. Designs are also MCP resources (`doory://designs/{id}`), and two
+prompts, "Make a design from a brief" and "Review a design", show up in clients that offer prompts. The state before every edit is kept in the design's
 version history, so anything an assistant did can be undone from there. If the design is open in your editor, the
 change appears live, like a co-editor's; with Redis it arrives at once, otherwise within a few seconds.
 
