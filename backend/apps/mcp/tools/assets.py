@@ -58,7 +58,7 @@ def list_assets(
 @tool(scope=DESIGNS_READ, title="Search stock photos", read_only=True)
 def search_stock_photos(
     query: Annotated[str, Field(min_length=1, max_length=100)],
-    provider: Literal["unsplash", "pexels"] | None = None,
+    provider: Literal["unsplash", "pexels", "pixabay"] | None = None,
     page: Annotated[int, Field(ge=1, le=stock.MAX_PAGE)] = 1,
     per_page: Annotated[int, Field(ge=1, le=30)] = 12,
 ) -> dict[str, Any]:
@@ -69,7 +69,7 @@ def search_stock_photos(
 
 @tool(scope=ASSETS_WRITE, title="Import a stock photo", idempotent=True)
 def import_stock_photo(
-    provider: Literal["unsplash", "pexels"],
+    provider: Literal["unsplash", "pexels", "pixabay"],
     photo_id: Annotated[
         str, Field(min_length=1, max_length=64, description="`id` from search_stock_photos.")
     ],

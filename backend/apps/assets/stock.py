@@ -231,8 +231,40 @@ def search_all(
     return payload
 
 
-def _not_configured(provider: str) -> Response:
-    return Response({"configured": False, "provider": provider, "total": 0, "next_page": None, "results": []})
+def _not_configured(provider: str) -> dict[str, Any]:
+    return {"configured": False, "provider": provider, "total": 0, "next_page": None, "results": []}
+
+
+def search(
+    requested_provider: str | None,
+    query: str,
+    page: int = 1,
+    per_page: int = DEFAULT_PER_PAGE,
+    lang: str = "",
+    cursor: str | None = None,
+) -> dict[str, Any]:
+    """One page of stock photos, cached per provider. `requested_provider="all"` mixes the "All" tab's
+    providers (paged by `cursor`). Raises `StockBusy` or `StockUnavailable` when nothing can be served."""
+    query, lang = query.strip(), lang[:2].lower()
+    if requested_provider == ALL:
+        chosen = all_tab_providers()
+        if not chosen:
+            return _not_configured(ALL)
+        names = [provider.name for provider in chosen]
+        pages = _decode_cursor(cursor, names) if cursor else dict.fromkeys(names, 1)
+        if not pages:
+            raise serializers.ValidationError({"cursor": ["Not a valid cursor."]})
+        return search_all([p for p in chosen if p.name in pages], pages, query, per_page, lang)
+
+    provider = _pick_provider(requested_provider)
+    if provider is None:
+        return _not_configured(requested_provider or "")
+    try:
+        return cached_search(provider, query, page, per_page, lang)
+    except providers.ProviderBusy as exc:
+        raise StockBusy(wait=exc.retry_after) from exc
+    except providers.ProviderError as exc:
+        raise StockUnavailable() from exc
 
 
 class StockSearchView(APIView):
@@ -244,29 +276,15 @@ class StockSearchView(APIView):
         params = StockSearchSerializer(data=request.query_params)
         params.is_valid(raise_exception=True)
         data = params.validated_data
-        query, page = data.get("q", "").strip(), data.get("page", 1)
-        per_page = data.get("per_page", DEFAULT_PER_PAGE)
-        lang = data.get("lang", "")[:2].lower()
-
-        if data.get("provider") == ALL:
-            chosen = all_tab_providers()
-            if not chosen:
-                return _not_configured(ALL)
-            names = [provider.name for provider in chosen]
-            pages = _decode_cursor(data["cursor"], names) if data.get("cursor") else dict.fromkeys(names, 1)
-            if not pages:
-                raise serializers.ValidationError({"cursor": ["Not a valid cursor."]})
-            return Response(search_all([p for p in chosen if p.name in pages], pages, query, per_page, lang))
-
-        provider = _pick_provider(data.get("provider"))
-        if provider is None:
-            return _not_configured(data.get("provider", ""))
-        try:
-            return Response(cached_search(provider, query, page, per_page, lang))
-        except providers.ProviderBusy as exc:
-            raise StockBusy(wait=exc.retry_after) from exc
-        except providers.ProviderError as exc:
-            raise StockUnavailable() from exc
+        payload = search(
+            data.get("provider"),
+            data.get("q", ""),
+            data.get("page", 1),
+            data.get("per_page", DEFAULT_PER_PAGE),
+            data.get("lang", ""),
+            data.get("cursor"),
+        )
+        return Response(payload)
 
 
 class StockProvidersView(APIView):
@@ -302,6 +320,52 @@ def _resolve(provider: providers.StockProvider, photo_id: str) -> providers.Reso
     return resolved
 
 
+def import_photo(owner, provider_name: str, photo_id: str) -> tuple[Asset, bool]:
+    """The owner's asset for a stock photo, downloaded on first use; returns (asset, created)."""
+    provider = providers.PROVIDERS[provider_name]
+    if not provider.configured:
+        raise StockNotConfigured()
+    if not provider.valid_id(photo_id):
+        raise serializers.ValidationError({"id": ["Not a valid photo id for this provider."]})
+
+    existing = Asset.objects.filter(
+        owner=owner, meta__provider=provider.name, meta__photo_id=photo_id
+    ).first()
+    if existing:
+        return existing, False
+
+    try:
+        resolved = _resolve(provider, photo_id)
+        data = providers.download_image(
+            resolved.download_url, hosts=provider.image_hosts, max_bytes=settings.MAX_UPLOAD_BYTES
+        )
+    except providers.PhotoTooLarge as exc:
+        raise FileTooLarge() from exc
+    except providers.ProviderBusy as exc:
+        raise StockBusy(wait=exc.retry_after) from exc
+    except providers.ProviderError as exc:
+        raise StockUnavailable() from exc
+
+    photo = resolved.photo
+    asset = create_asset(
+        owner,
+        data,
+        name=clean_name(f"Photo by {photo.author}" if photo.author else f"{provider.name.title()} photo"),
+        meta={
+            "provider": provider.name,
+            "photo_id": photo_id,
+            "attribution": {
+                "provider": provider.name,
+                "author": photo.author,
+                "author_url": photo.author_url,
+                "source_url": photo.source_url,
+            },
+        },
+    )
+    provider.track_download(resolved)
+    return asset, True
+
+
 class StockImportView(APIView):
     def get_throttles(self):
         return [*super().get_throttles(), UploadRateThrottle()]
@@ -312,46 +376,9 @@ class StockImportView(APIView):
     def post(self, request):
         body = StockImportSerializer(data=request.data)
         body.is_valid(raise_exception=True)
-        provider = providers.PROVIDERS[body.validated_data["provider"]]
-        photo_id = body.validated_data["id"]
-        if not provider.configured:
-            raise StockNotConfigured()
-        if not provider.valid_id(photo_id):
-            raise serializers.ValidationError({"id": ["Not a valid photo id for this provider."]})
-
-        existing = Asset.objects.filter(
-            owner=request.user, meta__provider=provider.name, meta__photo_id=photo_id
-        ).first()
-        if existing:
-            return Response(AssetSerializer(existing).data)
-
-        try:
-            resolved = _resolve(provider, photo_id)
-            data = providers.download_image(
-                resolved.download_url, hosts=provider.image_hosts, max_bytes=settings.MAX_UPLOAD_BYTES
-            )
-        except providers.PhotoTooLarge as exc:
-            raise FileTooLarge() from exc
-        except providers.ProviderBusy as exc:
-            raise StockBusy(wait=exc.retry_after) from exc
-        except providers.ProviderError as exc:
-            raise StockUnavailable() from exc
-
-        photo = resolved.photo
-        asset = create_asset(
-            request.user,
-            data,
-            name=clean_name(f"Photo by {photo.author}" if photo.author else f"{provider.name.title()} photo"),
-            meta={
-                "provider": provider.name,
-                "photo_id": photo_id,
-                "attribution": {
-                    "provider": provider.name,
-                    "author": photo.author,
-                    "author_url": photo.author_url,
-                    "source_url": photo.source_url,
-                },
-            },
+        asset, created = import_photo(
+            request.user, body.validated_data["provider"], body.validated_data["id"]
         )
-        provider.track_download(resolved)
-        return Response(AssetSerializer(asset).data, status=status.HTTP_201_CREATED)
+        return Response(
+            AssetSerializer(asset).data, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK
+        )
