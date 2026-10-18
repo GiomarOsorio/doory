@@ -8,7 +8,9 @@ import base64
 import hashlib
 import json
 import logging
+import re
 import time
+from contextlib import contextmanager, nullcontext, suppress
 from dataclasses import dataclass
 from io import BytesIO
 from typing import Any, TypeVar
@@ -21,6 +23,7 @@ from PIL import Image, ImageDraw
 from apps.assets.models import Asset
 from apps.assets.services import create_asset
 from apps.assets.uploads import clean_name
+from apps.core.images import LARGE_DECODE_WAIT_SECONDS
 
 from . import catalog, quotas
 from .catalog import Option
@@ -28,12 +31,17 @@ from .env import EnvProvider
 from .errors import AIProviderError, ModelNotAvailable, QuotaReached, RunsOnDevice, UnsupportedAsset
 from .models import AICall, Provider, ProviderModel
 from .results import SourceImage, decode_source
+from .serializers import USER_PROVIDER_MAX_TIMEOUT
 from .styles import Connection, get_style
 from .tasks import TASKS, Task, validate_options
 
 SENT_AS_IS = ("image/png", "image/jpeg", "image/webp")
 PREVIEW_SIDE = 256
 JSON_OVERHEAD = 64 * 1024
+MAX_IN_FLIGHT_PER_USER = 1
+# Longer than any call can last: the longest user timeout, waiting for a decode slot for the source and for
+# the result, and a margin.
+IN_FLIGHT_TIMEOUT = int(USER_PROVIDER_MAX_TIMEOUT + 2 * LARGE_DECODE_WAIT_SECONDS) + 10
 
 logger = logging.getLogger(__name__)
 E = TypeVar("E", bound=Exception)
@@ -47,8 +55,43 @@ class Outcome:
 
 
 def answer_limit(conn: Connection) -> int:
-    """The largest answer read from the provider: the image limit plus room for base64 and JSON."""
-    return conn.max_image_bytes * 4 // 3 + JSON_OVERHEAD
+    """The largest answer read from the provider: the image limit, plus room for base64 when the style may
+    answer with JSON."""
+    limit = min(conn.max_image_bytes, settings.AI_MAX_IMAGE_BYTES)
+    if conn.config.response_format == "json" or conn.config.response == "auto":
+        limit = limit * 4 // 3
+    return limit + JSON_OVERHEAD
+
+
+@contextmanager
+def track_in_flight(user, max_in_flight: int = MAX_IN_FLIGHT_PER_USER, timeout: int = IN_FLIGHT_TIMEOUT):
+    """Ensure at most `max_in_flight` concurrent calls for `user`."""
+    if not user or not getattr(user, "is_authenticated", False):
+        yield
+        return
+    key = f"ai:in_flight:{user.pk}"
+    added = cache.add(key, 1, timeout)
+    if not added:
+        try:
+            current = cache.incr(key)
+        except ValueError:
+            cache.set(key, 1, timeout)
+            current = 1
+        if current > max_in_flight:
+            with suppress(ValueError):
+                cache.decr(key)
+            raise refused(
+                AIProviderError("busy", "Another AI task is already in progress. Try again shortly.")
+            )
+    try:
+        yield
+    finally:
+        try:
+            val = cache.decr(key)
+            if val <= 0:
+                cache.delete(key)
+        except ValueError:
+            cache.delete(key)
 
 
 def call(conn: Connection, task: Task, model: str, source: SourceImage, options: dict[str, Any]) -> Outcome:
@@ -94,12 +137,13 @@ def log_call(
     status = _status(error)
     duration = int((time.monotonic() - started) * 1000)
     code = (getattr(error, "code", "") or getattr(error, "default_code", "")) if error else ""
+    clean_model = re.sub(r"[\x00-\x1f\x7f-\x9f]", "", model)[:200].strip()
     entry = AICall.objects.create(
         user=user,
         provider=provider if isinstance(provider, Provider) else None,
         provider_ref=provider_ref,
         provider_name=provider_name[:80],
-        model=model[:200],
+        model=clean_model,
         task=task,
         status=status,
         error_code=str(code)[:32],
@@ -111,7 +155,7 @@ def log_call(
         "AI call: task=%s provider=%s model=%s status=%s code=%s duration_ms=%d user=%s",
         task,
         provider_ref,
-        model,
+        clean_model,
         status,
         code or "-",
         duration,
@@ -199,8 +243,10 @@ def run(user, task_id: str, asset: Asset, model_id: str, options: Any = None) ->
     except QuotaReached as exc:
         _log(user, option, error=refused(exc), started=started)
         raise
+    in_flight = track_in_flight(user) if not provider.is_operator else nullcontext()
     try:
-        outcome = call(conn, task, option.remote_name, source, options)
+        with in_flight:
+            outcome = call(conn, task, option.remote_name, source, options)
     except AIProviderError as exc:
         _log(user, option, error=exc, started=started)
         raise
@@ -285,9 +331,11 @@ def test_provider(
     ref = str(provider.id)
     if task_obj is None:
         return TestResult(False, 0, task_id, model, error_code="not_supported", error="Unknown task.")
+    in_flight = track_in_flight(user) if not provider.is_operator else nullcontext()
     try:
         conn = catalog.connection(provider)
-        outcome = call(conn, task_obj, model, sample_image(), {})
+        with in_flight:
+            outcome = call(conn, task_obj, model, sample_image(), {})
         preview = _preview(outcome.png)
     except AIProviderError as exc:
         entry = log_call(user, provider, ref, provider.name, task_id, model, error=exc, started=started)
@@ -306,18 +354,20 @@ def load_models(provider: Provider) -> list[ProviderModel]:
         existing = {(m.task, m.remote_name) for m in provider.models.all()}
         order = provider.models.count()
         for item in remote:
+            clean_remote_name = re.sub(r"[\x00-\x1f\x7f-\x9f]", "", item.remote_name).strip()
+            clean_label = re.sub(r"[\x00-\x1f\x7f-\x9f]", "", item.label).strip()
             for task in provider.tasks:
                 if item.tasks and task not in item.tasks:
                     continue
-                if (task, item.remote_name) in existing:
+                if (task, clean_remote_name) in existing:
                     continue
                 ProviderModel.objects.create(
                     provider=provider,
                     task=task,
-                    remote_name=item.remote_name,
-                    label=item.label,
+                    remote_name=clean_remote_name,
+                    label=clean_label,
                     sort_order=order,
                 )
-                existing.add((task, item.remote_name))
+                existing.add((task, clean_remote_name))
                 order += 1
     return list(provider.models.all())

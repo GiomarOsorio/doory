@@ -58,6 +58,13 @@ def test_adding_a_provider_stores_the_secret_encrypted(admin_client, fake):
     assert "admin-secret-value" not in page and "Set (hidden)" in page
 
 
+def test_moving_a_provider_to_another_host_drops_its_secret(admin_client, fake):
+    provider = make_provider(fake.url, secret=SECRET, auth_header="Authorization")
+    url = reverse("admin:ai_provider_change", args=[provider.pk])
+    assert admin_client.post(url, form_data("http://other.example:7000")).status_code == 302
+    assert not Provider.objects.get().has_secret
+
+
 def test_an_empty_secret_keeps_the_stored_one_and_clear_removes_it(admin_client, fake):
     provider = make_provider(fake.url, secret=SECRET, auth_header="Authorization")
     url = reverse("admin:ai_provider_change", args=[provider.pk])
@@ -84,10 +91,27 @@ def test_invalid_settings_are_shown_in_the_form(admin_client, fake, fields, erro
 
 def test_load_models_and_test_connection(admin_client, fake):
     provider = make_provider(fake.url, "doory")
-    response = admin_client.get(reverse("admin:ai_provider_load_models", args=[provider.pk]), follow=True)
+    # GET returns the confirmation page without modifying models
+    confirm_page = admin_client.get(
+        reverse("admin:ai_provider_load_models", args=[provider.pk])
+    ).content.decode()
+    assert "Load models" in confirm_page
+    assert not provider.models.exists()
+
+    response = admin_client.post(reverse("admin:ai_provider_load_models", args=[provider.pk]), follow=True)
     assert "2 model(s)" in response.content.decode()
     assert list(provider.models.values_list("remote_name", flat=True)) == ["general-fast", "general-best"]
-    page = admin_client.get(reverse("admin:ai_provider_test_connection", args=[provider.pk])).content.decode()
+
+    # GET returns confirmation page without running test
+    test_confirm = admin_client.get(
+        reverse("admin:ai_provider_test_connection", args=[provider.pk])
+    ).content.decode()
+    assert "Test connection" in test_confirm
+    assert not AICall.objects.exists()
+
+    page = admin_client.post(
+        reverse("admin:ai_provider_test_connection", args=[provider.pk])
+    ).content.decode()
     assert "It works" in page and "data:image/png;base64," in page
     assert AICall.objects.get().status == "ok"
 
@@ -99,13 +123,15 @@ def test_a_failing_test_shows_the_reason_but_not_the_secret(admin_client, fake):
         auth_header="X-Api-Key",
         secret="wrong-key-value",
     )
-    page = admin_client.get(reverse("admin:ai_provider_test_connection", args=[provider.pk])).content.decode()
+    page = admin_client.post(
+        reverse("admin:ai_provider_test_connection", args=[provider.pk])
+    ).content.decode()
     assert "refused the credentials" in page and "wrong-key-value" not in page
 
 
 def test_load_models_on_another_style_says_so(admin_client, fake):
     provider = make_provider(fake.url)
-    response = admin_client.get(reverse("admin:ai_provider_load_models", args=[provider.pk]), follow=True)
+    response = admin_client.post(reverse("admin:ai_provider_load_models", args=[provider.pk]), follow=True)
     assert "enter them by hand" in response.content.decode()
 
 
@@ -125,9 +151,10 @@ def test_env_providers_are_listed_read_only_with_a_test_button(admin_client, fak
     page = admin_client.get(reverse("admin:ai_provider_changelist")).content.decode()
     assert "env-1" in page and "Model server" in page and "AI_PROVIDER_2_URL" in page
     assert Y_KEY not in page and fake.url not in page
-    tested = admin_client.get(reverse("admin:ai_provider_env_test", args=["env-1"])).content.decode()
+    assert '<form method="post"' in page
+    tested = admin_client.post(reverse("admin:ai_provider_env_test", args=["env-1"])).content.decode()
     assert "It works" in tested and Y_KEY not in tested
-    assert admin_client.get(reverse("admin:ai_provider_env_test", args=["env-9"])).status_code == 404
+    assert admin_client.post(reverse("admin:ai_provider_env_test", args=["env-9"])).status_code == 404
 
 
 def test_users_servers_are_listed_for_support_without_secrets(admin_client, fake):
@@ -155,5 +182,5 @@ def test_regular_users_cannot_test_env_providers(fake, settings):
     User.objects.create_user(email="plain@example.com", password=PASSWORD, is_staff=True)
     client = Client()
     client.login(email="plain@example.com", password=PASSWORD)
-    response = client.get(reverse("admin:ai_provider_env_test", args=["env-1"]))
-    assert response.status_code == 403
+    assert client.get(reverse("admin:ai_provider_env_test", args=["env-1"])).status_code == 403
+    assert client.post(reverse("admin:ai_provider_env_test", args=["env-1"])).status_code == 403

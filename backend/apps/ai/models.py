@@ -6,6 +6,8 @@ Operator providers can also come from `.env` (`apps.ai.env`); those are never st
 
 from __future__ import annotations
 
+from urllib.parse import urlsplit
+
 from django.conf import settings
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
@@ -31,6 +33,17 @@ class Audience(models.TextChoices):
     USERS = "users", "Selected users"
 
 
+def origin(url: str) -> tuple[str, str, int | None]:
+    """Scheme, host and port of `url` (the port filled in for http and https)."""
+    parts = urlsplit(url.strip())
+    scheme = parts.scheme.lower()
+    try:
+        port = parts.port
+    except ValueError:
+        port = None
+    return scheme, (parts.hostname or "").rstrip("."), port or {"http": 80, "https": 443}.get(scheme)
+
+
 class Provider(BaseModel):
     owner = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -54,7 +67,8 @@ class Provider(BaseModel):
         default=60, validators=[MinValueValidator(1), MaxValueValidator(MAX_TIMEOUT_SECONDS)]
     )
     max_image_bytes = models.PositiveIntegerField(
-        default=0, help_text="Largest source image sent to this server; 0: the server-wide limit."
+        default=0,
+        help_text="Largest source image sent to this server; 0: the server-wide limit.",
     )
     sends_offsite = models.BooleanField(
         default=False, help_text="Images leave this installation (shown as a privacy notice in the editor)."
@@ -86,6 +100,11 @@ class Provider(BaseModel):
     def set_secret(self, value: str) -> None:
         """Store `value` encrypted; an empty value removes the secret."""
         self.secret_encrypted = secrets.encrypt(value) if value else b""
+
+    def keeps_secret_for(self, new_base_url: str) -> bool:
+        """Whether the stored secret may stay when the address becomes `new_base_url`: only when the scheme,
+        host and port are unchanged, so a saved key is never sent to a server it was not entered for."""
+        return origin(self.base_url) == origin(new_base_url)
 
     def secret(self) -> str:
         return secrets.decrypt(bytes(self.secret_encrypted)) if self.secret_encrypted else ""

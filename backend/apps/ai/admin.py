@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 
 from django import forms
+from django.conf import settings
 from django.contrib import admin, messages
 from django.core.exceptions import PermissionDenied
 from django.http import Http404, HttpRequest, HttpResponseRedirect
@@ -20,7 +21,7 @@ from unfold.widgets import (
     UnfoldAdminTextareaWidget,
 )
 
-from . import env, services
+from . import env, secrets, services
 from .errors import AIProviderError
 from .models import AICall, Provider, ProviderModel, UserProvider
 from .serializers import MAX_SECRET_LENGTH, validate_base_url
@@ -85,6 +86,14 @@ class ProviderAdminForm(forms.ModelForm):
         except serializers.ValidationError as exc:
             raise forms.ValidationError(exc.detail[0]) from None
 
+    def clean_max_image_bytes(self) -> int:
+        value = self.cleaned_data.get("max_image_bytes") or 0
+        if value > settings.AI_MAX_IMAGE_BYTES:
+            raise forms.ValidationError(
+                _("At most %(limit)s bytes (the server-wide limit).") % {"limit": settings.AI_MAX_IMAGE_BYTES}
+            )
+        return value
+
     def clean_auth_header(self) -> str:
         value = self.cleaned_data.get("auth_header", "").strip()
         if not value:
@@ -98,6 +107,8 @@ class ProviderAdminForm(forms.ModelForm):
         value = self.cleaned_data.get("secret", "")
         if "\r" in value or "\n" in value:
             raise forms.ValidationError(_("The secret may not contain line breaks."))
+        if value and not secrets.can_encrypt():
+            raise forms.ValidationError(_("Secrets cannot be stored: AI_SECRETS_KEY is not a valid key."))
         return value
 
     def clean(self):
@@ -112,8 +123,10 @@ class ProviderAdminForm(forms.ModelForm):
         return cleaned
 
     def save(self, commit: bool = True) -> Provider:
+        old_url = Provider.objects.filter(pk=self.instance.pk).values_list("base_url", flat=True).first()
         provider = super().save(commit=False)
-        if self.cleaned_data.get("clear_secret"):
+        moved = old_url is not None and not Provider(base_url=old_url).keeps_secret_for(provider.base_url)
+        if self.cleaned_data.get("clear_secret") or (moved and not self.cleaned_data.get("secret")):
             provider.set_secret("")
         elif self.cleaned_data.get("secret"):
             provider.set_secret(self.cleaned_data["secret"])
@@ -145,6 +158,30 @@ def _test_page(request: HttpRequest, admin_site, provider, result, back_url: str
         "back_url": back_url,
     }
     return TemplateResponse(request, "admin/ai/provider/test_result.html", context)
+
+
+def _action_confirm_page(
+    request: HttpRequest,
+    admin_site,
+    provider,
+    *,
+    title: str,
+    message: str,
+    confirm_label: str,
+    action_url: str,
+    back_url: str,
+) -> TemplateResponse:
+    context = {
+        **admin_site.each_context(request),
+        "title": title,
+        "opts": Provider._meta,
+        "provider": provider,
+        "message": message,
+        "confirm_label": confirm_label,
+        "action_url": action_url,
+        "back_url": back_url,
+    }
+    return TemplateResponse(request, "admin/ai/provider/confirm_action.html", context)
 
 
 @admin.register(Provider)
@@ -216,17 +253,45 @@ class ProviderAdmin(ModelAdmin):
         return custom + super().get_urls()
 
     def env_test_view(self, request: HttpRequest, provider_id: str):
-        if not self.has_view_permission(request):
+        if not self.has_change_permission(request):
             raise PermissionDenied
         provider = env.get(provider_id)
         if provider is None:
             raise Http404
+        if request.method != "POST":
+            return _action_confirm_page(
+                request,
+                self.admin_site,
+                provider,
+                title=_("Test %(name)s") % {"name": provider.name},
+                message=_(
+                    "Send a sample picture to test the connection to this provider? "
+                    "This makes an outgoing request to the provider's server."
+                ),
+                confirm_label=_("Test connection"),
+                action_url=request.path,
+                back_url=reverse("admin:ai_provider_changelist"),
+            )
         result = services.test_provider(request.user, provider)
         return _test_page(request, self.admin_site, provider, result, reverse("admin:ai_provider_changelist"))
 
     @action(description=_("Load models"), url_path="load-models", permissions=["change"])
     def load_models(self, request: HttpRequest, object_id: str):
         provider = get_object_or_404(Provider, pk=object_id, owner__isnull=True)
+        if request.method != "POST":
+            return _action_confirm_page(
+                request,
+                self.admin_site,
+                provider,
+                title=_("Load models for %(name)s") % {"name": provider.name},
+                message=_(
+                    "Fetch the model list from the remote server and update the database? "
+                    "This makes an outgoing request to the server."
+                ),
+                confirm_label=_("Load models"),
+                action_url=request.path,
+                back_url=reverse("admin:ai_provider_change", args=[object_id]),
+            )
         try:
             models = services.load_models(provider)
         except AIProviderError as exc:
@@ -238,6 +303,20 @@ class ProviderAdmin(ModelAdmin):
     @action(description=_("Test connection"), url_path="test", permissions=["change"])
     def test_connection(self, request: HttpRequest, object_id: str):
         provider = get_object_or_404(Provider, pk=object_id, owner__isnull=True)
+        if request.method != "POST":
+            return _action_confirm_page(
+                request,
+                self.admin_site,
+                provider,
+                title=_("Test %(name)s") % {"name": provider.name},
+                message=_(
+                    "Send a sample picture to test the connection to this provider? "
+                    "This makes an outgoing request to the provider's server."
+                ),
+                confirm_label=_("Test connection"),
+                action_url=request.path,
+                back_url=reverse("admin:ai_provider_change", args=[object_id]),
+            )
         result = services.test_provider(request.user, provider)
         return _test_page(
             request, self.admin_site, provider, result, reverse("admin:ai_provider_change", args=[object_id])

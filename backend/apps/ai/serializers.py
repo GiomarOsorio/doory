@@ -1,18 +1,18 @@
-from __future__ import annotations
-
+import re
 from typing import Any
-from urllib.parse import urlsplit
 
+from django.conf import settings
 from rest_framework import serializers
 
-from . import transport
-from .models import MAX_TIMEOUT_SECONDS, Provider, ProviderModel, Style
+from . import secrets, transport
+from .models import Provider, ProviderModel, Style
 from .styles import ConfigError, get_style
 from .styles.base import check_header_name
 from .tasks import TASKS
 
 MAX_SECRET_LENGTH = 4096
 MAX_MODELS_PER_PROVIDER = 50
+USER_PROVIDER_MAX_TIMEOUT = 60
 
 
 class OptionSerializer(serializers.Serializer):
@@ -36,7 +36,19 @@ class TaskRequestSerializer(serializers.Serializer):
     options = serializers.DictField(required=False, default=dict, help_text="Task options (none for now).")
 
 
+class SanitizedCharField(serializers.CharField):
+    """CharField that strips ASCII/Unicode control characters, newlines, and null bytes before validation."""
+
+    def to_internal_value(self, data):
+        if isinstance(data, str):
+            data = re.sub(r"[\x00-\x1f\x7f-\x9f]", "", data).strip()
+        return super().to_internal_value(data)
+
+
 class ProviderModelSerializer(serializers.ModelSerializer):
+    remote_name = SanitizedCharField(required=False, allow_blank=True, max_length=200)
+    label = SanitizedCharField(required=False, allow_blank=True, max_length=80)
+
     class Meta:
         model = ProviderModel
         fields = ["id", "task", "remote_name", "label", "enabled", "sort_order"]
@@ -77,6 +89,8 @@ def validate_base_url(value: str, *, operator: bool) -> str:
 class ProviderSerializer(serializers.ModelSerializer):
     """A user's own provider. The secret is write-only: it is never returned, only whether one is set."""
 
+    name = SanitizedCharField(max_length=80)
+
     secret = serializers.CharField(
         write_only=True,
         required=False,
@@ -84,7 +98,8 @@ class ProviderSerializer(serializers.ModelSerializer):
         max_length=MAX_SECRET_LENGTH,
         trim_whitespace=True,
         help_text="The value of the auth header (e.g. `Bearer …`). Omit to keep the stored one; "
-        "empty to remove it.",
+        "empty to remove it. Changing the server's scheme, host or port while a secret is stored is refused "
+        "unless a new one (or an empty one) is sent in the same request.",
     )
     has_secret = serializers.BooleanField(read_only=True)
     models = ProviderModelSerializer(many=True, read_only=True)
@@ -115,7 +130,10 @@ class ProviderSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
         read_only_fields = ["id", "has_secret", "models", "created_at", "updated_at"]
-        extra_kwargs = {"timeout_seconds": {"min_value": 1, "max_value": MAX_TIMEOUT_SECONDS}}
+        extra_kwargs = {
+            "timeout_seconds": {"min_value": 1, "max_value": USER_PROVIDER_MAX_TIMEOUT},
+            "max_image_bytes": {"min_value": 0, "max_value": settings.AI_MAX_IMAGE_BYTES},
+        }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -124,17 +142,37 @@ class ProviderSerializer(serializers.ModelSerializer):
     def validate_base_url(self, value: str) -> str:
         return validate_base_url(value, operator=False)
 
+    def validate_max_image_bytes(self, value: int) -> int:
+        if value > settings.AI_MAX_IMAGE_BYTES:
+            raise serializers.ValidationError(
+                f"max_image_bytes cannot exceed {settings.AI_MAX_IMAGE_BYTES} bytes."
+            )
+        return value
+
     def validate_auth_header(self, value: str) -> str:
         if not value:
             return value
+        clean = value.strip()
         try:
-            return check_header_name(value.strip())
+            clean.encode("latin-1")
+        except UnicodeEncodeError:
+            raise serializers.ValidationError("The auth header must contain only Latin-1 characters.")
+        try:
+            return check_header_name(clean)
         except ConfigError as exc:
             raise serializers.ValidationError(str(exc)) from None
 
     def validate_secret(self, value: str) -> str:
         if "\r" in value or "\n" in value:
             raise serializers.ValidationError("The secret may not contain line breaks.")
+        try:
+            value.encode("latin-1")
+        except UnicodeEncodeError:
+            raise serializers.ValidationError("The secret must contain only Latin-1 characters.")
+        if value and not secrets.can_encrypt():
+            raise serializers.ValidationError(
+                "Secrets cannot be stored: the server's secrets key is invalid."
+            )
         return value
 
     def validate_tasks(self, value: list[str]) -> list[str]:
@@ -147,20 +185,27 @@ class ProviderSerializer(serializers.ModelSerializer):
             get_style(style).config(style_config)
         except ConfigError as exc:
             raise serializers.ValidationError({"style_config": [str(exc)]}) from None
-        if self.instance and self.instance.has_secret and not attrs.get("secret"):
-            new_url = attrs.get("base_url")
-            if new_url:
-                old_host = urlsplit(self.instance.base_url).netloc.lower()
-                new_host = urlsplit(new_url).netloc.lower()
-                if old_host != new_host:
-                    raise serializers.ValidationError(
-                        {"secret": "Enter the key again when changing the server address."}
-                    )
+        new_url = attrs.get("base_url")
+        if (
+            self.instance is not None
+            and self.instance.has_secret
+            and "secret" not in attrs
+            and new_url
+            and not self.instance.keeps_secret_for(new_url)
+        ):
+            # The stored key was entered for the old server: never send it to another one, and never drop it
+            # silently either.
+            raise serializers.ValidationError(
+                {"secret": ["Enter the key again when changing the server address."]}
+            )
         return attrs
 
     def save(self, **kwargs) -> Provider:
         secret = self.validated_data.pop("secret", None)
         provider = self.instance or Provider(**kwargs)
+        new_url = self.validated_data.get("base_url")
+        if secret is None and provider.pk and new_url and not provider.keeps_secret_for(new_url):
+            secret = ""  # defence in depth: `validate` already refuses this
         for field, value in self.validated_data.items():
             setattr(provider, field, value)
         if secret is not None:

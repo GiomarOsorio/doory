@@ -168,6 +168,14 @@ def test_http_is_allowed_for_users_only_when_the_operator_says_so(settings):
     assert result.status == 200 and seen[0][0].port == 80
 
 
+@pytest.mark.parametrize("port", [22, 25, 6379, 9200, 27017])
+def test_user_policy_rejects_disallowed_ports(user_policy, port):
+    with pytest.raises(TransportError) as caught:
+        send(f"https://ai.example.com:{port}/run", user_policy)
+    assert caught.value.code == "refused_address"
+    assert f"Port {port} is not allowed" in caught.value.message
+
+
 def test_operators_may_use_http_ip_literals_and_listed_private_hosts(operator_policy):
     send("http://10.0.0.5:7000/run", operator_policy)
     send("http://127.0.0.1:7000/run", operator_policy)

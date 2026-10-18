@@ -28,7 +28,10 @@
         <td class="py-2 pr-4">{{ row.models }}</td>
         <td class="py-2 pr-4">{{ row.provider.daily_quota|default:"—" }}</td>
         <td class="py-2 text-right">
-          <a href="{{ row.test_url }}" class="border border-base-200 dark:border-base-700 px-3 py-1 rounded-default">{% translate "Test" %}</a>
+          <form method="post" action="{{ row.test_url }}" class="inline">
+            {% csrf_token %}
+            <button type="submit" class="border border-base-200 dark:border-base-700 px-3 py-1 rounded-default cursor-pointer">{% translate "Test" %}</button>
+          </form>
         </td>
       </tr>
       {% endfor %}

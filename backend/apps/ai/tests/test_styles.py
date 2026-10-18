@@ -11,7 +11,7 @@ from io import BytesIO
 import pytest
 from PIL import Image
 
-from apps.ai import services
+from apps.ai import catalog, services
 from apps.ai.errors import AIProviderError
 from apps.ai.results import SourceImage, from_image, from_mask
 from apps.ai.styles import ConfigError, get_style
@@ -317,3 +317,72 @@ def test_a_binary_style_answering_text_is_not_an_image(fake, user, photo):
     with pytest.raises(AIProviderError) as caught:
         services.run(user, TASK, photo, f"{provider.id}:")
     assert caught.value.code == "not_image"
+
+
+@pytest.mark.parametrize(
+    "config, error_part",
+    [
+        ({"extra_headers": {"Authorization": "Bearer 123"}}, "authentication header"),
+        ({"extra_headers": {"X-API-KEY": "secret123"}}, "authentication header"),
+        ({"extra_headers": {"token": "abc"}}, "authentication header"),
+        ({"extra_fields": {"api_key": "val"}}, "authentication field"),
+        ({"extra_fields": {"secret": "val"}}, "authentication field"),
+        ({"path": "/v1/remove?key=secret123"}, "authentication parameter"),
+        ({"path": "/v1/remove?token=abc"}, "authentication parameter"),
+        ({"path": "/v1/remove?%6Bey=abc"}, "authentication parameter"),
+        ({"extra_headers": {"X-Custom": "Bearer abc"}}, "carries credentials"),
+        ({"extra_headers": {"X-Custom": "basic dXNlcjpwYXNz"}}, "carries credentials"),
+        ({"extra_headers": {"X-Custom": "café\u2019"}}, "Latin-1"),
+    ],
+)
+def test_secrets_and_invalid_chars_in_style_config_are_refused(config, error_part):
+    style = get_style("custom")
+    full_config = {"path": "/v1/remove", "response": "image", **config}
+    with pytest.raises(ConfigError) as exc:
+        style.config(full_config)
+    assert error_part in str(exc.value)
+
+
+def test_tiff_and_bmp_are_not_accepted(source):
+    # BMP format is not in RESULT_FORMATS
+    bmp = BytesIO()
+    Image.new("RGB", (32, 32), (255, 0, 0)).save(bmp, "BMP")
+    with pytest.raises(AIProviderError) as exc:
+        from_image(TASKS[TASK], source, bmp.getvalue())
+    assert exc.value.code == "not_image"
+
+
+def test_image_busy_is_handled_as_busy_error(monkeypatch, source):
+    from apps.ai import results
+    from apps.core.images import ImageBusy
+
+    def mock_probe(*args, **kwargs):
+        raise ImageBusy("Server is busy")
+
+    monkeypatch.setattr(results, "_probe", mock_probe)
+    with pytest.raises(AIProviderError) as exc:
+        results.decode(b"dummy")
+    assert exc.value.code == "busy"
+    assert getattr(exc.value, "refused", False) is True
+
+
+def test_a_mask_and_its_source_share_one_decode_slot(monkeypatch, source):
+    import threading
+
+    from apps.core import images
+
+    monkeypatch.setattr(images, "LARGE_IMAGE_PIXELS", 10)
+    monkeypatch.setattr(images, "LARGE_DECODE_WAIT_SECONDS", 0.1)
+    monkeypatch.setattr(images, "_large_decodes", threading.BoundedSemaphore(1))
+    result = Image.open(BytesIO(from_mask(TASKS[TASK], source, png(Image.new("L", (64, 32), 255)))))
+    assert result.size == (64, 32) and result.getpixel((1, 1))[3] == 255
+
+
+def test_a_large_image_answered_as_json_is_accepted(fake, user, photo, settings):
+    from apps.ai.services import answer_limit
+
+    provider = make_provider(fake.url, "json", style_config={"path": "/big"})
+    conn = catalog.connection(provider)
+    assert answer_limit(conn) > settings.AI_MAX_IMAGE_BYTES * 4 // 3
+    binary = catalog.connection(make_provider(fake.url, "multipart", style_config={"path": "/x"}))
+    assert answer_limit(binary) < settings.AI_MAX_IMAGE_BYTES * 4 // 3

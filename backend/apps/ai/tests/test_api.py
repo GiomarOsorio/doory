@@ -302,6 +302,38 @@ def test_changing_host_requires_secret_again(byos, api):
 
 
 @pytest.mark.parametrize(
+    "new_url",
+    ["https://other.example", "https://ai.example.com:8443", "http://ai.example.com"],
+)
+def test_moving_a_server_to_another_address_needs_the_key_again(byos, settings, api, new_url):
+    settings.AI_USER_PROVIDERS_ALLOW_HTTP = True
+    pk = create(api).json()["id"]
+    res = api.patch(f"/api/v1/ai/providers/{pk}/", {"base_url": new_url}, format="json")
+    assert res.status_code == 400
+    assert "Enter the key again" in res.json()["error"]["fields"]["secret"][0]
+    provider = Provider.objects.get(pk=pk)
+    assert provider.base_url != new_url and provider.secret() == SECRET
+    res = api.patch(f"/api/v1/ai/providers/{pk}/", {"base_url": new_url, "secret": ""}, format="json")
+    assert res.status_code == 200 and res.json()["has_secret"] is False
+
+
+def test_the_secret_stays_for_the_same_address_or_comes_with_the_new_one(byos, api):
+    pk = create(api).json()["id"]
+    api.patch(f"/api/v1/ai/providers/{pk}/", {"base_url": "https://AI.example.com:443/v2"}, format="json")
+    assert Provider.objects.get(pk=pk).secret() == SECRET
+    api.patch(
+        f"/api/v1/ai/providers/{pk}/", {"base_url": "https://other.example", "secret": "fresh"}, format="json"
+    )
+    assert Provider.objects.get(pk=pk).secret() == "fresh"
+
+
+def test_an_invalid_secrets_key_refuses_the_secret_instead_of_failing(byos, settings, api):
+    settings.AI_SECRETS_KEY = "not-a-valid-fernet-key"
+    response = create(api)
+    assert response.status_code == 400 and "secrets key" in response.content.decode()
+
+
+@pytest.mark.parametrize(
     "fields",
     [
         {"base_url": "http://ai.example.com"},
@@ -422,6 +454,56 @@ def test_models_put_validates(byos, api):
     assert (
         api.put(f"/api/v1/ai/providers/{pk}/models/", {"models": unknown}, format="json").status_code == 400
     )
+
+
+def test_user_provider_limits_and_validation(byos, api, settings):
+    # max_image_bytes exceeding limit is rejected
+    assert create(api, max_image_bytes=settings.AI_MAX_IMAGE_BYTES + 1).status_code == 400
+
+    # timeout_seconds exceeding 60 is rejected
+    assert create(api, timeout_seconds=61).status_code == 400
+
+    # Non-standard ports rejected
+    assert create(api, base_url="https://ai.example.com:9200").status_code == 400
+
+    # Non-Latin-1 auth header rejected
+    assert create(api, auth_header="Auth-Header-é\u2019").status_code == 400
+
+    # Non-Latin-1 secret rejected
+    assert create(api, secret="secret-é\u2019").status_code == 400
+
+    # Control chars in remote_name and label are stripped
+    pk = create(api).json()["id"]
+    res = api.put(
+        f"/api/v1/ai/providers/{pk}/models/",
+        {"models": [{"task": TASK, "remote_name": "model\r\n\x00-1", "label": "Label\n1"}]},
+        format="json",
+    )
+    assert res.status_code == 200
+    assert res.json()["models"][0]["remote_name"] == "model-1"
+    assert res.json()["models"][0]["label"] == "Label1"
+
+
+def test_in_flight_concurrency_limit_per_user(byos, api, public_fake, user):
+    from django.core.cache import cache
+
+    asset = create_asset(user, image_bytes("PNG"), name="test.png")
+    pk = create(api, base_url=public_fake.url).json()["id"]
+    api.put(
+        f"/api/v1/ai/providers/{pk}/models/",
+        {"models": [{"task": TASK, "remote_name": "general-fast"}]},
+        format="json",
+    )
+    # Simulate a call already in-flight by holding the cache key
+    cache.set(f"ai:in_flight:{user.pk}", 1, 60)
+    response = api.post(
+        f"/api/v1/ai/{TASK}/",
+        {"asset_id": str(asset.pk), "model": f"{pk}:general-fast"},
+        format="json",
+    )
+    assert response.status_code in (429, 503)
+    assert response.json()["error"]["code"] == "ai_busy"
+    cache.delete(f"ai:in_flight:{user.pk}")
 
 
 # -- /config/ ------------------------------------------------------------------------------------------------
