@@ -38,6 +38,11 @@ class Resolver:
             raise LookupError(f"There is no picture {key}.")
         return self.images[key]
 
+    def remove_background(self, *, obj, model=None):
+        if obj.get("id") == "bad-bg":
+            raise LookupError("Background removal failed: provider unreachable.")
+        return ImageSource("/media/assets/u/cutout.png", 400, 200, asset_id="asset-cutout", name="Cutout")
+
     def font_category(self, family):
         return {"Playfair Display": "serif"}.get(family)
 
@@ -790,3 +795,28 @@ def test_the_summary_lists_what_is_where():
         "fill": "#ff0",
     }
     assert summary["pages"][1]["background"] == {"type": "solid", "color": "#000000"}
+
+
+def test_remove_background_replaces_image_in_place_and_refuses_non_images():
+    document = run(
+        make_doc(),
+        {"op": "add_image", "asset_id": "asset-1", "id": "hero", "x": 50, "y": 60, "width": 200},
+        {"op": "add_text", "text": "Hello", "id": "text-1"},
+    ).document
+
+    outcome = run(document, {"op": "remove_background", "object_id": "hero"})
+    assert outcome.results[0] == {
+        "op": "remove_background",
+        "object_id": "hero",
+        "box": {"x": 50, "y": 60, "width": 200, "height": 100},
+    }
+    replaced = outcome.document["pages"][0]["objects"][0]
+    assert replaced["src"] == "/media/assets/u/cutout.png"
+    assert replaced["assetId"] == "asset-cutout"
+
+    with pytest.raises(EditError, match="Only pictures can have their background removed"):
+        run(document, {"op": "remove_background", "object_id": "text-1"})
+
+    document["pages"][0]["objects"][0]["id"] = "bad-bg"
+    with pytest.raises(EditError, match="provider unreachable"):
+        run(document, {"op": "remove_background", "object_id": "bad-bg"})

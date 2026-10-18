@@ -329,7 +329,9 @@ The assistant can list, read, create, rename, duplicate and edit designs; star t
 trash and restore them; add text (curved, with shadows, outlines, glows or highlights), shapes (including the
 catalogue's hearts, arrows, speech bubbles…), lines, pictures (cropped to a shape if wanted), QR codes and
 pages; group and ungroup objects; set backgrounds and speaker notes; search templates, the element catalogue,
-fonts and stock photos, and copy images from public https URLs; read, add, edit, resolve and delete comments;
+fonts and stock photos, and copy images from public https URLs; list available AI models (`list_ai_models`)
+and remove backgrounds from pictures (`remove_background` in `edit_design`, or when importing stock photos);
+read, add, edit, resolve and delete comments;
 create and change brand kits; create and revoke share links; restore earlier versions; and look at a page as a
 PNG, JPG or WebP image (`export_design`), drawn on the server exactly as the editor draws it. Designs are also MCP
 resources (`doory://designs/{id}`), and two prompts, "Make a design from a brief" and "Review a design", show up in

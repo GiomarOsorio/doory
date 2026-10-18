@@ -74,11 +74,46 @@ def import_stock_photo(
     photo_id: Annotated[
         str, Field(min_length=1, max_length=64, description="`id` from search_stock_photos.")
     ],
+    remove_background: Annotated[
+        bool,
+        Field(description="Remove the photo's background immediately upon import (uses an AI server model)."),
+    ] = False,
+    model: Annotated[
+        str | None,
+        Field(description="A server model from list_ai_models; omitted: its `server_default`."),
+    ] = None,
 ) -> dict[str, Any]:
-    """Copy a stock photo into your uploads (once; importing it again returns the same asset)."""
+    """Copy a stock photo into your uploads (once; importing it again returns the same asset). With
+    remove_background, the transparent cut-out is returned instead (a second upload), with the `model`."""
+    user = current().user
+    option = _reserve_cutout(user, model) if remove_background else None
     throttle(UploadRateThrottle())
-    asset, _ = stock.import_photo(current().user, provider, photo_id)
-    return _asset(asset)
+    asset, _ = stock.import_photo(user, provider, photo_id)
+    return _with_cutout(user, asset, option)
+
+
+def _reserve_cutout(user, model: str | None):
+    """Pick the AI model and take its throttles and quota before anything is imported."""
+    from .ai import choose_model, reserve_run
+
+    option = choose_model(user, model)
+    reserve_run(user, option)
+    return option
+
+
+def _with_cutout(user, asset: Asset, option) -> dict[str, Any]:
+    if option is None:
+        return _asset(asset)
+    from .ai import model_info, run_model
+
+    try:
+        cutout = run_model(user, asset, option)
+    except ToolError as exc:
+        raise ToolError(
+            f"{exc} The original picture was kept in your uploads as asset_id {asset.pk}: retry with "
+            "remove_asset_background instead of importing it again."
+        ) from exc
+    return {**_asset(cutout), "model": model_info(option), "original_asset_id": str(asset.pk)}
 
 
 def import_url_asset(user, url: str, name: str | None = None) -> Asset:
@@ -99,10 +134,21 @@ def import_url_asset(user, url: str, name: str | None = None) -> Asset:
 def upload_image_from_url(
     url: Annotated[str, Field(min_length=8, max_length=2048, description="A public https link to an image.")],
     name: Annotated[str | None, Field(max_length=120)] = None,
+    remove_background: Annotated[
+        bool,
+        Field(description="Remove the image's background upon upload (uses an AI server model)."),
+    ] = False,
+    model: Annotated[
+        str | None,
+        Field(description="A server model from list_ai_models; omitted: its `server_default`."),
+    ] = None,
 ) -> dict[str, Any]:
     """Copy an image from a public https URL into your uploads; it is checked like any upload. Only use
-    images the user has the right to use."""
-    return _asset(import_url_asset(current().user, url, name))
+    images the user has the right to use. With remove_background, the transparent cut-out is returned instead
+    (a second upload), with the `model` used."""
+    user = current().user
+    option = _reserve_cutout(user, model) if remove_background else None
+    return _with_cutout(user, import_url_asset(user, url, name), option)
 
 
 @tool(scope=DESIGNS_READ, title="Search sounds", read_only=True)

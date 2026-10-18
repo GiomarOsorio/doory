@@ -234,6 +234,17 @@ class ReplaceImage(_Op):
     focal: FocalPoint = (0.5, 0.5)
 
 
+class RemoveBackground(_Op):
+    """Remove the background of an image in the design, replacing it in place with a transparent cut-out."""
+
+    op: Literal["remove_background"]
+    object_id: ObjectId
+    model: str | None = Field(
+        None,
+        description="A server model from list_ai_models; omitted: its `server_default`.",
+    )
+
+
 class AddQrCode(_Add):
     """Add a QR code that encodes `text` (usually a URL)."""
 
@@ -383,6 +394,7 @@ Operation = Annotated[
     | AddLine
     | AddImage
     | ReplaceImage
+    | RemoveBackground
     | AddQrCode
     | UpdateObject
     | DeleteObjects
@@ -417,6 +429,13 @@ class Resolver(Protocol):
         self, *, asset_id: str | None = None, element_id: str | None = None, url: str | None = None
     ) -> ImageSource:
         """The picture to place; raises `LookupError` with a message for the agent when there is none."""
+
+    def remove_background(self, *, obj: dict, model: str | None = None) -> ImageSource:
+        """The picture of `obj` without its background; raises `LookupError` with a message for the agent."""
+
+    def seal(self) -> None:
+        """Optional. Called once the design is locked: from then on, lookups must not do slow work (network,
+        AI)."""
 
     def font_category(self, family: str) -> str | None:
         """The catalogue category of a font family (serif, display…), None when it is unknown."""
@@ -640,6 +659,21 @@ class _Editor:
             name=source.name,
             focal=(op.focal[0], op.focal[1]),
         )
+        return {"object_id": obj["id"], "box": box(obj)}
+
+    def remove_background(self, op: RemoveBackground) -> dict:
+        page, position = self.find(op.object_id)
+        obj = page["objects"][position]
+        if object_kind(obj) not in ("image", "placeholder"):
+            raise self.fail("Only pictures can have their background removed.")
+        try:
+            source = self.resolver.remove_background(obj=obj, model=op.model)
+        except LookupError as exc:
+            raise self.fail(str(exc)) from exc
+        # The cut-out has the picture's pixel size, so the frame, crop and mask stay as they are.
+        obj["src"] = source.src
+        if source.asset_id:
+            obj["assetId"] = source.asset_id
         return {"object_id": obj["id"], "box": box(obj)}
 
     def add_qr_code(self, op: AddQrCode) -> dict:

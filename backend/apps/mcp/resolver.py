@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from typing import Any
 
 from django.db.models import Q
 from mcp.server.mcpserver.exceptions import ToolError
@@ -10,10 +11,13 @@ from rest_framework.exceptions import APIException
 
 from apps.apitokens.scopes import ASSETS_WRITE
 from apps.assets.models import Asset
+from apps.assets.services import create_asset
+from apps.assets.uploads import clean_name
 from apps.designs.doc.builders import primary_family
 from apps.designs.doc.ops import ImageSource
 from apps.elements.models import Element
 from apps.fonts.models import FontFamily
+from apps.gallery.models import Template
 
 from . import context
 from .tools.assets import import_url_asset
@@ -26,6 +30,32 @@ def _uuid(value: str | None) -> uuid.UUID | None:
         return None
 
 
+def _places(node: Any, asset_id: str) -> bool:
+    if isinstance(node, dict):
+        return node.get("assetId") == asset_id or any(_places(v, asset_id) for v in node.values())
+    if isinstance(node, list):
+        return any(_places(v, asset_id) for v in node)
+    return False
+
+
+def _in_published_template(asset: Asset) -> bool:
+    """Whether a published template by the asset's owner places it (its pictures are shared with everyone
+    who uses the template)."""
+    templates = Template.objects.filter(is_published=True, created_by_id=asset.owner_id).only("document")
+    return any(_places(t.document, str(asset.pk)) for t in templates.iterator())
+
+
+def _copy_for(user, asset: Asset) -> Asset:
+    """`user`'s copy of a template picture, made once."""
+    existing = Asset.objects.filter(owner=user, meta__copied_from=str(asset.pk)).first()
+    if existing is not None:
+        return existing
+    with asset.file.open("rb") as handle:
+        data = handle.read()
+    name = clean_name(asset.name or "Image")
+    return create_asset(user, data, name=name, meta={"copied_from": str(asset.pk)})
+
+
 class DjangoResolver:
     """Pictures come from the caller's own uploads or the published element catalogue; fonts from the
     catalogue plus the caller's uploaded fonts."""
@@ -33,6 +63,8 @@ class DjangoResolver:
     def __init__(self, user) -> None:
         self.user = user
         self._urls: dict[str, ImageSource] = {}
+        self._cutouts: dict[tuple, ImageSource] = {}
+        self._sealed = False
 
     def image(
         self, *, asset_id: str | None = None, element_id: str | None = None, url: str | None = None
@@ -80,6 +112,70 @@ class DjangoResolver:
         if element is None:
             raise LookupError(f"There is no element {element_id!r} (see search_elements).")
         return ImageSource(element.svg.url, element.width or 100, element.height or 100, name=element.name)
+
+    def remove_background(self, *, obj: dict, model: str | None = None) -> ImageSource:
+        """The cut-out of `obj`'s picture. The AI call runs in `prepare_background_removal`, before the design
+        is locked; here (under the lock) only what was prepared is handed out."""
+        key = self._cutout_key(obj, model)
+        if key in self._cutouts:
+            return self._cutouts[key]
+        if not self._sealed:
+            return self.prepare_background_removal(obj=obj, model=model)
+        raise LookupError(
+            "This picture was added or changed in the same call: remove its background in a second "
+            "edit_design call."
+        )
+
+    def prepare_background_removal(self, *, obj: dict, model: str | None = None) -> ImageSource:
+        caller = context.current()
+        if caller is None or not caller.has(ASSETS_WRITE):
+            raise LookupError(
+                f"Removing backgrounds needs the `{ASSETS_WRITE}` scope. "
+                "Create a token with it in Doory: Account settings > API tokens."
+            )
+        from .tools.ai import choose_model, reserve_run, run_model
+
+        key = self._cutout_key(obj, model)
+        if key in self._cutouts:
+            return self._cutouts[key]
+        try:
+            option = choose_model(self.user, model)
+            asset = self._source_asset(obj)
+            reserve_run(self.user, option)
+            cutout = run_model(self.user, asset, option)
+        except ToolError as exc:
+            raise LookupError(str(exc)) from exc
+        source = ImageSource(
+            cutout.file.url,
+            cutout.width or 1,
+            cutout.height or 1,
+            asset_id=str(cutout.pk),
+            name=cutout.name or None,
+        )
+        self._cutouts[key] = source
+        return source
+
+    def seal(self) -> None:
+        """From now on (the design is locked) nothing slow runs: no AI calls."""
+        self._sealed = True
+
+    @staticmethod
+    def _cutout_key(obj: dict, model: str | None) -> tuple:
+        return (obj.get("id"), obj.get("assetId"), obj.get("src"), model)
+
+    def _source_asset(self, obj: dict) -> Asset:
+        """The upload behind `obj`: the caller's own, or one a published template places (copied into the
+        caller's uploads first). Nothing else, and never a file looked up by a path from the document."""
+        uid = _uuid(obj.get("assetId"))
+        asset = Asset.objects.filter(pk=uid).exclude(kind=Asset.Kind.AUDIO).first() if uid else None
+        if asset is not None and asset.owner_id == self.user.pk:
+            return asset
+        if asset is not None and _in_published_template(asset):
+            return _copy_for(self.user, asset)
+        raise LookupError(
+            "Only pictures from your uploads or a template can have their background removed. Upload it "
+            "first (upload_image_from_url), then replace_image."
+        )
 
     def font_category(self, family: str) -> str | None:
         name = primary_family(family)
