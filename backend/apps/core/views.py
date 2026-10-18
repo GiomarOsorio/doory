@@ -43,6 +43,13 @@ _CONFIG_SCHEMA = inline_serializer(
                 "mcp": serializers.BooleanField(),
             },
         ),
+        "exports": inline_serializer(
+            "AppConfigExports",
+            {
+                "filename_style": serializers.ChoiceField(choices=["simple", "structured"]),
+                "filename_timestamp": serializers.BooleanField(),
+            },
+        ),
         "limits": inline_serializer(
             "AppConfigLimits",
             {
@@ -113,6 +120,10 @@ def config(request):
                 "background_removal": background_removal is not None,
                 "realtime": realtime_enabled(),
                 "mcp": settings.MCP_ENABLED,
+            },
+            "exports": {
+                "filename_style": settings.EXPORT_FILENAME_STYLE,
+                "filename_timestamp": settings.EXPORT_FILENAME_TIMESTAMP,
             },
             "limits": {
                 "max_upload_bytes": settings.MAX_UPLOAD_BYTES,

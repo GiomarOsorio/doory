@@ -2,6 +2,7 @@
  * Packs the files of a multi-page export into one ZIP, so "all pages" is a single download whatever the browser
  * thinks about several downloads at once. fflate (MIT) is loaded only when a ZIP is made.
  */
+import { type FileNaming, SIMPLE_NAMING, structuredFilename } from './filenames'
 import { type ExportFile, sanitizeFilename } from './registry'
 
 /** Formats that are already compressed: stored as they are, deflating them again only costs time. */
@@ -30,8 +31,14 @@ function entryName(filename: string, taken: Set<string>): string {
   return name
 }
 
-/** The files as one ZIP archive (`<title>.zip`). */
-export async function zipFiles(files: readonly ExportFile[], title: string): Promise<ExportFile> {
+/** The archive's name: `<title>.zip`, or with structured names `<title>[_<unix>].zip` (the files' timestamp). */
+export function zipFilename(title: string, naming: FileNaming = SIMPLE_NAMING): string {
+  if (naming.style !== 'structured') return `${sanitizeFilename(title) || 'design'}.zip`
+  return structuredFilename({ title, unix: naming.unix, extension: 'zip' })
+}
+
+/** The files as one ZIP archive (see `zipFilename`). */
+export async function zipFiles(files: readonly ExportFile[], title: string, naming?: FileNaming): Promise<ExportFile> {
   const { zipSync } = await import('fflate')
   const taken = new Set<string>()
   const entries: Record<string, [Uint8Array, { level: 0 | 6 }]> = {}
@@ -41,10 +48,10 @@ export async function zipFiles(files: readonly ExportFile[], title: string): Pro
   }
   const bytes = zipSync(entries)
   const buffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer
-  return { blob: new Blob([buffer], { type: 'application/zip' }), filename: `${sanitizeFilename(title) || 'design'}.zip` }
+  return { blob: new Blob([buffer], { type: 'application/zip' }), filename: zipFilename(title, naming) }
 }
 
 /** One file stays as it is; several become one ZIP. */
-export async function bundleFiles(files: ExportFile[], title: string): Promise<ExportFile[]> {
-  return files.length > 1 ? [await zipFiles(files, title)] : files
+export async function bundleFiles(files: ExportFile[], title: string, naming?: FileNaming): Promise<ExportFile[]> {
+  return files.length > 1 ? [await zipFiles(files, title, naming)] : files
 }

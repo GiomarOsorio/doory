@@ -8,7 +8,7 @@ import { assetToRef, createAccountServices } from './services'
 export interface AccountAdapterOptions {
   /** Called with the revision the server assigned after each successful save. */
   onRevision?(revision: number): void
-  config?: Pick<AppConfig, 'features'>
+  config?: Pick<AppConfig, 'features' | 'exports'>
   /** Minimum gap between thumbnail uploads (ms). */
   thumbnailIntervalMs?: number
   /** Opens the shell's sign-in flow when the live room needs a session; resolves `true` once the user is signed in. */
@@ -70,6 +70,8 @@ export function createAccountAdapter(designId: string, getRevision: () => number
     services: createAccountServices(designId, () => flushLiveRoom(realtime)),
     realtime,
   }
+  const exports = options.config?.exports
+  if (exports) adapter.exportFilenames = { style: exports.filename_style === 'structured' ? 'structured' : 'simple', timestamp: exports.filename_timestamp === true }
   if (options.config?.features.server_pdf) {
     adapter.exportPdf = ({ svgPages, width, height, sizes, bleedMm, cropMarks, title, lang, fonts, signal, onUploadProgress }) =>
       exportsApi.pdf({ pages: svgPages.map((svg) => new Blob([svg], { type: 'image/svg+xml' })), width, height, sizes, bleedMm, cropMarks, title, lang, fonts, signal, onUploadProgress })

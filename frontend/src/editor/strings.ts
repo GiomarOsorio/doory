@@ -513,6 +513,11 @@ export const t = {
     downloadClamped: 'Scaled down to fit browser limits.',
     downloadEachSize: 'Each page is exported at its own size.',
     downloadZip: 'Several pages are downloaded as one ZIP file.',
+    downloadNames: 'File names',
+    downloadNamesSimple: 'Simple',
+    downloadNamesStructured: 'Detailed',
+    downloadNamesTimestamp: 'Add timestamp to file names',
+    downloadNamesExample: (name: string) => `e.g. ${name}`,
   },
   announce: {
     added: (what: string) => `Added ${what}`,

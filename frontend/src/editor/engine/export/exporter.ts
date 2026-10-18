@@ -3,6 +3,7 @@ import { pageSize } from '../docOps'
 import type { EditorEngine } from '../editor'
 import { canvasToBlob, renderPageToCanvas } from '../render'
 import { type ExportFile, type ExportOptions, type ExportStage, exportFormats } from './registry'
+import { type FileNaming, type FilenameStyle, unixNow } from './filenames'
 import { bundleFiles } from './zip'
 import './formats'
 import './video/formats'
@@ -36,6 +37,8 @@ export interface RunExportInput {
   signal?: AbortSignal
   /** Pack several files into one ZIP (default). `false` returns the files one by one. */
   bundle?: boolean
+  /** File names: simple (default) or structured, with or without the Unix time of this run. */
+  filenames?: { style: FilenameStyle; timestamp: boolean }
 }
 
 /**
@@ -49,6 +52,8 @@ export async function runExport(engine: EditorEngine, input: RunExportInput): Pr
   if (pages.length === 0) throw new ExportError('Select at least one page.')
   const controller = new AbortController()
   const signal = input.signal ?? controller.signal
+  // One timestamp for the whole run: every file and the ZIP carry the same seconds.
+  const naming: FileNaming = { style: input.filenames?.style ?? 'simple', unix: input.filenames?.timestamp ? unixNow() : null }
   try {
     const files = await format.run({
       engine,
@@ -56,10 +61,11 @@ export async function runExport(engine: EditorEngine, input: RunExportInput): Pr
       pages,
       options: input.options,
       title: engine.state.title,
+      naming,
       onProgress: input.onProgress ?? (() => undefined),
       signal,
     })
-    return input.bundle === false ? files : await bundleFiles(files, engine.state.title)
+    return input.bundle === false ? files : await bundleFiles(files, engine.state.title, naming)
   } catch (err) {
     if (err instanceof DOMException && err.name === 'AbortError') throw err
     throw err instanceof Error ? err : new ExportError('The export failed.')

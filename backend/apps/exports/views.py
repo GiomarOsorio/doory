@@ -17,7 +17,7 @@ from apps.designs.models import Design
 
 from . import delivery
 from .exceptions import ExportDisabled, PayloadTooLarge
-from .filenames import export_filename, pdf_filename
+from .filenames import page_filename, pdf_filename, unix_now
 from .serializers import (
     MAX_PAGES,
     MAX_TOTAL_BYTES,
@@ -126,10 +126,12 @@ class ImageExportView(APIView):
             scale=data["scale"],
             transparent=data["transparent"],
         )
-        title = design.title if design.page_count <= 1 else f"{design.title} - page {result.page_index + 1}"
+        style = data.get("filename_style") or settings.EXPORT_FILENAME_STYLE
+        stamp = data.get("filename_timestamp", settings.EXPORT_FILENAME_TIMESTAMP)
+        filename = page_filename(design.title, result, style=style, unix=unix_now() if stamp else None)
         response = HttpResponse(result.data, content_type=result.mime)
         response["X-Doory-Placeholders"] = str(result.placeholders)
-        return _file_headers(response, export_filename(title, result.format), attachment=True)
+        return _file_headers(response, filename, attachment=True)
 
 
 class ImageDownloadView(APIView):

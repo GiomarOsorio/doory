@@ -72,6 +72,7 @@ def test_the_image_comes_back_inline_with_what_it_shows(as_caller, design, rende
         "width": 400,
         "height": 200,
         "bytes": len(IMAGE),
+        "filename": "Poster.png",
         "editor_url": None,
     }
     assert renders == [

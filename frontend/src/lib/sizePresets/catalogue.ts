@@ -24,7 +24,7 @@ export interface PresetTreePreset {
   tags?: string[]
   is_quick?: boolean
   aliases?: string[]
-  meta?: { safe_zone?: SafeZone } & Record<string, unknown>
+  meta?: { safe_zone?: SafeZone; platforms?: string[] } & Record<string, unknown>
 }
 
 export interface PresetTreeGroup {
@@ -64,6 +64,8 @@ export interface SizePreset {
   quick: boolean
   aliases: string[]
   safeZone: SafeZone | null
+  /** `meta.platforms[0]`: the platform export file names use instead of the group's slug. */
+  platform?: string
   /** The groups the preset sits in, outermost first (Social media → Instagram). */
   path: PresetGroupRef[]
 }
@@ -107,6 +109,11 @@ function safeZone(meta: unknown): SafeZone | null {
   return Object.keys(out).length > 0 ? out : null
 }
 
+function platformOf(meta: unknown): string {
+  const platforms = typeof meta === 'object' && meta !== null ? (meta as { platforms?: unknown }).platforms : undefined
+  return Array.isArray(platforms) && isText(platforms[0]) ? platforms[0] : ''
+}
+
 function toPreset(raw: PresetTreePreset, path: PresetGroupRef[]): SizePreset | null {
   if (typeof raw !== 'object' || raw === null || !isText(raw.slug) || !raw.slug || !isText(raw.label)) return null
   const sourceUnit: PresetUnit = UNITS.includes(raw.unit as PresetUnit) ? (raw.unit as PresetUnit) : 'px'
@@ -114,6 +121,7 @@ function toPreset(raw: PresetTreePreset, path: PresetGroupRef[]): SizePreset | n
   const width = positive(raw.width_px) ? Math.round(raw.width_px) : presetPx(raw.width, sourceUnit)
   const height = positive(raw.height_px) ? Math.round(raw.height_px) : presetPx(raw.height, sourceUnit)
   if (width < 1 || height < 1 || width > MAX_SIDE_PX || height > MAX_SIDE_PX) return null
+  const platform = platformOf(raw.meta)
   return {
     id: raw.slug,
     label: raw.label,
@@ -128,6 +136,7 @@ function toPreset(raw: PresetTreePreset, path: PresetGroupRef[]): SizePreset | n
     quick: raw.is_quick === true,
     aliases: textList(raw.aliases),
     safeZone: safeZone(raw.meta),
+    ...(platform ? { platform } : {}),
     path,
   }
 }

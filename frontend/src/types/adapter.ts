@@ -203,6 +203,8 @@ export interface EditorAdapter {
   services: EditorServices
   /** The design's live room; absent or `null` when real-time editing is not available (the editor saves over REST). */
   realtime?: RealtimeConnection | null
+  /** The instance's default export file names (the download dialog starts there until the user picks). Simple without it. */
+  exportFilenames?: { style: 'simple' | 'structured'; timestamp: boolean }
   /** Server-side vector PDF (account only). Absent → editor falls back to client-side PDF. */
   exportPdf?: (input: {
     /** One SVG document per page. Raster images are embedded as `data:` URIs (the server strips every other `href`). */

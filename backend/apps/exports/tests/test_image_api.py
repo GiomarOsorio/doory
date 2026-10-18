@@ -33,6 +33,10 @@ def renders(monkeypatch) -> list[dict]:
             page_id="p",
             page_index=index,
             placeholders=1,
+            page_width=1080,
+            page_height=1920,
+            page_count=design.page_count,
+            preset=design.preset,
         )
 
     monkeypatch.setattr(views, "export_image", fake_export_image)
@@ -66,6 +70,26 @@ def test_options_are_passed_on_and_pages_count_from_one(client, user, renders):
     assert renders[-1]["page"] == "some-page-id"
 
 
+@pytest.mark.django_db
+def test_structured_names_on_request_and_by_default(client, user, renders, settings, monkeypatch):
+    design = make_design(user, title="Summer Sale", document=make_doc(pages=3))
+    design.preset = "instagram-story"
+    design.save()
+    body = {"page": 2, "filename_style": "structured"}
+    response = client.post(url(design), body, format="json")
+    expected = "summer-sale_instagram_instagram-story_1080x1920_p02"
+    assert response["Content-Disposition"] == f'attachment; filename="{expected}.png"'
+    monkeypatch.setattr(views, "unix_now", lambda: 1792259000)
+    settings.EXPORT_FILENAME_STYLE = "structured"
+    settings.EXPORT_FILENAME_TIMESTAMP = True
+    response = client.post(url(design), {"page": 2}, format="json")
+    assert response["Content-Disposition"] == f'attachment; filename="{expected}_1792259000.png"'
+    response = client.post(url(design), {"page": 2, "filename_timestamp": False}, format="json")
+    assert response["Content-Disposition"] == f'attachment; filename="{expected}.png"'
+    response = client.post(url(design), {"page": 2, "filename_style": "simple"}, format="json")
+    assert response["Content-Disposition"] == 'attachment; filename="Summer Sale - page 2.png"'
+
+
 def test_an_image_comes_back_whatever_the_accept_header(client, design, renders):
     response = client.post(url(design), {}, format="json", HTTP_ACCEPT="image/png")
     assert response.status_code == 200
@@ -78,6 +102,7 @@ def test_an_image_comes_back_whatever_the_accept_header(client, design, renders)
         {"page": True},
         {"page": ""},
         {"format": "gif"},
+        {"filename_style": "fancy"},
         {"quality": 0},
         {"scale": 5},
         {"scale": "NaN"},

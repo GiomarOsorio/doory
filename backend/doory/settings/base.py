@@ -276,6 +276,12 @@ EXPORT_CHROMIUM_NO_SANDBOX = env.bool("EXPORT_CHROMIUM_NO_SANDBOX", default=Fals
 # Where each render gets its private work directory (input, output and the browser profile live in it and are
 # deleted with it). Empty: the system temporary directory.
 EXPORT_WORK_DIR = env("EXPORT_WORK_DIR", default="")
+# Export file names (#59): simple (`summer-sale-02.png`) or structured
+# (`summer-sale_instagram_instagram-story_1080x1920_p02.png`), and whether a structured name ends in the
+# Unix time of the export. These are the defaults; the download dialog and the image export API can choose
+# per export.
+EXPORT_FILENAME_STYLE = env.str("EXPORT_FILENAME_STYLE", default="simple")
+EXPORT_FILENAME_TIMESTAMP = env.bool("EXPORT_FILENAME_TIMESTAMP", default=False)
 # Origins Chromium may fetch /media/ and /static/ resources from while printing (everything else is blocked).
 EXPORT_ALLOWED_ORIGINS = env.list(
     "EXPORT_ALLOWED_ORIGINS",

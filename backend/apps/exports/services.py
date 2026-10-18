@@ -113,6 +113,12 @@ class ImageResult:
     missing_fonts: tuple[str, ...] = ()
     warnings: tuple[str, ...] = ()
     blocked_total: int = 0
+    # What the download name is made of (`filenames.page_filename`): the page's own size, the design's page
+    # count and its size preset.
+    page_width: float = 0
+    page_height: float = 0
+    page_count: int = 1
+    preset: str = ""
 
 
 def page_index(page: int | str | None) -> int | str | None:
@@ -140,6 +146,12 @@ def _pick_page(document: dict, page: int | str | None) -> tuple[dict, int]:
     if not 0 <= index < len(pages) or not isinstance(pages[index], dict):
         raise InvalidExport("page_not_found", f"The design has no page {page!r}.")
     return pages[index], index
+
+
+def _preset_id(document: dict) -> str:
+    meta = document.get("meta")
+    preset = meta.get("presetId") if isinstance(meta, dict) else None
+    return preset if isinstance(preset, str) else ""
 
 
 def _page_size(document: dict, page: dict) -> tuple[float, float]:
@@ -278,4 +290,8 @@ def export_image(
         missing_fonts=result.missing_fonts,
         warnings=tuple(warnings),
         blocked_total=result.blocked_total,
+        page_width=width,
+        page_height=height,
+        page_count=len(document["pages"]),
+        preset=_preset_id(document) or design.preset,
     )

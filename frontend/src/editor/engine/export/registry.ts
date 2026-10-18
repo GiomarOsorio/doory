@@ -8,6 +8,8 @@
 import type { DocPage, DoryDocument } from '@/types/document'
 import type { EditorEngine } from '../editor'
 import { Registry } from '../registry'
+import { getSizePresets } from '@/lib/sizePresets'
+import { type FileNaming, SIMPLE_NAMING, documentFilename } from './filenames'
 import type { VideoOptions } from './video/options'
 
 export interface ExportOptions {
@@ -36,6 +38,8 @@ export interface ExportContext {
   pages: { page: DocPage; index: number }[]
   options: ExportOptions
   title: string
+  /** How the files are named (simple or structured, and the run's timestamp). Simple when absent. */
+  naming?: FileNaming
   /** Report progress in 0..1, and what is going on while the progress bar is not moving. */
   onProgress(fraction: number, stage?: ExportStage): void
   signal: AbortSignal
@@ -78,6 +82,24 @@ export function pageFilename(title: string, extension: string, pageNumber: numbe
   const base = sanitizeFilename(title) || 'design'
   const digits = Math.max(2, String(designPages).length)
   return total > 1 ? `${base}-${String(pageNumber).padStart(digits, '0')}.${extension}` : `${base}.${extension}`
+}
+
+/**
+ * A file's name under the run's naming: `simple` (the name the format always gave it) as it is, otherwise the structured
+ * name. `page` is the 0-based page index of a per-page file, null for a file that holds several pages; `size` is the page
+ * size the name shows (the first page's for such a file).
+ */
+export function exportFilename(
+  ctx: Pick<ExportContext, 'document' | 'title' | 'naming'>,
+  simple: string,
+  extension: string,
+  size: { width: number; height: number } | null,
+  page: number | null,
+  suffix?: string,
+): string {
+  const naming = ctx.naming ?? SIMPLE_NAMING
+  if (naming.style !== 'structured') return simple
+  return documentFilename(ctx.document, ctx.title, extension, size, page, naming, (id) => getSizePresets().byId.get(id), suffix)
 }
 
 export function sanitizeFilename(name: string): string {
