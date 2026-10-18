@@ -1,139 +1,119 @@
-# Doory AI Reference Server
+# Reference AI server
 
-A self-hosted, CPU-friendly background removal service implementing Doory's open contract (`backend/apps/ai/contract/openapi.yaml`).
+A small background removal server you can host yourself. It implements Doory's contract
+(`backend/apps/ai/contract/openapi.yaml`, also served at `/api/v1/ai/contract.yaml`), so Doory reaches it with
+the `doory` API style.
 
-- **Contract:** `GET /v1/models`, `POST /v1/{task}` (`background-removal`), `GET /health`
-- **Output:** Transparent PNG stream (preferred) or base64 JSON
-- **License compliance:** Every model is strictly **Apache-2.0** or **MIT** (commercial and private use permitted; no non-commercial clauses)
-- **Engine:** [rembg](https://github.com/danielgatis/rembg) with [ONNX Runtime](https://onnxruntime.ai/) CPU provider
+- Routes: `GET /v1/models`, `POST /v1/background-removal`, `GET /health`
+- Answer: a transparent PNG, or JSON with `image_b64` when the request asks for JSON only
+- Models: open licences only (Apache-2.0, MIT), run on the CPU through ONNX Runtime (via rembg)
+- Doory calls it from its backend. It has no CORS, and with `API_KEY` set every route except `/health` needs the key.
 
----
+## Models
 
-## Supported Models
-
-| Model ID | License | Weight Size | RAM Usage | Warm Call (CPU) | Quality & Best Use |
+| Model | Licence | File | Memory | Time per image (CPU) | Notes |
 |---|---|---|---|---|---|
-| **`isnet-general-use`** *(default)* | Apache-2.0 | ~179 MB | ~1.4 GB flat | **~1.2–1.5s** | **Crispest edge definition** on hair, spokes, and fine silhouettes. Recommended default for server deployments. |
-| **`u2net`** | Apache-2.0 | ~176 MB | ~1.3 GB | ~1.0s | Solid general accuracy on broad foreground objects. |
-| **`u2netp`** | Apache-2.0 | ~4.7 MB | ~200 MB | ~0.7s | Ultra-lightweight variant; matches Doory's in-browser model. |
-| **`birefnet-general-lite`** | MIT | ~224 MB | ~6–8 GB | ~6.0s (CPU) | High-resolution bilateral reference network; best with GPU or high-RAM VPS. |
+| `isnet-general-use` (default) | Apache-2.0 | about 179 MB | about 1.4 GB | about 1.2–1.5 s | Clean edges on hair and thin details |
+| `u2net` | Apache-2.0 | about 176 MB | about 1.3 GB | about 1 s | Good on large, simple subjects |
+| `u2netp` | Apache-2.0 | about 4.7 MB | about 200 MB | about 0.7 s | Small and fast; the same model as Doory's in-browser removal |
+| `birefnet-general-lite` | MIT | about 224 MB | about 6–8 GB | about 6 s | Fine edges; only on hosts with plenty of memory |
 
-> [!NOTE]
-> `bria-rmbg` is excluded because its commercial restrictions conflict with open self-hosting.
+Only the models in `AVAILABLE_MODELS` are offered and accepted; any other `model` is refused. A loaded model
+stays in memory, so offer only what the host can hold at once.
 
----
+### Where the models come from
 
-## Quick Start (Docker)
+rembg downloads each file from its GitHub release `v0.0.0` (`github.com/danielgatis/rembg/releases/tag/v0.0.0`)
+and checks it against the checksum it ships with. The Docker image does this at build time for the models in
+the `MODELS` build argument, so the running container needs no outbound network. Without Docker, download
+them once before starting (below).
 
-### 1. Build and Run Standalone
+## Docker
 
-```bash
-docker build -t doory-ai-server deploy/ai-server
+### With Doory's compose file
 
-# Run with model weights persisted in a Docker volume
-docker run -d \
-  --name doory-ai-server \
-  -p 7000:7000 \
-  -v doory-ai-models:/models \
-  -e DEFAULT_MODEL=isnet-general-use \
-  doory-ai-server
-```
-
-### 2. Run with Doory Docker Compose
-
-In Doory's root directory:
+Add to `.env`:
 
 ```bash
-# Add to .env:
-COMPOSE_PROFILES=ai
+COMPOSE_PROFILES=ai                  # or mcp,ai
+AI_SERVER_API_KEY=<a long random key>
 AI_PROVIDERS_ENABLED=true
-AI_ALLOWED_PRIVATE_HOSTS=ai-server,doory-ai-server
 AI_PROVIDER_1_URL=http://ai-server:7000
 AI_PROVIDER_1_STYLE=doory
-AI_PROVIDER_1_LABEL="High quality (server)"
-
-# Start the stack including the ai-server service
-docker compose up -d
+AI_PROVIDER_1_AUTH_HEADER=Authorization
+AI_PROVIDER_1_AUTH_VALUE=Bearer <the same key>
+AI_PROVIDER_1_LABEL=High quality (server)
+AI_ALLOWED_PRIVATE_HOSTS=ai-server
 ```
 
----
+Then `docker compose up -d --build`. The service runs on the internal network only, with a memory limit, a
+read-only file system, no capabilities and `no-new-privileges`. `AI_SERVER_MODELS` picks the models baked into
+the image (rebuild after changing it); `.env.example` lists the other settings.
 
-## Testing the Server
-
-### 1. Health check
+### On its own
 
 ```bash
-curl http://localhost:7000/health
-# {"status":"ok","default_model":"isnet-general-use","loaded_models":[]}
+docker build -t doory-ai-server --build-arg MODELS=isnet-general-use,u2netp deploy/ai-server
+docker run -d --name doory-ai-server -p 127.0.0.1:7000:7000 -e API_KEY=<a long random key> \
+  --read-only --tmpfs /tmp --cap-drop ALL --security-opt no-new-privileges:true --memory 2g doory-ai-server
 ```
 
-### 2. List available models
+Publish the port on `127.0.0.1` (or a private network) only, and always set `API_KEY`: the server is
+CPU-heavy, and without a key anyone who reaches it can use it.
+
+## Without Docker (systemd)
 
 ```bash
-curl http://localhost:7000/v1/models
+cd /opt/doory/deploy/ai-server
+python3.12 -m venv .venv && .venv/bin/pip install -r requirements.txt
+sudo install -d -o doory -g doory /var/lib/doory/models
+sudo -u doory U2NET_HOME=/var/lib/doory/models .venv/bin/python -c \
+  "from rembg import new_session; [new_session(m) for m in ('isnet-general-use', 'u2netp')]"
+echo "API_KEY=<a long random key>" | sudo install -m 600 /dev/stdin /etc/doory/ai-server.env
+sudo cp ../doory-ai-server.service /etc/systemd/system/ && sudo systemctl enable --now doory-ai-server
 ```
 
-Output:
-```json
-{
-  "models": [
-    {
-      "id": "isnet-general-use",
-      "label": "IS-Net (Balanced)",
-      "tasks": ["background-removal"]
-    },
-    {
-      "id": "u2net",
-      "label": "U²-Net (High Quality)",
-      "tasks": ["background-removal"]
-    },
-    {
-      "id": "u2netp",
-      "label": "U²-Netp (Fast)",
-      "tasks": ["background-removal"]
-    }
-  ]
-}
-```
+The unit listens on `127.0.0.1:7000`. In Doory's `.env`, set `AI_PROVIDER_1_URL=http://127.0.0.1:7000` and the
+same key, as above.
 
-### 3. Remove background (binary PNG)
+## Trying it
 
 ```bash
-curl -X POST http://localhost:7000/v1/background-removal \
-  -F "image=@photo.jpg" \
-  -o cutout.png
+curl http://127.0.0.1:7000/health
+curl -H "Authorization: Bearer $KEY" http://127.0.0.1:7000/v1/models
+curl -H "Authorization: Bearer $KEY" -F image=@photo.jpg -o cutout.png http://127.0.0.1:7000/v1/background-removal
+curl -H "Authorization: Bearer $KEY" -F image=@photo.jpg -F model=u2netp -o cutout.png \
+  http://127.0.0.1:7000/v1/background-removal
 ```
 
-### 4. Remove background with a specific model
+## Limits and errors
 
-```bash
-curl -X POST http://localhost:7000/v1/background-removal \
-  -F "image=@photo.jpg" \
-  -F "model=u2netp" \
-  -o cutout.png
-```
+- The request body is limited to `MAX_IMAGE_BYTES` before it is read, and the image to PNG, JPEG or WebP with
+  at most 12,000 pixels a side and 80 million pixels, the same as Doory. Both are checked before decoding.
+- `WORKERS` images are processed at once. More requests get `429` with `Retry-After`, which Doory reports
+  as busy. An image that takes longer than `TIMEOUT_SECONDS` gets `503`.
+- Errors are JSON (`{"error": {"code": …, "message": …}}`) with fixed messages; details go to the server log only.
 
-### 5. Remove background as JSON base64
+## Settings
 
-```bash
-curl -X POST http://localhost:7000/v1/background-removal \
-  -H "Accept: application/json" \
-  -F "image=@photo.jpg"
-# {"image_b64":"iVBORw0KGgoAAAANSUhEUgAA..."}
-```
-
----
-
-## Environment Variables
-
-| Variable | Default | Description |
+| Variable | Default | Meaning |
 |---|---|---|
-| `PORT` | `7000` | Port uvicorn binds to |
-| `DEFAULT_MODEL` | `isnet-general-use` | Default model when request omits `model` field |
-| `AVAILABLE_MODELS` | `isnet-general-use,u2net,u2netp` | Comma-separated model IDs returned by `/v1/models` |
-| `API_KEY` | *(empty)* | Optional secret. When set, requests must pass `Authorization: Bearer <key>` or `X-Api-Key: <key>` |
-| `MAX_IMAGE_BYTES` | `26214400` (25 MB) | Maximum accepted upload file size |
-| `OMP_NUM_THREADS` | `4` | OpenMP CPU thread pool for ONNX Runtime |
-| `U2NET_HOME` | `/models` | Directory where downloaded ONNX weights are cached |
-| `PRELOAD_MODELS` | *(empty)* | Comma-separated model IDs to load into RAM at server boot |
-| `LOG_LEVEL` | `INFO` | Logging verbosity (`DEBUG`, `INFO`, `WARNING`, `ERROR`) |
+| `API_KEY` | empty | The key; requests send `Authorization: Bearer <key>` or `X-Api-Key: <key>`. Set it. |
+| `AVAILABLE_MODELS` | `isnet-general-use,u2netp` | The models offered and accepted |
+| `DEFAULT_MODEL` | the first available | Used when a request names no model; ignored when it isn't available |
+| `PORT` | `7000` | Port (Docker image) |
+| `WORKERS` | `1` | Images processed at once |
+| `TIMEOUT_SECONDS` | `60` | Longest time for one image |
+| `MAX_IMAGE_BYTES` | `26214400` (25 MB) | Largest upload |
+| `OMP_NUM_THREADS` | `4` | CPU threads per image |
+| `U2NET_HOME` | `/models` | Folder of the model files |
+| `PRELOAD_MODELS` | empty | Models loaded into memory at start instead of on first use |
+| `LOG_LEVEL` | `INFO` | Log level |
+
+## Tests
+
+```bash
+cd deploy/ai-server
+pip install -r requirements.txt pytest httpx
+python -m pytest tests
+```

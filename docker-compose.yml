@@ -193,28 +193,31 @@ services:
       start_period: 60s
       retries: 5
 
-  # Optional: reference AI server for background removal (FastAPI + rembg, Apache-2.0 / MIT models).
-  # CPU-friendly (~1.4 GB RAM, ~1.4s per 2K image). Opt-in: set `COMPOSE_PROFILES=ai` in .env.
+  # Optional: the reference AI server for background removal (models with open licences, CPU only). Opt-in:
+  # add `ai` to COMPOSE_PROFILES. Reached by the api only, on the internal network (not published on the host).
   ai-server:
-    profiles: [ai, ai-server]
+    profiles: [ai]
     build:
       context: ./deploy/ai-server
+      args:
+        MODELS: ${AI_SERVER_MODELS:-isnet-general-use,u2netp}  # baked into the image at build time
     restart: unless-stopped
+    init: true
+    # Each loaded model stays in memory; the limit stops this service (and `restart` brings it back) instead of
+    # starving the host.
+    mem_limit: ${AI_SERVER_MEM_LIMIT:-2g}
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
     environment:
-      PORT: "7000"
+      AVAILABLE_MODELS: ${AI_SERVER_MODELS:-isnet-general-use,u2netp}
       DEFAULT_MODEL: ${AI_SERVER_DEFAULT_MODEL:-isnet-general-use}
+      API_KEY: ${AI_SERVER_API_KEY:-}
+      WORKERS: ${AI_SERVER_WORKERS:-1}
       OMP_NUM_THREADS: ${AI_SERVER_THREADS:-4}
-    volumes:
-      - ai-models:/models
-    networks:
-      default:
-        aliases: [doory-ai-server, ai-server]
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:7000/health')"]
-      interval: 15s
-      timeout: 5s
-      start_period: 30s
-      retries: 3
 
   # Optional: shares live rooms between several realtime workers or replicas. Nothing is stored in it.
   redis:
@@ -252,4 +255,3 @@ volumes:
   pgdata:
   media:
   exports:
-  ai-models:
