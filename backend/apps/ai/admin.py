@@ -147,6 +147,30 @@ def _test_page(request: HttpRequest, admin_site, provider, result, back_url: str
     return TemplateResponse(request, "admin/ai/provider/test_result.html", context)
 
 
+def _action_confirm_page(
+    request: HttpRequest,
+    admin_site,
+    provider,
+    *,
+    title: str,
+    message: str,
+    confirm_label: str,
+    action_url: str,
+    back_url: str,
+) -> TemplateResponse:
+    context = {
+        **admin_site.each_context(request),
+        "title": title,
+        "opts": Provider._meta,
+        "provider": provider,
+        "message": message,
+        "confirm_label": confirm_label,
+        "action_url": action_url,
+        "back_url": back_url,
+    }
+    return TemplateResponse(request, "admin/ai/provider/confirm_action.html", context)
+
+
 @admin.register(Provider)
 class ProviderAdmin(ModelAdmin):
     """Operator providers. Users' own servers are listed under “User providers”."""
@@ -216,17 +240,45 @@ class ProviderAdmin(ModelAdmin):
         return custom + super().get_urls()
 
     def env_test_view(self, request: HttpRequest, provider_id: str):
-        if not self.has_view_permission(request):
+        if not self.has_change_permission(request):
             raise PermissionDenied
         provider = env.get(provider_id)
         if provider is None:
             raise Http404
+        if request.method != "POST":
+            return _action_confirm_page(
+                request,
+                self.admin_site,
+                provider,
+                title=_("Test %(name)s") % {"name": provider.name},
+                message=_(
+                    "Send a sample picture to test the connection to this provider? "
+                    "This makes an outgoing request to the provider's server."
+                ),
+                confirm_label=_("Test connection"),
+                action_url=request.path,
+                back_url=reverse("admin:ai_provider_changelist"),
+            )
         result = services.test_provider(request.user, provider)
         return _test_page(request, self.admin_site, provider, result, reverse("admin:ai_provider_changelist"))
 
     @action(description=_("Load models"), url_path="load-models", permissions=["change"])
     def load_models(self, request: HttpRequest, object_id: str):
         provider = get_object_or_404(Provider, pk=object_id, owner__isnull=True)
+        if request.method != "POST":
+            return _action_confirm_page(
+                request,
+                self.admin_site,
+                provider,
+                title=_("Load models for %(name)s") % {"name": provider.name},
+                message=_(
+                    "Fetch the model list from the remote server and update the database? "
+                    "This makes an outgoing request to the server."
+                ),
+                confirm_label=_("Load models"),
+                action_url=request.path,
+                back_url=reverse("admin:ai_provider_change", args=[object_id]),
+            )
         try:
             models = services.load_models(provider)
         except AIProviderError as exc:
@@ -238,6 +290,20 @@ class ProviderAdmin(ModelAdmin):
     @action(description=_("Test connection"), url_path="test", permissions=["change"])
     def test_connection(self, request: HttpRequest, object_id: str):
         provider = get_object_or_404(Provider, pk=object_id, owner__isnull=True)
+        if request.method != "POST":
+            return _action_confirm_page(
+                request,
+                self.admin_site,
+                provider,
+                title=_("Test %(name)s") % {"name": provider.name},
+                message=_(
+                    "Send a sample picture to test the connection to this provider? "
+                    "This makes an outgoing request to the provider's server."
+                ),
+                confirm_label=_("Test connection"),
+                action_url=request.path,
+                back_url=reverse("admin:ai_provider_change", args=[object_id]),
+            )
         result = services.test_provider(request.user, provider)
         return _test_page(
             request, self.admin_site, provider, result, reverse("admin:ai_provider_change", args=[object_id])

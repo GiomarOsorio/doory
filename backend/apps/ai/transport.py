@@ -26,6 +26,7 @@ from urllib.parse import urlsplit
 import certifi
 import urllib3.connection
 from django.conf import settings
+from django.views.decorators.debug import sensitive_variables
 
 from apps.assets import remote
 from apps.assets.providers import _UNSAFE_URL_CHARS, USER_AGENT
@@ -49,17 +50,28 @@ class Policy:
     allow_http: bool
     private_hosts: frozenset[str] = frozenset()  # host names that may resolve to private addresses
     private_literals: bool = False  # whether a private IP literal in the URL is allowed
+    allowed_ports: frozenset[int] | None = None  # None: any port allowed
 
 
 def operator_policy() -> Policy:
     hosts = frozenset(
         host.strip().lower().rstrip(".") for host in settings.AI_ALLOWED_PRIVATE_HOSTS if host.strip()
     )
-    return Policy("operator", allow_http=True, private_hosts=hosts, private_literals=True)
+    return Policy("operator", allow_http=True, private_hosts=hosts, private_literals=True, allowed_ports=None)
 
 
 def user_policy() -> Policy:
-    return Policy("user", allow_http=bool(settings.AI_USER_PROVIDERS_ALLOW_HTTP))
+    ports = {443, 8443}
+    if getattr(settings, "AI_USER_PROVIDERS_ALLOW_HTTP", False):
+        ports.update({80, 8080})
+    extra = getattr(settings, "AI_USER_PROVIDERS_ALLOWED_PORTS", [])
+    if extra:
+        ports.update(int(p) for p in extra)
+    return Policy(
+        "user",
+        allow_http=bool(settings.AI_USER_PROVIDERS_ALLOW_HTTP),
+        allowed_ports=frozenset(ports),
+    )
 
 
 @dataclass(frozen=True)
@@ -113,6 +125,9 @@ def check_url(
     if parts.scheme not in allowed_schemes:
         start = "http:// or https://" if policy.allow_http else "https://"
         raise TransportError("refused_address", f"The server address must start with {start}.")
+    effective_port = port or (443 if parts.scheme == "https" else 80)
+    if policy.allowed_ports is not None and effective_port not in policy.allowed_ports:
+        raise TransportError("refused_address", f"Port {effective_port} is not allowed.")
     if not parts.hostname or parts.username is not None or parts.password is not None:
         raise TransportError(
             "refused_address", "The server address needs a host and no user name or password."
@@ -167,6 +182,7 @@ class HttpResponse:
 Connect = Callable[[Endpoint, remote.Watchdog, str, dict[str, str], bytes, float], Any]
 
 
+@sensitive_variables("headers", "body")
 def _connect(
     endpoint: Endpoint,
     watchdog: remote.Watchdog,
@@ -214,6 +230,7 @@ def _timeout() -> TransportError:
     return TransportError("timeout", "The server took too long to answer.")
 
 
+@sensitive_variables("headers", "body", "request_headers")
 def send(
     method: str,
     url: str,
@@ -269,6 +286,10 @@ def send(
                 watchdog.release()
         except TransportError:
             raise
+        except UnicodeEncodeError as exc:
+            raise TransportError(
+                "bad_response", "Request headers must contain only Latin-1 characters."
+            ) from exc
         except remote.RemoteImageTooLarge as exc:
             raise TransportError("too_large", "The server's answer is too large.") from exc
         except (remote.RemoteImageError, *remote.TRANSPORT_ERRORS) as exc:

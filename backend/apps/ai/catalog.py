@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import re
 import uuid
 from dataclasses import dataclass, field
 from typing import Any, Literal
@@ -112,6 +113,13 @@ def connection(provider: Provider | EnvProvider) -> Connection:
         raise AIProviderError(
             "secret_unreadable", "The provider's key can no longer be read; enter it again."
         ) from exc
+    timeout = float(provider.timeout_seconds)
+    if not provider.is_operator:
+        timeout = min(timeout, 60.0)
+    max_image_bytes = min(
+        provider.max_image_bytes or settings.AI_MAX_IMAGE_BYTES,
+        settings.AI_MAX_IMAGE_BYTES,
+    )
     return Connection(
         ref=str(provider.id),
         name=provider.name,
@@ -120,8 +128,8 @@ def connection(provider: Provider | EnvProvider) -> Connection:
         config=config,
         auth_header=provider.auth_header,
         auth_value=secret,
-        timeout=float(provider.timeout_seconds),
-        max_image_bytes=provider.max_image_bytes or settings.AI_MAX_IMAGE_BYTES,
+        timeout=timeout,
+        max_image_bytes=max_image_bytes,
         policy=transport.operator_policy() if provider.is_operator else transport.user_policy(),
     )
 
@@ -148,9 +156,17 @@ def sender(conn: Connection, *, timeout: float | None = None):
 
 def list_remote_models(provider: Provider | EnvProvider) -> list[RemoteModel]:
     conn = connection(provider)
-    return get_style(conn.style).list_models(
+    models = get_style(conn.style).list_models(
         conn, sender(conn, timeout=min(conn.timeout, LIST_MODELS_TIMEOUT))
     )
+    return [
+        RemoteModel(
+            remote_name=re.sub(r"[\x00-\x1f\x7f-\x9f]", "", m.remote_name).strip(),
+            label=re.sub(r"[\x00-\x1f\x7f-\x9f]", "", m.label).strip(),
+            tasks=m.tasks,
+        )
+        for m in models
+    ]
 
 
 # -- options -------------------------------------------------------------------------------------------------
@@ -161,7 +177,9 @@ def _env_version(provider: EnvProvider) -> str:
     return hashlib.sha256(raw.encode()).hexdigest()[:12]
 
 
-def env_models(provider: EnvProvider) -> list[tuple[str, str, tuple[str, ...]]]:
+def env_models(
+    provider: EnvProvider, *, allow_network: bool = True
+) -> list[tuple[str, str, tuple[str, ...]]]:
     """(remote name, label, tasks) of an `.env` provider: as configured, or the list a Doory-compatible server
     reports (cached), or the server's default model."""
     if provider.models:
@@ -171,6 +189,11 @@ def env_models(provider: EnvProvider) -> list[tuple[str, str, tuple[str, ...]]]:
     key = f"ai:env-models:{provider.id}:{_env_version(provider)}"
     cached = cache.get(key)
     if cached is None:
+        if not allow_network:
+            return [("", "", ())]
+        lock_key = f"{key}:lock"
+        if not cache.add(lock_key, 1, timeout=15):
+            return [("", "", ())]
         try:
             cached = [(m.remote_name, m.label, m.tasks) for m in list_remote_models(provider)]
             cache.set(key, cached, ENV_MODELS_SECONDS)
@@ -180,15 +203,17 @@ def env_models(provider: EnvProvider) -> list[tuple[str, str, tuple[str, ...]]]:
             )
             cached = []
             cache.set(key, cached, ENV_MODELS_RETRY_SECONDS)
+        finally:
+            cache.delete(lock_key)
     return cached or [("", "", ())]
 
 
-def _env_options(task: str) -> list[Option]:
+def _env_options(task: str, *, allow_network: bool = True) -> list[Option]:
     options = []
     for provider in env.env_providers():
         if task not in provider.tasks:
             continue
-        for name, label, tasks in env_models(provider):
+        for name, label, tasks in env_models(provider, allow_network=allow_network):
             if tasks and task not in tasks:
                 continue
             options.append(
@@ -277,7 +302,7 @@ def public_options(task: str) -> list[Option]:
     """The options every signed-in user has (for the public `/config/`)."""
     result = [_device(task)] if device_available(task) else []
     if settings.AI_PROVIDERS_ENABLED:
-        result += _env_options(task)
+        result += _env_options(task, allow_network=False)
         result += _db_options(operator_providers(None), task)
     return result
 

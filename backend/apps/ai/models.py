@@ -54,7 +54,9 @@ class Provider(BaseModel):
         default=60, validators=[MinValueValidator(1), MaxValueValidator(MAX_TIMEOUT_SECONDS)]
     )
     max_image_bytes = models.PositiveIntegerField(
-        default=0, help_text="Largest source image sent to this server; 0: the server-wide limit."
+        default=0,
+        validators=[MaxValueValidator(settings.AI_MAX_IMAGE_BYTES)],
+        help_text="Largest source image sent to this server; 0: the server-wide limit.",
     )
     sends_offsite = models.BooleanField(
         default=False, help_text="Images leave this installation (shown as a privacy notice in the editor)."

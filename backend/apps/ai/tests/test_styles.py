@@ -317,3 +317,47 @@ def test_a_binary_style_answering_text_is_not_an_image(fake, user, photo):
     with pytest.raises(AIProviderError) as caught:
         services.run(user, TASK, photo, f"{provider.id}:")
     assert caught.value.code == "not_image"
+
+
+@pytest.mark.parametrize(
+    "config, error_part",
+    [
+        ({"extra_headers": {"Authorization": "Bearer 123"}}, "authentication header"),
+        ({"extra_headers": {"X-API-KEY": "secret123"}}, "authentication header"),
+        ({"extra_headers": {"token": "abc"}}, "authentication header"),
+        ({"extra_fields": {"api_key": "val"}}, "authentication field"),
+        ({"extra_fields": {"secret": "val"}}, "authentication field"),
+        ({"path": "/v1/remove?key=secret123"}, "authentication parameter"),
+        ({"path": "/v1/remove?token=abc"}, "authentication parameter"),
+        ({"extra_headers": {"X-Custom": "café\u2019"}}, "Latin-1"),
+    ],
+)
+def test_secrets_and_invalid_chars_in_style_config_are_refused(config, error_part):
+    style = get_style("custom")
+    full_config = {"path": "/v1/remove", "response": "image", **config}
+    with pytest.raises(ConfigError) as exc:
+        style.config(full_config)
+    assert error_part in str(exc.value)
+
+
+def test_tiff_and_bmp_are_not_accepted(source):
+    # BMP format is not in RESULT_FORMATS
+    bmp = BytesIO()
+    Image.new("RGB", (32, 32), (255, 0, 0)).save(bmp, "BMP")
+    with pytest.raises(AIProviderError) as exc:
+        from_image(TASKS[TASK], source, bmp.getvalue())
+    assert exc.value.code == "not_image"
+
+
+def test_image_busy_is_handled_as_busy_error(monkeypatch, source):
+    from apps.ai import results
+    from apps.core.images import ImageBusy
+
+    def mock_probe(*args, **kwargs):
+        raise ImageBusy("Server is busy")
+
+    monkeypatch.setattr(results, "_probe", mock_probe)
+    with pytest.raises(AIProviderError) as exc:
+        results.decode(b"dummy")
+    assert exc.value.code == "busy"
+    assert getattr(exc.value, "refused", False) is True

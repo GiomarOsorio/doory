@@ -141,12 +141,33 @@ def _field_name(value: Any, name: str, *, allow_empty: bool = False) -> str:
     return text
 
 
+_AUTH_WORD_BOUNDARY = re.compile(
+    r"(^|[_\-.])(auth|authorization|key|token|secret|cookie|passwd|password)($|[_\-.])",
+    re.IGNORECASE,
+)
+_AUTH_SUBSTRINGS = ("token", "secret", "bearer", "apikey", "api-key", "api_key")
+
+
+def _is_auth_like(name: str) -> bool:
+    clean = name.strip().lower()
+    return bool(_AUTH_WORD_BOUNDARY.search(clean) or any(sub in clean for sub in _AUTH_SUBSTRINGS))
+
+
 def _path(value: Any) -> str:
     text = _text(value, "path", limit=MAX_PATH)
     if text and not text.startswith("/"):
         raise ConfigError("path must start with /.")
     if "#" in text or "//" in text or _UNSAFE_URL_CHARS.search(text):
         raise ConfigError("path contains characters that are not allowed.")
+    if "?" in text:
+        query = text.partition("?")[2]
+        for part in query.split("&"):
+            param = part.partition("=")[0].strip()
+            if _is_auth_like(param):
+                raise ConfigError(
+                    f"Query parameter {param!r} looks like an authentication parameter; "
+                    "use the provider's secret field instead."
+                )
     return text
 
 
@@ -158,6 +179,11 @@ def _fields(value: Any) -> dict[str, Any]:
     out: dict[str, Any] = {}
     for key, item in value.items():
         _field_name(key, "An extra field name")
+        if _is_auth_like(key):
+            raise ConfigError(
+                f"Field {key!r} looks like an authentication field; "
+                "use the provider's secret field instead."
+            )
         if isinstance(item, str):
             _text(item, f"extra_fields.{key}")
         elif not isinstance(item, (bool, int, float)) or item is None:
@@ -180,10 +206,22 @@ def _headers(value: Any) -> dict[str, str]:
         raise ConfigError("extra_headers must be an object.")
     if len(value) > MAX_FIELDS:
         raise ConfigError(f"extra_headers may have at most {MAX_FIELDS} entries.")
-    return {
-        check_header_name(key, "An extra header"): _text(item, f"extra_headers.{key}")
-        for key, item in value.items()
-    }
+    out: dict[str, str] = {}
+    for key, item in value.items():
+        header_name = check_header_name(key, "An extra header")
+        if _is_auth_like(header_name):
+            raise ConfigError(
+                f"Header {header_name!r} looks like an authentication header; "
+                "use the provider's auth_header and secret fields instead."
+            )
+        header_val = _text(item, f"extra_headers.{key}")
+        try:
+            header_name.encode("latin-1")
+            header_val.encode("latin-1")
+        except UnicodeEncodeError:
+            raise ConfigError(f"Header {key!r} and its value must contain only Latin-1 characters.")
+        out[header_name] = header_val
+    return out
 
 
 def _choice(value: Any, name: str, choices: tuple[str, ...]) -> str:
@@ -347,7 +385,12 @@ def expect_ok(response: HttpResponse) -> None:
     raise AIProviderError("bad_response", f"The server failed (HTTP {status}).")
 
 
+MAX_JSON_RESPONSE_BYTES = 16 * 1024 * 1024
+
+
 def load_json(response: HttpResponse) -> Any:
+    if len(response.body) > MAX_JSON_RESPONSE_BYTES:
+        raise AIProviderError("too_large", "The server's JSON answer is too large.")
     try:
         return json.loads(response.body)
     except (ValueError, RecursionError) as exc:

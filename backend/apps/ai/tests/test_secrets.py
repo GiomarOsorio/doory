@@ -56,12 +56,57 @@ def test_rotating_secret_key_keeps_secrets_readable_through_the_fallbacks(settin
     assert secrets.decrypt(token) == "value"
 
 
+def test_setting_ai_secrets_key_keeps_secrets_from_secret_key_readable(settings):
+    settings.AI_SECRETS_KEY = ""
+    token = secrets.encrypt("secret-from-derived-key")
+    # Operator follows ai.W004 and sets AI_SECRETS_KEY
+    settings.AI_SECRETS_KEY = Fernet.generate_key().decode()
+    assert secrets.decrypt(token) == "secret-from-derived-key"
+
+
+def test_reencrypt_ai_secrets_command(settings, fake):
+    from io import StringIO
+
+    from django.core.management import call_command
+
+    settings.AI_SECRETS_KEY = ""
+    provider = make_provider(fake.url, secret="original-secret")
+    original_token = bytes(provider.secret_encrypted)
+
+    new_key = Fernet.generate_key().decode()
+    settings.AI_SECRETS_KEY = new_key
+
+    # Dry run does not change DB
+    out_dry = StringIO()
+    call_command("reencrypt_ai_secrets", dry_run=True, stdout=out_dry)
+    assert "Would re-encrypt 1" in out_dry.getvalue()
+    provider.refresh_from_db()
+    assert bytes(provider.secret_encrypted) == original_token
+
+    # Real run re-encrypts with new primary key
+    out = StringIO()
+    call_command("reencrypt_ai_secrets", stdout=out)
+    assert "Re-encrypted 1" in out.getvalue()
+    provider.refresh_from_db()
+    assert bytes(provider.secret_encrypted) != original_token
+    assert Fernet(new_key.encode()).decrypt(bytes(provider.secret_encrypted)) == b"original-secret"
+
+
+def test_invalid_ai_secrets_key_raises_secret_unreadable(settings):
+    settings.AI_SECRETS_KEY = "not-a-valid-fernet-key"
+    with pytest.raises(secrets.SecretUnreadable) as exc:
+        secrets.encrypt("val")
+    assert "not a valid Fernet key" in str(exc.value)
+
+
 def test_an_unreadable_secret_is_a_clean_provider_error(settings, fake, user, photo):
     from apps.ai import services
     from apps.ai.errors import AIProviderError
 
     provider = make_provider(fake.url, style="multipart", secret="abc", style_config={"path": "/api/remove"})
+    # Change both so it cannot be decrypted by any fallback
     settings.AI_SECRETS_KEY = Fernet.generate_key().decode()
+    settings.SECRET_KEY = "a-completely-different-key"
     with pytest.raises(AIProviderError) as caught:
         services.run(user, "background-removal", photo, f"{provider.id}:")
     assert caught.value.code == "secret_unreadable"

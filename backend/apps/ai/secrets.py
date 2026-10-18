@@ -7,9 +7,8 @@ installs work without another setting; rotating `SECRET_KEY` then needs the old 
 `AI_SECRETS_KEY_FALLBACKS` (and the derived keys of `SECRET_KEY_FALLBACKS`) are still accepted for reading.
 """
 
-from __future__ import annotations
-
 import base64
+import binascii
 
 from cryptography.fernet import Fernet, InvalidToken, MultiFernet
 from cryptography.hazmat.primitives import hashes
@@ -36,6 +35,7 @@ def _keys() -> list[bytes]:
         keys = [
             configured.encode(),
             *(key.encode() for key in getattr(settings, "AI_SECRETS_KEY_FALLBACKS", [])),
+            derive_key(settings.SECRET_KEY),
         ]
     else:
         keys = [derive_key(settings.SECRET_KEY)]
@@ -45,7 +45,15 @@ def _keys() -> list[bytes]:
 
 
 def _fernet() -> MultiFernet:
-    return MultiFernet([Fernet(key) for key in _keys()])
+    fernets = []
+    for key in _keys():
+        try:
+            fernets.append(Fernet(key))
+        except (ValueError, binascii.Error) as exc:
+            raise SecretUnreadable("A configured secrets key is not a valid Fernet key.") from exc
+    if not fernets:
+        raise SecretUnreadable("No valid secrets key is configured.")
+    return MultiFernet(fernets)
 
 
 def encrypt(value: str) -> bytes:
@@ -55,7 +63,7 @@ def encrypt(value: str) -> bytes:
 def decrypt(token: bytes) -> str:
     try:
         return _fernet().decrypt(token).decode()
-    except InvalidToken as exc:
+    except (InvalidToken, SecretUnreadable, ValueError, binascii.Error) as exc:
         raise SecretUnreadable("The stored secret cannot be read; enter it again.") from exc
 
 

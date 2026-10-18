@@ -396,6 +396,56 @@ def test_models_put_validates(byos, api):
     )
 
 
+def test_user_provider_limits_and_validation(byos, api, settings):
+    # max_image_bytes exceeding limit is rejected
+    assert create(api, max_image_bytes=settings.AI_MAX_IMAGE_BYTES + 1).status_code == 400
+
+    # timeout_seconds exceeding 60 is rejected
+    assert create(api, timeout_seconds=61).status_code == 400
+
+    # Non-standard ports rejected
+    assert create(api, base_url="https://ai.example.com:9200").status_code == 400
+
+    # Non-Latin-1 auth header rejected
+    assert create(api, auth_header="Auth-Header-é\u2019").status_code == 400
+
+    # Non-Latin-1 secret rejected
+    assert create(api, secret="secret-é\u2019").status_code == 400
+
+    # Control chars in remote_name and label are stripped
+    pk = create(api).json()["id"]
+    res = api.put(
+        f"/api/v1/ai/providers/{pk}/models/",
+        {"models": [{"task": TASK, "remote_name": "model\r\n\x00-1", "label": "Label\n1"}]},
+        format="json",
+    )
+    assert res.status_code == 200
+    assert res.json()["models"][0]["remote_name"] == "model-1"
+    assert res.json()["models"][0]["label"] == "Label1"
+
+
+def test_in_flight_concurrency_limit_per_user(byos, api, public_fake, user):
+    from django.core.cache import cache
+
+    asset = create_asset(user, image_bytes("PNG"), name="test.png")
+    pk = create(api, base_url=public_fake.url).json()["id"]
+    api.put(
+        f"/api/v1/ai/providers/{pk}/models/",
+        {"models": [{"task": TASK, "remote_name": "general-fast"}]},
+        format="json",
+    )
+    # Simulate a call already in-flight by holding the cache key
+    cache.set(f"ai:in_flight:{user.pk}", 1, 60)
+    response = api.post(
+        f"/api/v1/ai/{TASK}/",
+        {"asset_id": str(asset.pk), "model": f"{pk}:general-fast"},
+        format="json",
+    )
+    assert response.status_code in (429, 503)
+    assert response.json()["error"]["code"] == "ai_busy"
+    cache.delete(f"ai:in_flight:{user.pk}")
+
+
 # -- /config/ ------------------------------------------------------------------------------------------------
 
 
