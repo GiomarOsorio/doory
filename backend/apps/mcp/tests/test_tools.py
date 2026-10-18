@@ -655,3 +655,19 @@ def test_unexpected_errors_do_not_leak_their_text(as_caller, monkeypatch, caplog
 def test_tools_need_a_caller(db):
     with pytest.raises(ToolError, match="Not signed in"):
         designs.list_designs()
+
+
+def test_sound_tools(as_caller, user, other):
+    assert assets.search_audio("rain")["configured"] is False  # no Freesound key in tests
+    with pytest.raises(ToolError):
+        assets.import_audio("123")
+    credit = {"source": "freesound", "id": "5", "title": "Rain", "author": "jdoe", "license": "CC BY 4.0"}
+    sound = Asset.objects.create(owner=user, kind="audio", mime="audio/ogg", meta={"credit": credit})
+    doc = make_doc()
+    doc["audioTracks"] = [{"kind": "music", "assetId": str(sound.pk)}]
+    design = make_design(user, document=doc)
+    out = assets.get_design_credits(str(design.pk))
+    assert out["required"] is True and out["credits_text"] == 'Music: "Rain" by jdoe, CC BY 4.0'
+    theirs = make_design(other)
+    with pytest.raises(ToolError):
+        assets.get_design_credits(str(theirs.pk))

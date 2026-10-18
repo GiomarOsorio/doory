@@ -207,6 +207,59 @@ export interface StockProviderInfo {
   attribution: string
   url: string
 }
+/** What the Audio tool's Freesound tab needs; `configured: false` hides the tab. */
+export type AudioStockInfo =
+  | { configured: false }
+  | {
+      configured: true
+      provider: string
+      label: string
+      url: string
+      /** Licences sounds may have: `cc0`, and `by` when the server also allows CC BY. */
+      licenses: string[]
+      /** Freesound subcategories per type (music, effects, ambience). */
+      types: Record<string, string[]>
+      lengths: string[]
+      sorts: string[]
+    }
+
+/** Where a sound came from and how it must be credited (CC BY) or may be (CC0). */
+export interface SoundCredit {
+  source: string
+  id: string
+  title: string
+  author: string
+  author_url?: string
+  url: string
+  license: string
+  license_url?: string
+  required: boolean
+}
+
+export interface StockSound {
+  id: string
+  provider: string
+  title: string
+  author: string
+  author_url: string
+  source_url: string
+  duration_ms: number
+  type: 'music' | 'effects' | 'ambience' | 'other'
+  subcategory: string
+  license: string
+  license_url: string
+  credit_required: boolean
+  tags: string[]
+}
+
+export interface StockSoundPage {
+  configured: boolean
+  total: number
+  next_page: number | null
+  results: StockSound[]
+  stale?: boolean
+}
+
 export interface StockProviders {
   providers: StockProviderInfo[]
   /** The providers the "All" tab searches; empty when there is no "All" tab. */

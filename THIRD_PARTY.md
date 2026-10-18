@@ -280,6 +280,15 @@ The audio library is the original CC0 set above. Optional packs fetched at run t
 dedications, with a pinned archive hash and per-file hashes) are listed in `backend/data/audio_library.json` under
 `packs`.
 
+## Freesound sounds
+
+Searched at run time through Freesound's API when `FREESOUND_API_KEY` is set (nothing is bundled). The server only
+returns and imports sounds under CC0 1.0, plus CC BY (any version) when `FREESOUND_LICENSES=cc0,by`; NC, Sampling+,
+SA and ND sounds are never offered. An imported CC BY sound keeps its author, title, link and licence on the asset
+and on the track, and the editor (and the `get_design_credits` MCP tool) gives the lines to publish with the design.
+Freesound's [API terms](https://freesound.org/help/tos_api/) cover non-commercial use; commercial use is negotiated
+with Freesound (MTG, Universitat Pompeu Fabra).
+
 ## Background-removal models
 
 Fetched at run time by `manage.py sync_models` (never committed; stored under `MEDIA_ROOT/models/`; the exact files,

@@ -7,7 +7,7 @@
  * track and never throws. Nothing here touches the DOM or Web Audio, so all of it runs in plain unit tests.
  */
 import { uuid } from '@/lib/uuid'
-import type { AudioScope, AudioTrack, AudioTrackKind, DoryDocument } from '@/types/document'
+import type { AudioScope, AudioTrack, AudioTrackKind, DoryDocument, TrackCredit } from '@/types/document'
 
 export const MAX_TRACKS = 32
 export const MAX_NAME_LENGTH = 200
@@ -112,7 +112,27 @@ export function normalizeTrack(raw: unknown): AudioTrack | null {
   if (typeof raw.assetId === 'string' && raw.assetId.length > 0 && raw.assetId.length <= MAX_ID_LENGTH) track.assetId = raw.assetId
   if (typeof raw.libraryId === 'string' && raw.libraryId.length > 0 && raw.libraryId.length <= MAX_ID_LENGTH) track.libraryId = raw.libraryId
   if (typeof raw.duckUnderVoiceover === 'boolean') track.duckUnderVoiceover = raw.duckUnderVoiceover
+  const credit = normalizeCredit(raw.credit)
+  if (credit) track.credit = credit
   return track
+}
+
+const CREDIT_TEXT = 200
+
+/** A track's credit, or null when it is not one: every field is text (limited), `required` a boolean. */
+export function normalizeCredit(raw: unknown): TrackCredit | null {
+  if (!isRecord(raw)) return null
+  const text = (value: unknown): string => (typeof value === 'string' ? cleanText(value, CREDIT_TEXT) : '')
+  const credit: TrackCredit = {
+    source: text(raw.source),
+    id: text(raw.id),
+    title: text(raw.title),
+    author: text(raw.author),
+    url: /^https:\/\//.test(text(raw.url)) ? text(raw.url) : '',
+    license: text(raw.license),
+    required: raw.required === true,
+  }
+  return credit.title && credit.license ? credit : null
 }
 
 const listCache = new WeakMap<object, readonly AudioTrack[]>()
@@ -145,7 +165,7 @@ export function sameTrack(raw: unknown, track: AudioTrack): boolean {
   if (!isRecord(raw)) return false
   const keys = Object.keys(track) as (keyof AudioTrack)[]
   if (Object.keys(raw).length !== keys.length) return false
-  return keys.every((key) => (key === 'scope' ? JSON.stringify(raw.scope) === JSON.stringify(track.scope) : raw[key] === track[key]))
+  return keys.every((key) => (key === 'scope' || key === 'credit' ? JSON.stringify(raw[key]) === JSON.stringify(track[key]) : raw[key] === track[key]))
 }
 
 /** The tracks to write back: nothing is written for an empty list (the property is removed instead). */
@@ -168,6 +188,7 @@ export interface NewTrackInput {
   startMs?: number
   assetId?: string
   libraryId?: string
+  credit?: TrackCredit
   id?: string
 }
 
@@ -193,6 +214,7 @@ export function createTrack(input: NewTrackInput): AudioTrack {
   }
   if (input.assetId) track.assetId = input.assetId
   if (input.libraryId) track.libraryId = input.libraryId
+  if (input.credit) track.credit = input.credit
   return track
 }
 

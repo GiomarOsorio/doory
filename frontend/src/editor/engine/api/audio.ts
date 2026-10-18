@@ -8,7 +8,7 @@
  */
 import { uuid } from '@/lib/uuid'
 import type { AssetRef } from '@/types/adapter'
-import type { AudioScope, AudioTrack, AudioTrackKind, DoryDocument } from '@/types/document'
+import type { AudioScope, AudioTrack, AudioTrackKind, DoryDocument, TrackCredit } from '@/types/document'
 import { type CatalogueEntry, trackInputFor } from '../../audio/library'
 import { AudioFileError, nameFromFile, nextVoiceoverName, validateAudioFile } from '../../audio/files'
 import { MAX_TRACKS, type NewTrackInput, type TrackPatch, createTrack, orphanedTracks, patchTrack, readTracks, sameTrack, withTracks } from '../../audio/model'
@@ -65,8 +65,8 @@ export class AudioApi {
   }
 
   /** Adds an uploaded or recorded file the adapter already stored. */
-  addFromAsset(asset: AssetRef, kind: AudioTrackKind, durationMs: number, scope: AudioScope = { type: 'design' }): AudioTrack | null {
-    return this.add({ kind, name: asset.name, src: asset.url, assetId: asset.id, durationMs, scope })
+  addFromAsset(asset: AssetRef, kind: AudioTrackKind, durationMs: number, scope: AudioScope = { type: 'design' }, credit?: TrackCredit): AudioTrack | null {
+    return this.add({ kind, name: asset.name, src: asset.url, assetId: asset.id, durationMs, scope, ...(credit ? { credit } : {}) })
   }
 
   /** Changes settings of a track. `coalesceKey` joins a drag or a slider into one undo step. */

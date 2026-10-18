@@ -27,6 +27,7 @@ GOOGLE_CLIENT_ID = "test-google-client-id.apps.googleusercontent.com"
 UNSPLASH_ACCESS_KEY = ""
 PEXELS_API_KEY = ""
 PIXABAY_API_KEY = ""
+FREESOUND_API_KEY = ""
 SERVER_PDF_ENABLED = True
 STATIC_ROOT = tempfile.mkdtemp(prefix="doory-test-static-")
 EXPORT_STORAGE_ROOT = tempfile.mkdtemp(prefix="doory-test-exports-")

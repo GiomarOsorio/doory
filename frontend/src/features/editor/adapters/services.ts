@@ -1,4 +1,4 @@
-import { aiApi, assetsApi, authApi, brandApi, commentsApi, designsApi, elementsApi, fontsApi, isApiError, shareApi, stockApi, templatesApi } from '@/lib/api'
+import { aiApi, assetsApi, audioStockApi, authApi, brandApi, commentsApi, designsApi, elementsApi, fontsApi, isApiError, shareApi, stockApi, templatesApi } from '@/lib/api'
 import { safeGetItem, safeSetItem } from '@/lib/storage'
 import type { AiConfig, AiTaskOptions, Asset, BrandKit, BrandKitInput, Page } from '@/types/api'
 import type { AiService, AssetRef, CommentViewer, EditorServices, UserFontsService } from '@/types/adapter'
@@ -135,6 +135,15 @@ export function createAccountServices(designId: string | null, beforeVersion: ()
       providers: () => stockApi.providers(),
       search: (query, page, provider) => stockApi.search(query, page, { provider, lang: uiLanguage() }),
       importPhoto: async (photo) => assetToRef(await stockApi.importPhoto(photo)),
+    },
+    audioStock: {
+      info: () => audioStockApi.info(),
+      search: (q, options) => audioStockApi.search(q, options),
+      previewUrl: (id) => audioStockApi.previewUrl(id),
+      importSound: async (id) => {
+        const asset = await audioStockApi.importSound(id)
+        return { ref: assetToRef(asset), credit: asset.credit, durationMs: asset.duration_ms ?? null }
+      },
     },
     sharing: designId
       ? {
