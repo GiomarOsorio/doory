@@ -22,11 +22,18 @@ PAGE = Page(800, 600)
 class Resolver:
     def __init__(self):
         self.images = {
-            "asset-1": ImageSource("/media/assets/u/asset-1.png", 400, 200, asset_id="asset-1", name="Logo")
+            "asset-1": ImageSource("/media/assets/u/asset-1.png", 400, 200, asset_id="asset-1", name="Logo"),
+            "asset-square": ImageSource(
+                "/media/assets/u/square.png", 400, 400, asset_id="asset-square", name="Square"
+            ),
+            "elem-1": ImageSource("/media/elements/star.svg", 100, 200, name="Star"),
+            "https://img.example/hero.jpg": ImageSource(
+                "/media/assets/u/hero.jpg", 600, 300, asset_id="asset-url", name="hero.jpg"
+            ),
         }
 
-    def image(self, *, asset_id, element_id):
-        key = asset_id or element_id
+    def image(self, *, asset_id=None, element_id=None, url=None):
+        key = asset_id or element_id or url
         if key not in self.images:
             raise LookupError(f"There is no picture {key}.")
         return self.images[key]
@@ -97,6 +104,19 @@ def test_images_fit_their_box_and_keep_their_proportions():
     )
     assert box(image) == {"x": 350, "y": 275, "width": 100, "height": 50}
     assert image["width"] == 400 and image["scaleX"] == image["scaleY"] == 0.25
+
+
+def test_cover_fit_crops_to_the_frame_around_the_focal_point():
+    # 400 x 400 image into a 200 x 100 frame: scale = 0.5, visible slice is 400 x 200.
+    centred = builders.cover_fit((200, 100), 400, 400)
+    assert centred == {"cropX": 0, "cropY": 100, "width": 400, "height": 200, "scaleX": 0.5, "scaleY": 0.5}
+    top = builders.cover_fit({"width": 200, "height": 100}, 400, 400, focal=(0.5, 0.0))
+    assert top["cropY"] == 0 and top["height"] == 200
+    bottom = builders.cover_fit(Page(200, 100), 400, 400, focal=(0.5, 1.0))
+    assert bottom["cropY"] == 200 and bottom["height"] == 200
+    # 600 x 200 image into a 100 x 100 frame: scale = 0.5, visible slice is 200 x 200, 400 px horizontal slack.
+    right = builders.cover_fit((100, 100), 600, 200, focal=(0.75, 0.5))
+    assert right == {"cropX": 300, "cropY": 0, "width": 200, "height": 200, "scaleX": 0.5, "scaleY": 0.5}
 
 
 def test_every_builder_makes_a_document_the_server_accepts():
@@ -361,6 +381,146 @@ def test_pictures_can_be_masked_and_unmasked():
     text = run(make_doc(), {"op": "add_text", "text": "Hi", "id": "t"}).document
     with pytest.raises(EditError, match="can be masked"):
         run(text, {"op": "update_object", "object_id": "t", "mask": "circle"})
+
+
+def test_replace_image_keeps_frame_mask_filters_effects_and_field_on_plain_and_masked_images():
+    document = run(
+        make_doc(),
+        {
+            "op": "add_image",
+            "asset_id": "asset-1",
+            "id": "img",
+            "x": 50,
+            "y": 60,
+            "width": 200,
+            "name": "Hero banner",
+            "mask": "rounded",
+            "mask_radius": 0.25,
+        },
+        {
+            "op": "update_object",
+            "object_id": "img",
+            "angle": 15,
+            "locked": True,
+            "field": {"key": "hero", "type": "image", "label": "Hero"},
+        },
+    ).document
+    img = document["pages"][0]["objects"][0]
+    img["filters"] = [{"type": "brightness", "value": 0.2}]
+    img["effects"] = {"shadow": {"color": "#00000066", "blur": 10, "offsetX": 2, "offsetY": 4}}
+    img["link"] = {"url": "https://example.com"}
+    img["animation"] = {"enter": {"preset": "fade", "duration": 500}}
+    img["clipPath"] = {"type": "rect"}
+
+    outcome = run(
+        document,
+        {"op": "replace_image", "object_id": "img", "asset_id": "asset-square", "focal": [0.5, 0.25]},
+    )
+    replaced = outcome.document["pages"][0]["objects"][0]
+    # Frame stayed 200 x 100 at (50, 60); 400 x 400 square image was cropped to 400 x 200 around fy = 0.25.
+    assert outcome.results[0] == {
+        "op": "replace_image",
+        "object_id": "img",
+        "box": {"x": 50, "y": 60, "width": 200, "height": 100},
+    }
+    assert replaced["src"] == "/media/assets/u/square.png" and replaced["assetId"] == "asset-square"
+    assert (replaced["cropX"], replaced["cropY"], replaced["width"], replaced["height"]) == (0, 50, 400, 200)
+    assert replaced["scaleX"] == replaced["scaleY"] == 0.5
+    assert replaced["angle"] == 15 and replaced["locked"] is True and replaced["name"] == "Hero banner"
+    assert (replaced["maskShape"], replaced["maskRadius"]) == ("rounded", 0.25)
+    assert "clipPath" not in replaced
+    assert replaced["filters"] == [{"type": "brightness", "value": 0.2}]
+    assert replaced["effects"]["shadow"]["blur"] == 10
+    assert replaced["field"] == {"key": "hero", "type": "image", "label": "Hero"}
+    assert replaced["link"] == {"url": "https://example.com"}
+    assert replaced["animation"] == {"enter": {"preset": "fade", "duration": 500}}
+    valid(outcome.document)
+
+    # Replacing with a catalogue graphic (element_id) clears assetId; replacing with a URL sets assetId.
+    elem_doc = run(
+        outcome.document, {"op": "replace_image", "object_id": "img", "element_id": "elem-1"}
+    ).document
+    elem_obj = elem_doc["pages"][0]["objects"][0]
+    assert elem_obj["src"] == "/media/elements/star.svg" and "assetId" not in elem_obj
+    url_doc = run(
+        elem_doc, {"op": "replace_image", "object_id": "img", "url": "https://img.example/hero.jpg"}
+    ).document
+    url_obj = url_doc["pages"][0]["objects"][0]
+    assert url_obj["src"] == "/media/assets/u/hero.jpg" and url_obj["assetId"] == "asset-url"
+
+
+def test_replace_image_fills_placeholders_and_updates_slots_with_rotation_and_focal_point():
+    document = make_doc(
+        objects=[
+            {
+                **builders.build_shape(PAGE, shape="ellipse", x=100, y=150, width=200, height=100),
+                "id": "ph-oval",
+                "isPlaceholder": True,
+                "name": "Image placeholder",
+                "angle": 90,
+                "field": {"key": "avatar", "type": "image"},
+            },
+            {
+                **builders.build_shape(
+                    PAGE, shape="rect", x=400, y=100, width=100, height=100, corner_radius=20
+                ),
+                "id": "ph-rounded",
+                "isPlaceholder": True,
+            },
+        ]
+    )
+    # 400 x 400 square image into a 200 x 100 oval tilted 90 deg, focal at top (fy = 0):
+    # scale = 0.5, dy = +50 in local frame, which at 90 deg rotates to dx = -50 in page coordinates.
+    outcome = run(
+        document,
+        {"op": "replace_image", "object_id": "ph-oval", "asset_id": "asset-square", "focal": [0.5, 0.0]},
+        {"op": "replace_image", "object_id": "ph-rounded", "asset_id": "asset-1"},
+    )
+    oval, rounded = outcome.document["pages"][0]["objects"]
+    assert object_kind(oval) == "image" and "isPlaceholder" not in oval and "fill" not in oval
+    assert oval["slot"] == {"cx": 200, "cy": 200, "width": 200, "height": 100, "angle": 90, "mask": "circle"}
+    assert (oval["left"], oval["top"], oval["angle"]) == (150, 200, 90)
+    assert (oval["width"], oval["height"], oval["scaleX"], oval["scaleY"]) == (400, 400, 0.5, 0.5)
+    assert oval["name"] == "Square"  # default "Image placeholder" name took the asset's name
+    assert oval["field"] == {"key": "avatar", "type": "image"}
+    assert outcome.results[0]["box"] == {"x": 100, "y": 150, "width": 200, "height": 100}
+
+    # Replacing a slot picture again keeps the original slot frame intact.
+    again = run(
+        outcome.document,
+        {"op": "replace_image", "object_id": "ph-oval", "asset_id": "asset-1", "focal": [0.5, 0.5]},
+    ).document["pages"][0]["objects"][0]
+    assert again["slot"] == oval["slot"]
+    assert (again["left"], again["top"], again["scaleX"]) == (200, 200, 0.5)
+
+    assert rounded["slot"]["mask"] == "rounded" and rounded["slot"]["radius"] == 0.2
+    valid(outcome.document)
+
+
+def test_replace_image_refuses_non_images_and_ambiguous_sources():
+    document = run(
+        make_doc(),
+        {"op": "add_shape", "shape": "rect", "id": "r"},
+        {"op": "add_image", "asset_id": "asset-1", "id": "img"},
+    ).document
+    with pytest.raises(EditError, match="Only pictures and photo placeholders"):
+        run(document, {"op": "replace_image", "object_id": "r", "asset_id": "asset-1"})
+    for bad in (
+        {"op": "replace_image", "object_id": "img"},
+        {"op": "replace_image", "object_id": "img", "asset_id": "asset-1", "element_id": "elem-1"},
+        {
+            "op": "replace_image",
+            "object_id": "img",
+            "asset_id": "asset-1",
+            "url": "https://img.example/hero.jpg",
+        },
+    ):
+        with pytest.raises(EditError, match="exactly one of asset_id, element_id and url"):
+            run(document, bad)
+    with pytest.raises(ValidationError):
+        OPS.validate_python(
+            [{"op": "replace_image", "object_id": "img", "asset_id": "asset-1", "focal": [1.5, 0]}]
+        )
 
 
 def test_objects_can_be_grouped_and_ungrouped_where_they_are():

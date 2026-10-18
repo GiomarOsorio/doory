@@ -329,11 +329,15 @@ export class StyleApi {
     const fresh: FabricObject[] = []
     view.canvas.discardActiveObject()
     for (const img of slots) {
-      const slot = asDory(img).slot
+      const d = asDory(img)
+      const slot = d.slot
       if (!slot) continue
       const placeholder = createPlaceholder({ x: slot.cx, y: slot.cy }, slot.width, slot.height, slot.mask)
       placeholder.set('angle', slot.angle)
-      if (slot.radius !== undefined) asDory(placeholder).maskRadius = slot.radius
+      const pd = asDory(placeholder)
+      pd.id = d.id
+      pd.field = d.field
+      if (slot.radius !== undefined) pd.maskRadius = slot.radius
       applyMask(placeholder)
       const index = view.canvas.getObjects().indexOf(img)
       view.canvas.remove(img)

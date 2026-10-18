@@ -469,6 +469,205 @@ def build_image(
     return obj
 
 
+def _frame_size(frame: tuple[float, float] | Page | dict) -> tuple[float, float]:
+    if isinstance(frame, dict):
+        w, h = float(frame["width"]), float(frame["height"])
+    elif isinstance(frame, Page):
+        w, h = float(frame.width), float(frame.height)
+    else:
+        w, h = float(frame[0]), float(frame[1])
+    return max(w, 1.0), max(h, 1.0)
+
+
+def cover_fit(
+    frame: tuple[float, float] | Page | dict,
+    img_w: float,
+    img_h: float,
+    focal: tuple[float, float] = (0.5, 0.5),
+) -> dict:
+    """Crop (`cropX`/`cropY`, `width`/`height`) and scale (`scaleX`/`scaleY`) a picture of size
+    `img_w x img_h` so it covers `frame`, centred on `focal` (`[0, 0]` = top-left, `[1, 1]` = bottom-right),
+    matching the editor's `coverFrame` (`insert.ts`)."""
+    frame_w, frame_h = _frame_size(frame)
+    nat_w, nat_h = max(float(img_w), 1.0), max(float(img_h), 1.0)
+    fx = max(0.0, min(1.0, float(focal[0])))
+    fy = max(0.0, min(1.0, float(focal[1])))
+    scale = max(frame_w / nat_w, frame_h / nat_h)
+    vis_w = min(nat_w, frame_w / scale)
+    vis_h = min(nat_h, frame_h / scale)
+    return {
+        "cropX": _num(max(0.0, (nat_w - vis_w) * fx)),
+        "cropY": _num(max(0.0, (nat_h - vis_h) * fy)),
+        "width": _num(vis_w),
+        "height": _num(vis_h),
+        "scaleX": _num(scale),
+        "scaleY": _num(scale),
+    }
+
+
+def _slot_mask_of(obj: dict) -> tuple[str | dict | None, float | None]:
+    shape = obj.get("maskShape")
+    radius = obj.get("maskRadius")
+    if shape:
+        return shape, float(radius) if isinstance(radius, int | float) else None
+    obj_type = str(obj.get("type") or "").lower()
+    if obj_type in ("ellipse", "circle"):
+        return "circle", None
+    if obj_type == "rect" and float(obj.get("rx") or 0) > 0:
+        side = max(1.0, min(float(obj.get("width") or 1), float(obj.get("height") or 1)))
+        return "rounded", min(0.5, float(obj["rx"]) / side)
+    if obj_type == "triangle":
+        return {"path": "M50 0 L100 100 L0 100 Z"}, None
+    if obj_type == "polygon" and isinstance(obj.get("points"), list) and obj["points"]:
+        pts = obj["points"]
+        d = (
+            " ".join(
+                f"{'M' if i == 0 else 'L'}{_num(float(p['x']))} {_num(float(p['y']))}"
+                for i, p in enumerate(pts)
+            )
+            + " Z"
+        )
+        return {"path": d}, None
+    if obj_type == "path" and isinstance(obj.get("path"), list) and obj["path"]:
+        d = " ".join(
+            " ".join(str(_num(x) if isinstance(x, int | float) else x) for x in cmd) for cmd in obj["path"]
+        )
+        return {"path": d}, None
+    return None, None
+
+
+def slot_of(obj: dict) -> dict:
+    """The photo frame (`SlotSpec` in `slot.ts`) of a placeholder or a picture that already fills a frame."""
+    existing = obj.get("slot")
+    if (
+        isinstance(existing, dict)
+        and float(existing.get("width") or 0) > 0
+        and float(existing.get("height") or 0) > 0
+    ):
+        return copy.deepcopy(existing)
+    scale_x = abs(float(obj.get("scaleX", 1) or 1))
+    scale_y = abs(float(obj.get("scaleY", 1) or 1))
+    w = max(float(obj.get("width") or 1) * scale_x, 1.0)
+    h = max(float(obj.get("height") or 1) * scale_y, 1.0)
+    ox = {"left": 0.0, "center": 0.5, "right": 1.0}.get(str(obj.get("originX", "left")), 0.0)
+    oy = {"top": 0.0, "center": 0.5, "bottom": 1.0}.get(str(obj.get("originY", "top")), 0.0)
+    cx = float(obj.get("left") or 0) + (0.5 - ox) * w
+    cy = float(obj.get("top") or 0) + (0.5 - oy) * h
+    slot: dict = {
+        "cx": _num(cx),
+        "cy": _num(cy),
+        "width": _num(w),
+        "height": _num(h),
+        "angle": _num(float(obj.get("angle") or 0)),
+    }
+    mask, radius = _slot_mask_of(obj)
+    if mask:
+        slot["mask"] = mask
+    if radius is not None:
+        slot["radius"] = _num(max(0.0, min(0.5, radius)))
+    if str(obj.get("type") or "").lower() == "image" and isinstance(obj.get("src"), str) and obj["src"]:
+        slot["src"] = obj["src"]
+    return slot
+
+
+def cover_slot(
+    slot: dict,
+    img_w: float,
+    img_h: float,
+    focal: tuple[float, float] = (0.5, 0.5),
+) -> dict:
+    """The position and scale of a picture of size `img_w x img_h` that covers `slot`, centred on `focal`."""
+    nat_w, nat_h = max(float(img_w), 1.0), max(float(img_h), 1.0)
+    slot_w, slot_h = max(float(slot["width"]), 1.0), max(float(slot["height"]), 1.0)
+    angle = float(slot.get("angle") or 0.0)
+    fx = max(0.0, min(1.0, float(focal[0])))
+    fy = max(0.0, min(1.0, float(focal[1])))
+    scale = max(slot_w / nat_w, slot_h / nat_h)
+    dx = (0.5 - fx) * (nat_w * scale - slot_w)
+    dy = (0.5 - fy) * (nat_h * scale - slot_h)
+    rad = math.radians(angle)
+    cx = float(slot["cx"]) + dx * math.cos(rad) - dy * math.sin(rad)
+    cy = float(slot["cy"]) + dx * math.sin(rad) + dy * math.cos(rad)
+    return {
+        "originX": "center",
+        "originY": "center",
+        "left": _num(cx),
+        "top": _num(cy),
+        "width": _num(nat_w),
+        "height": _num(nat_h),
+        "scaleX": _num(scale),
+        "scaleY": _num(scale),
+        "angle": _num(angle),
+        "cropX": 0,
+        "cropY": 0,
+    }
+
+
+def replace_image(
+    obj: dict,
+    *,
+    src: str,
+    natural_width: float,
+    natural_height: float,
+    asset_id: str | None = None,
+    name: str | None = None,
+    focal: tuple[float, float] = (0.5, 0.5),
+) -> dict:
+    """Put a new picture into `obj` (an image or a photo placeholder), keeping its frame, mask, filters,
+    effects and template field tag."""
+    was_image = str(obj.get("type") or "").lower() == "image"
+    is_slot = bool(obj.get("isPlaceholder")) or isinstance(obj.get("slot"), dict)
+    if is_slot:
+        slot = slot_of(obj)
+        obj.update(
+            type="image",
+            strokeUniform=True,
+            slot=slot,
+            **cover_slot(slot, natural_width, natural_height, focal),
+        )
+        for key in (
+            "isPlaceholder",
+            "clipPath",
+            "maskShape",
+            "maskRadius",
+            "rx",
+            "ry",
+            "points",
+            "path",
+            "fillRule",
+            "shapeKind",
+            "shapeId",
+            "sides",
+            "starPoints",
+            "innerRatio",
+        ):
+            obj.pop(key, None)
+        if not was_image:
+            obj.pop("fill", None)
+    else:
+        scale_x = abs(float(obj.get("scaleX", 1) or 1))
+        scale_y = abs(float(obj.get("scaleY", 1) or 1))
+        frame_w = max(float(obj.get("width") or 1) * scale_x, 1.0)
+        frame_h = max(float(obj.get("height") or 1) * scale_y, 1.0)
+        ox = {"left": 0.0, "center": 0.5, "right": 1.0}.get(str(obj.get("originX", "left")), 0.0)
+        oy = {"top": 0.0, "center": 0.5, "bottom": 1.0}.get(str(obj.get("originY", "top")), 0.0)
+        cx = float(obj.get("left") or 0) + (0.5 - ox) * frame_w
+        cy = float(obj.get("top") or 0) + (0.5 - oy) * frame_h
+        fit = cover_fit((frame_w, frame_h), natural_width, natural_height, focal)
+        obj.update(originX="center", originY="center", left=_num(cx), top=_num(cy), **fit)
+        obj.pop("clipPath", None)
+    obj["src"] = src
+    for key in ("docSrc", "elementId", "colorMap", "isPlaceholder"):
+        obj.pop(key, None)
+    if asset_id:
+        obj["assetId"] = asset_id
+    else:
+        obj.pop("assetId", None)
+    if name and (not obj.get("name") or obj.get("name") == "Image placeholder"):
+        obj["name"] = name
+    return obj
+
+
 def build_qr(
     page: Page,
     *,

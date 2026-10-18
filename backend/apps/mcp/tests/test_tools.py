@@ -439,6 +439,106 @@ def test_url_uploads_share_the_upload_throttle(as_caller, monkeypatch):
         assets.upload_image_from_url("https://img.example/b.png")
 
 
+def test_replace_image_through_edit_design_with_asset_element_and_url(
+    as_caller, user, design, monkeypatch, settings
+):
+    from apps.assets import remote
+    from apps.assets.exceptions import FileTooLarge
+    from apps.assets.tests.helpers import image_bytes
+
+    logo = make_asset(user, name="Logo", width=400, height=200)
+    element = make_element(name="Badge")
+    added = designs.edit_design(
+        str(design.pk),
+        [
+            {"op": "add_image", "asset_id": str(logo.pk), "id": "hero", "x": 20, "y": 30, "width": 200},
+            {
+                "op": "add_shape",
+                "shape": "ellipse",
+                "id": "slot-1",
+                "x": 300,
+                "y": 100,
+                "width": 120,
+                "height": 120,
+            },
+        ],
+    )
+    assert added["revision"] == 2
+    doc = Design.objects.get(pk=design.pk).document
+    doc["pages"][0]["objects"][2]["isPlaceholder"] = True
+    Design.objects.filter(pk=design.pk).update(document=doc)
+
+    # Replace with element_id, then replace placeholder with url (uploading into caller's assets).
+    monkeypatch.setattr(remote, "fetch_image", lambda url, max_bytes: image_bytes())
+    designs.edit_design(
+        str(design.pk),
+        [
+            {"op": "replace_image", "object_id": "hero", "element_id": str(element.pk)},
+            {
+                "op": "replace_image",
+                "object_id": "slot-1",
+                "url": "https://img.example/photos/portrait.png?token=secret",
+                "focal": [0.5, 0.25],
+            },
+        ],
+    )
+    objs = Design.objects.get(pk=design.pk).document["pages"][0]["objects"]
+    assert objs[1]["src"] == element.svg.url and "assetId" not in objs[1]
+    assert objs[2]["slot"]["mask"] == "circle" and objs[2]["assetId"]
+    uploaded = Asset.objects.get(pk=objs[2]["assetId"], owner=user)
+    assert uploaded.meta["source_url"] == "https://img.example/photos/portrait.png"
+
+    # Private / redirect / too-large URLs are refused and leave the design untouched.
+    def refuse_private(url, max_bytes):
+        raise remote.RemoteImageError("That address is not on the public internet.")
+
+    monkeypatch.setattr(remote, "fetch_image", refuse_private)
+    with pytest.raises(ToolError, match=r"public internet.*Nothing was changed"):
+        designs.edit_design(
+            str(design.pk),
+            [{"op": "replace_image", "object_id": "hero", "url": "https://10.0.0.1/internal.png"}],
+        )
+
+    def refuse_redirect(url, max_bytes):
+        raise remote.RemoteImageError("Too many redirects.")
+
+    monkeypatch.setattr(remote, "fetch_image", refuse_redirect)
+    with pytest.raises(ToolError, match=r"Too many redirects.*Nothing was changed"):
+        designs.edit_design(
+            str(design.pk),
+            [{"op": "replace_image", "object_id": "hero", "url": "https://img.example/loop.png"}],
+        )
+
+    def refuse_large(url, max_bytes):
+        raise FileTooLarge()
+
+    monkeypatch.setattr(remote, "fetch_image", refuse_large)
+    with pytest.raises(ToolError, match=r"too large.*Nothing was changed"):
+        designs.edit_design(
+            str(design.pk),
+            [{"op": "replace_image", "object_id": "hero", "url": "https://img.example/huge.png"}],
+        )
+
+    # Missing `assets:write` scope refuses URL replacement while `asset_id` replacement still works.
+    as_caller.token.scopes = ["designs:read", "designs:write"]
+    designs.edit_design(
+        str(design.pk),
+        [{"op": "replace_image", "object_id": "hero", "asset_id": str(logo.pk)}],
+    )
+    with pytest.raises(ToolError, match="`assets:write` scope"):
+        designs.edit_design(
+            str(design.pk),
+            [{"op": "replace_image", "object_id": "hero", "url": "https://img.example/a.png"}],
+        )
+    as_caller.token.scopes = list(SCOPES)
+    settings.MCP_URL_UPLOADS = False
+    with pytest.raises(ToolError, match="switched off"):
+        designs.edit_design(
+            str(design.pk),
+            [{"op": "replace_image", "object_id": "hero", "url": "https://img.example/a.png"}],
+        )
+
+
 # ---------------------------------------------------------------------------------------------
 # Scopes and limits
 # ---------------------------------------------------------------------------------------------
