@@ -46,9 +46,13 @@ services:
       DATABASE_URL: postgres://${POSTGRES_USER:-doory}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-doory}
       CACHE_URL: dbcache://doory_cache
       MEDIA_ROOT: /app/media
+      EXPORT_STORAGE_ROOT: /app/exports
       REDIS_URL: ${REDIS_URL:-}
+      # The headless render page of the image export, on the web container (opt-in: SERVER_IMAGE_EXPORT_ENABLED=true).
+      EXPORT_RENDER_PAGE_URL: ${EXPORT_RENDER_PAGE_URL:-http://doory-web:8080/render.html}
     volumes:
       - media:/app/media
+      - exports:/app/exports
       # Your own size presets (DOORY_SIZE_PRESETS_FILE=/config/size-presets.json in .env):
       # - ./config/size-presets.json:/config/size-presets.json:ro
     networks:
@@ -156,14 +160,20 @@ services:
       DATABASE_URL: postgres://${POSTGRES_USER:-doory}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-doory}
       CACHE_URL: dbcache://doory_cache
       MEDIA_ROOT: /app/media
+      EXPORT_STORAGE_ROOT: /app/exports
       REDIS_URL: ${REDIS_URL:-}
+      # The headless render page of the image export, on the web container (opt-in: SERVER_IMAGE_EXPORT_ENABLED=true).
+      EXPORT_RENDER_PAGE_URL: ${EXPORT_RENDER_PAGE_URL:-http://doory-web:8080/render.html}
       HEALTH_PORT: "8002"
       HEALTH_PATH: /mcp/health
     volumes:
       - media:/app/media
+      - exports:/app/exports
     networks:
       default:
         aliases: [doory-mcp]
+    # export_design renders in Chromium, which needs more shared memory than Docker's 64 MB default.
+    shm_size: "512m"
     command:
       - uvicorn
       - doory.mcp_asgi:application
@@ -210,7 +220,12 @@ services:
       - "${WEB_BIND:-0.0.0.0}:${WEB_PORT:-8080}:8080"
     volumes:
       - media:/srv/media:ro
+    networks:
+      default:
+        # The API's image export opens render.html here (EXPORT_RENDER_PAGE_URL).
+        aliases: [doory-web]
 
 volumes:
   pgdata:
   media:
+  exports:

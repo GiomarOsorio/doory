@@ -209,6 +209,7 @@ REST_FRAMEWORK = {
         "auth": "20/min",  # login / register / password reset
         "upload": "60/min",
         "stock": "60/min",
+        "export": "30/min",  # server-side image renders (REST and MCP)
     },
     "DEFAULT_RENDERER_CLASSES": ["rest_framework.renderers.JSONRenderer"],
     "DEFAULT_PARSER_CLASSES": [
@@ -339,3 +340,8 @@ MCP_PATH = "/mcp"
 MCP_CALLS_PER_MINUTE = env.int("MCP_CALLS_PER_MINUTE", default=120)  # per user; 0 = unlimited
 MCP_MAX_REQUEST_BYTES = env.int("MCP_MAX_REQUEST_BYTES", default=4 * 1024 * 1024)
 MCP_URL_UPLOADS = env.bool("MCP_URL_UPLOADS", default=True)  # upload_image_from_url (public https only)
+# export_design: larger images are sent as a download link instead of inline; links expire after the TTL.
+# Stored outside MEDIA_ROOT so `/media/` never serves them directly; `ImageDownloadView` is the only way in.
+MCP_EXPORT_INLINE_MAX_BYTES = env.int("MCP_EXPORT_INLINE_MAX_BYTES", default=1024 * 1024)
+MCP_EXPORT_URL_TTL_SECONDS = env.int("MCP_EXPORT_URL_TTL_SECONDS", default=600)
+EXPORT_STORAGE_ROOT = Path(env("EXPORT_STORAGE_ROOT", default=str(BASE_DIR / "exports")))

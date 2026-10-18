@@ -901,3 +901,14 @@ def test_a_page_that_never_becomes_ready_hits_the_deadline(chromium, canary, set
     settings.EXPORT_RENDER_PAGE_URL = f"{canary.origin}/render.html"  # answers, but is not the render page
     with pytest.raises(ExportTimeout):
         export_image(design_of(user))
+
+
+@requires_dist
+def test_the_rest_endpoint_returns_the_drawn_page(client, render_site, user):
+    design = design_of(user, rect(10, 10, 40, 30, "#ff0000"))
+    response = client.post(f"/api/v1/designs/{design.pk}/export/image/", {"format": "jpg"}, format="json")
+    assert response.status_code == 200 and response["Content-Type"] == "image/jpeg"
+    image = Image.open(io.BytesIO(response.content)).convert("RGB")
+    assert image.size == (200, 100)
+    red = image.getpixel((20, 20))
+    assert red[0] > 230 and red[1] < 30 and red[2] < 30
