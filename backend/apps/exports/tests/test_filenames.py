@@ -1,6 +1,10 @@
+import json
+from pathlib import Path
+from types import SimpleNamespace
+
 import pytest
 
-from apps.exports.filenames import pdf_filename
+from apps.exports.filenames import page_filename, pdf_filename, preset_parts, structured_filename
 
 
 @pytest.mark.parametrize(
@@ -39,3 +43,61 @@ def test_result_is_header_safe(title):
     name = pdf_filename(title)
     assert not any(ch in name for ch in ("\r", "\n", '"', "/", "\\", ";"))
     assert name.endswith(".pdf")
+
+
+# ---- structured names (#59) --------------------------------------------------------------------
+
+FIXTURE = Path(__file__).resolve().parents[4] / "frontend/src/editor/engine/fixtures/export-filenames.json"
+CASES = json.loads(FIXTURE.read_text())["cases"] if FIXTURE.exists() else []
+
+
+@pytest.mark.skipif(not CASES, reason="the shared fixture lives in the frontend")
+@pytest.mark.parametrize("case", CASES, ids=lambda c: c["expected"])
+def test_structured_filename_matches_the_editor(case):
+    given = dict(case["input"])
+    assert structured_filename(given.pop("title"), given.pop("extension"), **given) == case["expected"]
+
+
+def _result(**overrides):
+    values = {"format": "png", "page_index": 1, "page_count": 3, "page_width": 1080, "page_height": 1920}
+    return SimpleNamespace(**{**values, "preset": "instagram-story", **overrides})
+
+
+@pytest.mark.django_db
+def test_a_page_at_its_preset_size_names_platform_and_preset():
+    assert preset_parts("instagram-story", 1080, 1920) == ("instagram", "instagram-story")
+    assert page_filename("Summer Sale", _result(), style="structured") == (
+        "summer-sale_instagram_instagram-story_1080x1920_p02.png"
+    )
+
+
+@pytest.mark.django_db
+def test_a_resized_page_or_unknown_preset_counts_as_a_custom_size():
+    assert preset_parts("instagram-story", 1080, 1080) == (None, None)
+    assert preset_parts("no-such-preset", 1080, 1920) == (None, None)
+    assert preset_parts("", 1080, 1920) == (None, None)
+
+
+@pytest.mark.django_db
+def test_an_old_slug_names_the_current_preset():
+    from apps.presets.models import SizePreset
+
+    preset = SizePreset.objects.get(slug="instagram-story")
+    preset.aliases = ["ig-story-old"]
+    preset.save()
+    assert preset_parts("ig-story-old", 1080, 1920) == ("instagram", "instagram-story")
+
+
+@pytest.mark.django_db
+def test_meta_platforms_wins_over_the_group():
+    from apps.presets.models import SizePreset
+
+    SizePreset.objects.filter(slug="instagram-story").update(meta={"platforms": ["Meta"]})
+    assert preset_parts("instagram-story", 1080, 1920) == ("meta", "instagram-story")
+
+
+def test_simple_style_keeps_the_old_names():
+    assert page_filename("Summer Sale", _result(), style="simple") == "Summer Sale - page 2.png"
+    assert (
+        page_filename("Summer Sale", _result(page_count=1, page_index=0), style="simple") == "Summer Sale.png"
+    )

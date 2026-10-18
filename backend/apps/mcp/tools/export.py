@@ -13,6 +13,7 @@ from pydantic import Field
 from apps.apitokens.scopes import DESIGNS_READ
 from apps.designs.doc.ops import PageRef
 from apps.exports.delivery import store_image
+from apps.exports.filenames import page_filename, unix_now
 from apps.exports.services import export_image, page_index
 from apps.exports.throttling import ExportRateThrottle
 
@@ -60,6 +61,13 @@ def export_design(
         "width": result.width,
         "height": result.height,
         "bytes": len(result.data),
+        # What the editor's Download would call this file, with the instance's default naming.
+        "filename": page_filename(
+            design.title,
+            result,
+            style=settings.EXPORT_FILENAME_STYLE,
+            unix=unix_now() if settings.EXPORT_FILENAME_TIMESTAMP else None,
+        ),
         "editor_url": editor_url(design),
     }
     if result.warnings:

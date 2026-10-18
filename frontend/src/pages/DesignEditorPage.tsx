@@ -59,15 +59,16 @@ export default function DesignEditorPage() {
 
   const serverPdf = config.features.server_pdf
   const realtime = config.features.realtime === true
+  const exportsConfig = config.exports
   const adapter = useMemo(
     () =>
       createAccountAdapter(id, () => revision.get(), {
         onRevision: (next) => revision.set(next),
-        config: { features: { stock_photos: false, server_pdf: serverPdf, google_login: false, email_verification: false, realtime } },
+        config: { features: { stock_photos: false, server_pdf: serverPdf, google_login: false, email_verification: false, realtime }, exports: exportsConfig },
         requireSignIn: () => handlers.get().openAuthModal({ reason: 'generic', tab: 'login' }),
         refreshSession: async () => (await handlers.get().refresh()) !== null,
       }),
-    [id, serverPdf, realtime, revision, handlers],
+    [id, serverPdf, realtime, exportsConfig, revision, handlers],
   )
   useEffect(() => {
     if (design) revision.set(design.revision)

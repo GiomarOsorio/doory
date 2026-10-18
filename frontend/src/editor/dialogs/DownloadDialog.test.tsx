@@ -434,3 +434,45 @@ describe('Download dialog: when the print service says no', () => {
     expect(within(screen.getByTestId('export-problem')).getByRole('button')).toHaveTextContent(t.print.retry)
   })
 })
+
+describe('Download dialog: file names', () => {
+  let engine: EditorEngine | null = null
+  beforeEach(() => {
+    localStorage.clear()
+    vi.mocked(downloadFiles).mockClear()
+  })
+  afterEach(() => {
+    engine?.dispose()
+    engine = null
+  })
+
+  const story = (): DoryDocument => ({ ...createBlankDocument(1080, 1920), meta: { presetId: 'instagram-story' } })
+
+  it('starts simple, shows the name, and remembers a switch to detailed names with a timestamp', async () => {
+    ;({ engine } = setup({ doc: story() }))
+    await pick('PNG')
+    expect(screen.getByTestId('download-filename')).toHaveTextContent('Menu.png')
+    expect(within(dialog()).queryByRole('switch', { name: t.dialog.downloadNamesTimestamp })).toBeNull()
+    await userEvent.click(within(dialog()).getByRole('radio', { name: t.dialog.downloadNamesStructured }))
+    expect(screen.getByTestId('download-filename')).toHaveTextContent('menu_instagram_instagram-story_1080x1920.png')
+    await userEvent.click(within(dialog()).getByRole('switch', { name: t.dialog.downloadNamesTimestamp }))
+    expect(screen.getByTestId('download-filename')).toHaveTextContent(/menu_instagram_instagram-story_1080x1920_\d{10}\.png/)
+    await download()
+    await waitFor(() => expect(downloadFiles).toHaveBeenCalled())
+    expect(vi.mocked(downloadFiles).mock.calls[0][0][0].filename).toMatch(/^menu_instagram_instagram-story_1080x1920_\d{10}\.png$/)
+    expect(localStorage.getItem('doory-export-filenames')).toBe('structured')
+    expect(localStorage.getItem('doory-export-filename-timestamp')).toBe('on')
+  })
+
+  it("starts from the instance's default", () => {
+    const handle = createMemoryAdapter()
+    handle.adapter.exportFilenames = { style: 'structured', timestamp: false }
+    engine = new EditorEngine({ adapter: handle.adapter, document: story(), meta: { id: 'd', title: 'Menu', mode: 'account' }, ephemeral: true })
+    render(
+      <EditorProvider engine={engine} portalRoot={document.body}>
+        <DownloadDialog />
+      </EditorProvider>,
+    )
+    expect(within(dialog()).getByRole('radio', { name: t.dialog.downloadNamesStructured })).toBeChecked()
+  })
+})

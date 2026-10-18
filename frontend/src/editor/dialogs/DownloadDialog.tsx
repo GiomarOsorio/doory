@@ -2,9 +2,12 @@ import { Copy, Download } from 'lucide-react'
 import { useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { useEditor, useEditorState } from '../context'
 import { safeMultiplier } from '../engine/render'
-import { DEFAULT_EXPORT_OPTIONS, type ExportOptions, type ExportStage, exportFormats, parsePageRange } from '../engine/export/registry'
+import { DEFAULT_EXPORT_OPTIONS, type ExportOptions, type ExportStage, exportFilename, exportFormats, pageFilename, parsePageRange, sanitizeFilename } from '../engine/export/registry'
 import { type PageSelection, copyPageAsPng, downloadFiles, pickPages, runExport } from '../engine/export/exporter'
+import { FILENAME_STYLES, type FilenameStyle, unixNow } from '../engine/export/filenames'
+import { zipFilename } from '../engine/export/zip'
 import { getPageSize, sameSize } from '../engine/pageSizes'
+import { usePersistedState } from '@/lib/usePersistedState'
 import { t } from '../strings'
 import { Button } from '../ui/Button'
 import { Dialog } from '../ui/Dialog'
@@ -21,6 +24,7 @@ import printStyles from './print/print.module.css'
 import styles from './dialogs.module.css'
 
 type Scope = 'all' | 'current' | 'range'
+const TIMESTAMP = ['off', 'on'] as const
 
 export function DownloadDialog({ props }: { props?: Record<string, unknown> } = {}) {
   const editor = useEditor()
@@ -36,6 +40,11 @@ export function DownloadDialog({ props }: { props?: Record<string, unknown> } = 
   const [progress, setProgress] = useState<number | null>(null)
   const [stage, setStage] = useState<ExportStage | undefined>()
   const [failure, setFailure] = useState<{ id: number; value: ExportFailure } | null>(null)
+  // File names are a choice per browser; the instance's default holds until one is made.
+  const namingDefault = editor.adapter.exportFilenames
+  const [nameStyle, setNameStyle] = usePersistedState<FilenameStyle>('doory-export-filenames', namingDefault?.style ?? 'simple', FILENAME_STYLES)
+  const [stamp, setStamp] = usePersistedState<(typeof TIMESTAMP)[number]>('doory-export-filename-timestamp', namingDefault?.timestamp ? 'on' : 'off', TIMESTAMP)
+  const [exampleUnix] = useState(unixNow)
   const abort = useRef<AbortController | null>(null)
   const failures = useRef(0)
   /** Video formats: where the section draws its buttons, and whether a video is being made or shown (the choices above are held still). */
@@ -66,6 +75,18 @@ export function DownloadDialog({ props }: { props?: Record<string, unknown> } = 
   const videoFormats = formats.filter((f) => f.controls.video)
   const zipped = chosen.length > 1 && format?.mime !== 'application/pdf' && !video
   const printing = format?.controls.print === true
+  const exampleName = (): string => {
+    if (!format) return ''
+    const naming = { style: nameStyle, unix: stamp === 'on' ? exampleUnix : null }
+    const title = editor.state.title
+    if (zipped) return zipFilename(title, naming)
+    const first = chosenPages[0]
+    const ctx = { document: doc, title, naming }
+    const suffix = format.server && printing ? 'print' : undefined
+    const simple = format.mime === 'application/pdf' || video ? `${sanitizeFilename(title) || 'design'}${suffix ? '-print' : ''}.${format.extension}` : pageFilename(title, format.extension, (first?.index ?? 0) + 1, chosenPages.length, total)
+    const perPage = format.mime !== 'application/pdf' && !video
+    return exportFilename(ctx, simple, format.extension, size, perPage ? (first?.index ?? 0) : null, suffix)
+  }
 
   const formatCard = (f: (typeof formats)[number]) => (
     <label key={f.id} className={`${styles.formatCard} ${f.id === format?.id ? styles.formatOn : ''}`}>
@@ -97,6 +118,7 @@ export function DownloadDialog({ props }: { props?: Record<string, unknown> } = 
           setStage(next)
         },
         signal: controller.signal,
+        filenames: { style: nameStyle, timestamp: stamp === 'on' },
       })
       downloadFiles(files)
       editor.toast(t.dialog.downloadDone, 'success')
@@ -221,6 +243,23 @@ export function DownloadDialog({ props }: { props?: Record<string, unknown> } = 
         {video && format ? <LazyVideoSection format={format.id as VideoFormat} pages={chosenPages} rangeInvalid={rangeInvalid} footer={footerSlot} onLockChange={setVideoLocked} /> : null}
 
         {zipped ? <small className={styles.muted}>{t.dialog.downloadZip}</small> : null}
+
+        <div className={styles.field} inert={videoLocked} style={videoLocked ? { opacity: 0.6 } : undefined}>
+          <span>{t.dialog.downloadNames}</span>
+          <Segmented
+            label={t.dialog.downloadNames}
+            value={nameStyle}
+            onChange={setNameStyle}
+            options={[
+              { value: 'simple', label: t.dialog.downloadNamesSimple },
+              { value: 'structured', label: t.dialog.downloadNamesStructured },
+            ]}
+          />
+          {nameStyle === 'structured' ? <Switch label={t.dialog.downloadNamesTimestamp} checked={stamp === 'on'} onChange={(v) => setStamp(v ? 'on' : 'off')} /> : null}
+          <small className={styles.muted} data-testid="download-filename">
+            {t.dialog.downloadNamesExample(exampleName())}
+          </small>
+        </div>
 
         {busy ? (
           <div className={styles.field}>

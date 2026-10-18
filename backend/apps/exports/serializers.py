@@ -3,6 +3,8 @@ import math
 
 from rest_framework import serializers
 
+from .filenames import STYLES
+
 MAX_PAGES = 100
 MAX_PAGE_BYTES = 5 * 1024 * 1024
 MAX_TOTAL_BYTES = 40 * 1024 * 1024
@@ -137,3 +139,5 @@ class ImageExportSerializer(serializers.Serializer):
     quality = serializers.IntegerField(min_value=1, max_value=100, default=90)
     scale = FiniteFloatField(min_value=0.1, max_value=4, default=1)
     transparent = serializers.BooleanField(default=False)
+    filename_style = serializers.ChoiceField(choices=list(STYLES), required=False)
+    filename_timestamp = serializers.BooleanField(required=False)

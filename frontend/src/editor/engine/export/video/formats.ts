@@ -5,7 +5,8 @@
  */
 import { t } from '../../../strings'
 import type { EditorEngine } from '../../editor'
-import { type ExportContext, type ExportFile, registerExportFormat } from '../registry'
+import { pageSize } from '../../docOps'
+import { type ExportContext, type ExportFile, exportFilename, registerExportFormat } from '../registry'
 import { type VideoFormat, defaultVideoOptions } from './options'
 
 /** What the pipeline needs of the editor: how pictures and fonts load, and how the sound files are read. */
@@ -25,7 +26,8 @@ async function runVideo(format: VideoFormat, ctx: ExportContext): Promise<Export
     signal: ctx.signal,
     onProgress: (progress) => ctx.onProgress(progress.fraction, 'rendering'),
   })
-  return [{ blob: result.blob, filename: result.filename }]
+  const extension = result.filename.slice(result.filename.lastIndexOf('.') + 1)
+  return [{ blob: result.blob, filename: exportFilename(ctx, result.filename, extension, pageSize(ctx.document, ctx.pages[0].page), null) }]
 }
 
 export function registerVideoExportFormats(): void {

@@ -39,6 +39,8 @@ export interface AppConfig {
   limits: { max_upload_bytes: number; max_pages: number; max_document_bytes: number; realtime_max_participants?: number }
   /** Files the browser downloads at run time; absent on servers that predate it. */
   assets?: { background_removal_model: BackgroundRemovalModel | null }
+  /** The instance's default export file names; absent on servers that predate them (simple, no timestamp). */
+  exports?: { filename_style: 'simple' | 'structured'; filename_timestamp: boolean }
 }
 
 export interface ApiUser {

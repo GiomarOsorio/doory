@@ -7,6 +7,7 @@ import { MARK_STROKE_PX, type PrintGeometry, cropMarkSegments, printGeometry } f
 import {
   type ExportContext,
   type ExportFile,
+  exportFilename,
   pageFilename,
   registerExportFormat,
   sanitizeFilename,
@@ -34,7 +35,7 @@ async function rasterFiles(ctx: ExportContext, mime: 'image/png' | 'image/jpeg',
       transparent: mime === 'image/png' && ctx.options.transparent,
     })
     const blob = await canvasToBlob(canvas, mime, mime === 'image/jpeg' ? ctx.options.quality : undefined)
-    files.push({ blob, filename: pageFilename(ctx.title, extension, index + 1, total, ctx.document.pages.length) })
+    files.push({ blob, filename: exportFilename(ctx, pageFilename(ctx.title, extension, index + 1, total, ctx.document.pages.length), extension, size, index) })
     ctx.onProgress((i + 1) / total)
   }
   return files
@@ -46,9 +47,10 @@ async function svgFiles(ctx: ExportContext): Promise<ExportFile[]> {
   for (let i = 0; i < total; i++) {
     throwIfAborted(ctx.signal)
     const { page, index } = ctx.pages[i]
-    const svg = await renderPageToSvg(page, pageSize(ctx.document, page), ctx.engine.loadContext)
+    const size = pageSize(ctx.document, page)
+    const svg = await renderPageToSvg(page, size, ctx.engine.loadContext)
     const withFonts = await embedFontFaces(svg, page.objects, ctx)
-    files.push({ blob: new Blob([withFonts], { type: 'image/svg+xml' }), filename: pageFilename(ctx.title, 'svg', index + 1, total, ctx.document.pages.length) })
+    files.push({ blob: new Blob([withFonts], { type: 'image/svg+xml' }), filename: exportFilename(ctx, pageFilename(ctx.title, 'svg', index + 1, total, ctx.document.pages.length), 'svg', size, index) })
     ctx.onProgress((i + 1) / total)
   }
   return files
@@ -109,7 +111,7 @@ async function pdfFile(ctx: ExportContext): Promise<ExportFile[]> {
     ctx.onProgress((i + 1) / total, 'rendering')
   }
   const blob = pdf.output('blob')
-  return [{ blob, filename: `${sanitizeFilename(ctx.title) || 'design'}.pdf` }]
+  return [{ blob, filename: exportFilename(ctx, `${sanitizeFilename(ctx.title) || 'design'}.pdf`, 'pdf', pageSize(ctx.document, ctx.pages[0].page), null) }]
 }
 
 /** Black hairlines in the slug, the same eight the print server draws. */
@@ -155,7 +157,7 @@ async function serverPdfFile(ctx: ExportContext): Promise<ExportFile[]> {
     onUploadProgress: (fraction) => ctx.onProgress(0.5 + fraction * 0.4, fraction >= 1 ? 'printing' : 'uploading'),
   })
   ctx.onProgress(1)
-  return [{ blob, filename: `${sanitizeFilename(ctx.title) || 'design'}-print.pdf` }]
+  return [{ blob, filename: exportFilename(ctx, `${sanitizeFilename(ctx.title) || 'design'}-print.pdf`, 'pdf', size, null, 'print') }]
 }
 
 export function registerBuiltinExportFormats(): void {
