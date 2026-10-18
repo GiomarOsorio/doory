@@ -25,7 +25,7 @@ def test_config_is_public_and_has_the_documented_shape(api):
     res = api.get(URL)
     assert res.status_code == 200
     body = res.json()
-    assert set(body) == {"google_client_id", "features", "limits", "assets", "exports"}
+    assert set(body) == {"google_client_id", "features", "limits", "assets", "exports", "ai"}
     assert set(body["features"]) == {
         "stock_photos",
         "server_pdf",
@@ -34,7 +34,9 @@ def test_config_is_public_and_has_the_documented_shape(api):
         "background_removal",
         "realtime",
         "mcp",
+        "ai_providers",
     }
+    assert set(body["ai"]) == {"user_providers", "background_removal"}
     assert body["exports"] == {"filename_style": "simple", "filename_timestamp": False}
     assert set(body["limits"]) == {
         "max_upload_bytes",

@@ -122,7 +122,7 @@ def check_url(url: str, *, lookup: Callable[[str], list[str]] = resolve) -> Targ
     return Target(host=host, addresses=tuple(addresses), path=path)
 
 
-def _resolve_within(lookup: Callable[[str], list[str]], host: str, seconds: float) -> list[str]:
+def resolve_within(lookup: Callable[[str], list[str]], host: str, seconds: float) -> list[str]:
     """`lookup(host)`, given at most `seconds`. `getaddrinfo` takes no timeout, so it runs on a daemon thread;
     one that overruns is left to finish (the resolver's own timeout ends it) and its answer is dropped."""
     outcome: dict[str, Any] = {}
@@ -193,16 +193,28 @@ class Watchdog:
         self.stop()
 
 
-def request(conn: Any, target: Target, watchdog: Watchdog) -> Any:
-    """Connect `conn` under `watchdog` and GET `target.path`; the response, its body not read yet."""
+def request(
+    conn: Any,
+    target: Target,
+    watchdog: Watchdog,
+    *,
+    method: str = "GET",
+    headers: dict[str, str] | None = None,
+    body: bytes | None = None,
+    read_timeout: float | None = None,
+) -> Any:
+    """Connect `conn` under `watchdog` and send `method` to `target.path` (by default a GET for an image);
+    the response, its body not read yet."""
     watchdog.watch(conn)
     conn.timeout = max(0.001, min(CONNECT_TIMEOUT, watchdog.left()))
     conn.connect()
-    conn.timeout = READ_TIMEOUT  # per read; the watchdog bounds the total
+    # Per read; the watchdog bounds the total.
+    conn.timeout = READ_TIMEOUT if read_timeout is None else read_timeout
     conn.request(
-        "GET",
+        method,
         target.path,
-        headers={"Host": target.host_header, "User-Agent": USER_AGENT, "Accept": "image/*"},
+        body=body,
+        headers=headers or {"Host": target.host_header, "User-Agent": USER_AGENT, "Accept": "image/*"},
         preload_content=False,
     )
     return conn.getresponse()
@@ -234,7 +246,7 @@ def _open(target: Target, watchdog: Watchdog) -> Any:
     raise failure or RemoteImageError("The download took too long.")
 
 
-def _read_body(response: Any, *, max_bytes: int) -> bytes:
+def read_body(response: Any, *, max_bytes: int) -> bytes:
     buffer = bytearray()
     while True:
         chunk = response.read1(CHUNK_BYTES)  # whatever has arrived, up to CHUNK_BYTES; b"" at the end
@@ -247,7 +259,7 @@ def _read_body(response: Any, *, max_bytes: int) -> bytes:
 
 # What a request can raise when the server misbehaves or the watchdog cuts the socket.
 # A certificate for another host fails urllib3's own name check, which raises a ValueError subclass.
-_TRANSPORT_ERRORS = (urllib3.exceptions.HTTPError, http.client.HTTPException, OSError, CertificateError)
+TRANSPORT_ERRORS = (urllib3.exceptions.HTTPError, http.client.HTTPException, OSError, CertificateError)
 
 
 def fetch_image(
@@ -263,7 +275,7 @@ def fetch_image(
             return _fetch(url, max_bytes=max_bytes, lookup=lookup, opener=opener, watchdog=watchdog)
         except RemoteImageError:
             raise
-        except _TRANSPORT_ERRORS as exc:
+        except TRANSPORT_ERRORS as exc:
             if watchdog.fired or watchdog.left() <= 0:
                 raise RemoteImageError("The download took too long.") from exc
             raise RemoteImageError("The download failed.") from exc
@@ -274,7 +286,7 @@ def _fetch(url: str, *, max_bytes: int, lookup, opener, watchdog: Watchdog) -> b
     for _ in range(MAX_REDIRECTS + 1):
         if watchdog.left() <= 0:
             raise RemoteImageError("The download took too long.")
-        target = check_url(current, lookup=lambda host: _resolve_within(lookup, host, watchdog.left()))
+        target = check_url(current, lookup=lambda host: resolve_within(lookup, host, watchdog.left()))
         response = opener(target, watchdog)
         try:
             if watchdog.fired:  # cut while reading the headers: they may be incomplete
@@ -292,7 +304,7 @@ def _fetch(url: str, *, max_bytes: int, lookup, opener, watchdog: Watchdog) -> b
             declared = response.headers.get("Content-Length", "")
             if declared.isdigit() and int(declared) > max_bytes:
                 raise RemoteImageTooLarge("The image is too large.")
-            body = _read_body(response, max_bytes=max_bytes)
+            body = read_body(response, max_bytes=max_bytes)
             if watchdog.fired:  # cut at the deadline: what arrived is not the whole image
                 raise RemoteImageError("The download took too long.")
             return body

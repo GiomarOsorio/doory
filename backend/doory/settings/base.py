@@ -43,6 +43,7 @@ INSTALLED_APPS = [
     "apps.presets",
     "apps.apitokens",
     "apps.mcp",
+    "apps.ai",
 ]
 
 MIDDLEWARE = [
@@ -210,6 +211,7 @@ REST_FRAMEWORK = {
         "upload": "60/min",
         "stock": "60/min",
         "export": "30/min",  # server-side image renders (REST and MCP)
+        "ai": "30/min",  # calls to AI image providers (REST and MCP)
     },
     "DEFAULT_RENDERER_CLASSES": ["rest_framework.renderers.JSONRenderer"],
     "DEFAULT_PARSER_CLASSES": [
@@ -302,6 +304,46 @@ EXPORT_IMAGE_MAX_DOCUMENT_BYTES = env.int("EXPORT_IMAGE_MAX_DOCUMENT_BYTES", def
 # ---- In-browser background removal (apps.core.mlmodels; `manage.py sync_models` installs the model) ----
 BACKGROUND_REMOVAL_ENABLED = env.bool("BACKGROUND_REMOVAL_ENABLED", default=True)
 BACKGROUND_REMOVAL_MODEL = env("BACKGROUND_REMOVAL_MODEL", default="")  # empty: the best installed model
+
+# ---- AI image providers (apps.ai): remote servers for background removal and later image tasks ----
+AI_PROVIDERS_ENABLED = env.bool("AI_PROVIDERS_ENABLED", default=True)
+# Whether users may add their own servers ("bring your own server"): off, staff or everyone.
+AI_USER_PROVIDERS = env("AI_USER_PROVIDERS", default="off")
+AI_USER_PROVIDERS_ALLOW_HTTP = env.bool("AI_USER_PROVIDERS_ALLOW_HTTP", default=False)
+AI_MAX_PROVIDERS_PER_USER = env.int("AI_MAX_PROVIDERS_PER_USER", default=10)
+# Host names an operator provider may reach on a private network (e.g. a model server container). IP addresses
+# the operator types are allowed too; everything else must resolve to public addresses only.
+AI_ALLOWED_PRIVATE_HOSTS = env.list("AI_ALLOWED_PRIVATE_HOSTS", default=[])
+# Fernet key for stored provider secrets; empty: derived from DJANGO_SECRET_KEY (see apps.ai.secrets).
+AI_SECRETS_KEY = env("AI_SECRETS_KEY", default="")
+AI_SECRETS_KEY_FALLBACKS = env.list("AI_SECRETS_KEY_FALLBACKS", default=[])
+AI_DEFAULT_TIMEOUT_SECONDS = env.int("AI_DEFAULT_TIMEOUT_SECONDS", default=60)
+# Largest image sent to (and read back from) a provider, unless the provider sets its own limit.
+AI_MAX_IMAGE_BYTES = env.int("AI_MAX_IMAGE_BYTES", default=25 * 1024 * 1024)
+AI_CACHE_SECONDS = env.int("AI_CACHE_SECONDS", default=7 * 24 * 60 * 60)  # identical calls reuse the result
+# The option the editor starts with, per task: "device" (in the browser) or an id from /api/v1/ai/models/.
+AI_TASK_DEFAULTS = {"background-removal": env("BACKGROUND_REMOVAL_DEFAULT", default="device")}
+# Operator providers from the environment: AI_PROVIDER_1_URL … AI_PROVIDER_9_URL (see .env.example and
+# apps.ai.env). Kept as the raw strings here; apps.ai.env checks them.
+AI_ENV_PROVIDER_FIELDS = (
+    "URL",
+    "STYLE",
+    "TASKS",
+    "MODELS",
+    "AUTH_HEADER",
+    "AUTH_VALUE",
+    "STYLE_CONFIG",
+    "LABEL",
+    "SENDS_OFFSITE",
+    "TIMEOUT_SECONDS",
+    "MAX_IMAGE_BYTES",
+    "DAILY_QUOTA",
+)
+AI_ENV_PROVIDERS = [
+    {"index": n, **{field: env(f"AI_PROVIDER_{n}_{field}", default="") for field in AI_ENV_PROVIDER_FIELDS}}
+    for n in range(1, 10)
+    if env(f"AI_PROVIDER_{n}_URL", default="")
+]
 
 # ---- Element library (apps.elements) ----
 # Keep the brand logos (trademarks) the icon packs contain when `sync_element_packs` runs.

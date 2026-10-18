@@ -30,3 +30,9 @@ PIXABAY_API_KEY = ""
 SERVER_PDF_ENABLED = True
 STATIC_ROOT = tempfile.mkdtemp(prefix="doory-test-static-")
 EXPORT_STORAGE_ROOT = tempfile.mkdtemp(prefix="doory-test-exports-")
+# A developer's .env must not add providers or open private networks to the tests.
+AI_ENV_PROVIDERS = []
+AI_USER_PROVIDERS = "off"
+AI_ALLOWED_PRIVATE_HOSTS = []
+AI_SECRETS_KEY = ""
+AI_SECRETS_KEY_FALLBACKS = []
