@@ -1,4 +1,4 @@
-import type { BulkAction, Design, DesignCreateInput, DesignPatchInput, DesignQuery, DesignSummary, Page, VersionDetail, VersionSummary } from '@/types/api'
+import type { BulkAction, BulkFillInput, BulkFillResult, Design, DesignCreateInput, DesignPatchInput, DesignQuery, DesignSummary, Page, TemplateField, VersionDetail, VersionSummary } from '@/types/api'
 import { http } from './client'
 
 export const designsApi = {
@@ -18,6 +18,9 @@ export const designsApi = {
     return http.put<{ thumbnail_url: string }>(`/designs/${id}/thumbnail/`, { form })
   },
   bulk: (input: { ids: string[]; action: BulkAction; folder?: string | null }) => http.post<{ affected: number }>('/designs/bulk/', { json: input }),
+  fields: (id: string) => http.get<TemplateField[]>(`/designs/${id}/fields/`),
+  /** One new design per row, filled by field key; each row reports its design or its error. */
+  bulkFill: (id: string, input: BulkFillInput) => http.post<BulkFillResult>(`/designs/${id}/bulk-fill/`, { json: input }),
   emptyTrash: () => http.delete<void>('/designs/trash/'),
   versions: {
     list: (designId: string) => http.get<Page<VersionSummary>>(`/designs/${designId}/versions/`),

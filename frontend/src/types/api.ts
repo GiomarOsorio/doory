@@ -598,3 +598,32 @@ export interface AiProviderTestResult {
   preview: string
   error: { code: string; message: string } | null
 }
+
+/** A template field of a design (`GET /designs/{id}/fields/`). `key: null`: a photo placeholder without a tag. */
+export interface TemplateField {
+  key: string | null
+  type: 'text' | 'image' | 'color'
+  label: string | null
+  pages: number[]
+  object_ids: string[]
+  current: unknown
+  fit: { mode: 'shrink'; minFontSize?: number } | null
+  overflow: boolean
+}
+
+export type FieldValue = string | { asset_id?: string; element_id?: string; url?: string; focal?: [number, number] } | null
+
+export interface BulkFillInput {
+  rows: Record<string, FieldValue>[]
+  name_pattern?: string
+  folder?: string | null
+}
+
+export type BulkFillRow =
+  | { row: number; ok: true; design_id: string; title: string; filled: string[]; skipped: string[]; overflow: string[] }
+  | { row: number; ok: false; error: string }
+
+export interface BulkFillResult {
+  created: number
+  rows: BulkFillRow[]
+}

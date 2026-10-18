@@ -549,6 +549,84 @@ def test_replace_image_through_edit_design_with_asset_element_and_url(
         )
 
 
+def _template(user) -> Design:
+    name = {**text_object("Name"), "id": "name", "width": 300, "field": {"key": "name", "type": "text"}}
+    swatch = {
+        "id": "swatch",
+        "type": "rect",
+        "fill": "#ff0000",
+        "left": 0,
+        "top": 0,
+        "width": 10,
+        "height": 10,
+        "field": {"key": "accent", "type": "color"},
+    }
+    return make_design(user, title="Badge", document=make_doc(objects=[name, swatch]))
+
+
+def test_fill_design_fills_a_copy_by_key(as_caller, user, other):
+    template = _template(user)
+    filled = designs.fill_design(str(template.pk), {"name": "Ada", "accent": "#00ff00"}, name="Ada")
+    assert filled["filled"] == ["name", "accent"] and filled["skipped"] == []
+    copy = Design.objects.get(pk=filled["design_id"])
+    assert copy.title == "Ada" and copy.document["pages"][0]["objects"][0]["text"] == "Ada"
+    assert copy.document["pages"][0]["objects"][1]["fill"] == "#00ff00"
+    assert Design.objects.get(pk=template.pk).document["pages"][0]["objects"][0]["text"] == "Name"
+    with pytest.raises(ToolError, match="nope"):
+        designs.fill_design(str(template.pk), {"name": "B", "nope": "x"})
+    with pytest.raises(ToolError, match="Not found"):
+        designs.fill_design(str(_template(other).pk), {"name": "B"})
+    in_place = designs.fill_design(str(template.pk), {"name": "Edited"}, as_copy=False)
+    assert in_place["design_id"] == str(template.pk)
+
+
+def test_fill_design_needs_assets_write_for_links(as_caller, user):
+    template = make_design(
+        user,
+        document=make_doc(
+            objects=[
+                {
+                    "id": "p",
+                    "type": "image",
+                    "src": "/a.png",
+                    "width": 50,
+                    "height": 50,
+                    "field": {"key": "photo", "type": "image"},
+                }
+            ]
+        ),
+    )
+    as_caller.token.scopes = ["designs:read", "designs:write"]
+    with pytest.raises(ToolError, match=r"photo.*assets:write"):
+        designs.fill_design(str(template.pk), {"photo": "https://img.example/a.png"})
+    as_caller.token.scopes = list(SCOPES)
+
+
+def test_bulk_fill_makes_one_design_per_row_into_a_folder(as_caller, user, settings):
+    template = _template(user)
+    folder = Folder.objects.create(owner=user, name="Badges")
+    out = designs.bulk_fill(
+        str(template.pk),
+        [{"name": "Ada"}, {"accent": "blue"}, {"name": "Grace"}],
+        folder_id=str(folder.pk),
+    )
+    assert out["created"] == 2 and [r["ok"] for r in out["rows"]] == [True, False, True]
+    assert out["rows"][0]["title"] == "Badge - 1" and "accent" in out["rows"][1]["error"]
+    assert Design.objects.filter(folder=folder).count() == 2
+    settings.BULK_FILL_MAX_ROWS = 2
+    with pytest.raises(ToolError, match="At most 2 rows"):
+        designs.bulk_fill(str(template.pk), [{"name": "A"}] * 3)
+
+
+@override_settings(MCP_CALLS_PER_MINUTE=3)
+def test_bulk_fill_rows_count_against_the_rate_limit(as_caller, user):
+    template = _template(user)
+    out = designs.bulk_fill(str(template.pk), [{"name": str(n)} for n in range(4)])
+    # The call and the first row take one slot, each further row one more: rows 4 is over the budget.
+    assert [r["ok"] for r in out["rows"]] == [True, True, True, False]
+    assert "Too many calls" in out["rows"][3]["error"]
+
+
 # ---------------------------------------------------------------------------------------------
 # Scopes and limits
 # ---------------------------------------------------------------------------------------------

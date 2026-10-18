@@ -60,11 +60,12 @@ class DjangoResolver:
     """Pictures come from the caller's own uploads or the published element catalogue; fonts from the
     catalogue plus the caller's uploaded fonts."""
 
-    def __init__(self, user) -> None:
+    def __init__(self, user, *, allow_urls: bool | None = None) -> None:
         self.user = user
         self._urls: dict[str, ImageSource] = {}
         self._cutouts: dict[tuple, ImageSource] = {}
         self._sealed = False
+        self.allow_urls = allow_urls  # None: when the MCP caller has `assets:write`
 
     def image(
         self, *, asset_id: str | None = None, element_id: str | None = None, url: str | None = None
@@ -73,7 +74,10 @@ class DjangoResolver:
             if url in self._urls:
                 return self._urls[url]
             caller = context.current()
-            if caller is None or not caller.has(ASSETS_WRITE):
+            allowed = self.allow_urls
+            if allowed is None:
+                allowed = caller is not None and caller.has(ASSETS_WRITE)
+            if not allowed:
                 raise LookupError(
                     f"Uploading from a URL needs the `{ASSETS_WRITE}` scope. "
                     "Create a token with it in Doory: Account settings > API tokens."

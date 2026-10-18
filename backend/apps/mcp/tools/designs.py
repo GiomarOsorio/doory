@@ -3,24 +3,24 @@
 from __future__ import annotations
 
 import uuid
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from django.conf import settings
 from django.http import Http404
 from pydantic import Field, TypeAdapter
 
 from apps.apitokens.scopes import DESIGNS_READ, DESIGNS_WRITE
-from apps.designs import services
+from apps.designs import fill, services
 from apps.designs.doc import fields
 from apps.designs.doc.ops import MAX_OPS, Operation
 from apps.designs.doc.summary import summarize_document
 from apps.designs.edits import apply_edit, read_current
-from apps.designs.models import Design
+from apps.designs.models import Design, Folder
 from apps.designs.serializers import DesignCreateSerializer, TitleField
 from apps.designs.validators import MAX_DIMENSION
 
 from ..context import current
-from ..registry import tool
+from ..registry import charge_call, tool
 from ..resolver import DjangoResolver
 
 DesignId = Annotated[str, Field(description="A design id from list_designs.")]
@@ -224,3 +224,99 @@ def edit_design(
         out["revision"] = result.revision
     out["editor_url"] = editor_url(design)
     return out
+
+
+FieldValues = Annotated[
+    dict[str, Any],
+    Field(
+        description="{field key: value} (keys from list_fields). text: a string; color: '#hex'; image: "
+        "{asset_id} | {element_id} | {url} with an optional focal [x, y], or a https link or an "
+        "upload's name as a string. A blank value leaves the field as it is."
+    ),
+]
+
+
+def _folder(folder_id: str | None) -> Folder | None:
+    if not folder_id:
+        return None
+    folder = Folder.objects.filter(pk=_uuid(folder_id), owner=current().user).first()
+    if folder is None:
+        raise Http404
+    return folder
+
+
+@tool(scope=DESIGNS_WRITE, title="Fill template fields")
+def fill_design(
+    design_id: DesignId,
+    values: FieldValues,
+    as_copy: Annotated[
+        bool, Field(description="Fill a new copy and leave the template as it is (default); false edits it.")
+    ] = True,
+    name: Annotated[str | None, Field(max_length=200, description="Title of the filled design.")] = None,
+) -> dict[str, Any]:
+    """Fill a template's fields by key in one step: every object tagged with a key gets its value (a key on
+    several pages fills each of them). All or nothing: an unknown key or a wrong value is an error naming the
+    key and nothing is changed. Image links are uploaded into your assets first (needs `assets:write`).
+    Returns the design id, the keys filled and skipped, and `overflow`: shrink-to-fit texts still too long."""
+    caller = current()
+    result = fill.fill_design(
+        _design(design_id),
+        caller.user,
+        values,
+        resolver=DjangoResolver(caller.user),
+        as_copy=as_copy,
+        name=name,
+        label=f"Before filling fields by {caller.label}",
+    )
+    return {**result.summary(), "editor_url": editor_url(result.design)}
+
+
+@tool(scope=DESIGNS_WRITE, title="Bulk create from a template")
+def bulk_fill(
+    design_id: DesignId,
+    rows: Annotated[
+        list[dict[str, Any]],
+        Field(
+            min_length=1,
+            description="One {field key: value} object per new design (values as in fill_design).",
+        ),
+    ],
+    name_pattern: Annotated[
+        str | None,
+        Field(
+            max_length=200,
+            description="Title of each new design: {title} (the template's), {n} (the row "
+            "number) and {key} (a text value of the row). Default: '{title} - {n}'.",
+        ),
+    ] = None,
+    folder_id: Annotated[str | None, Field(description="Put the new designs in this folder.")] = None,
+    export: Annotated[
+        Literal["png", "jpg"] | None, Field(description="Also return the first page of each as an image.")
+    ] = None,
+) -> dict[str, Any]:
+    """Make one new design per row from a template, filled like fill_design. Each row reports its new design
+    or its own error, so one bad row doesn't stop the others. Each row counts as one call against the rate
+    limit; the number of rows per call is limited by the server."""
+    caller = current()
+    template = _design(design_id)
+    folder = _folder(folder_id)
+    after_row = fill.image_exporter(export)
+    first = True
+
+    def before_row() -> None:
+        nonlocal first
+        if not first:
+            charge_call()  # the call itself paid for the first row
+        first = False
+
+    results = fill.bulk_fill(
+        template,
+        caller.user,
+        rows,
+        resolver=DjangoResolver(caller.user),
+        name_pattern=name_pattern,
+        folder=folder,
+        before_row=before_row,
+        after_row=after_row,
+    )
+    return {"created": sum(row["ok"] for row in results), "rows": results}

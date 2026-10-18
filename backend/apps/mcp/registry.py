@@ -95,16 +95,23 @@ UNEXPECTED = (
 )
 
 
-def throttle(rate_throttle: Any) -> None:
-    """Apply one of the REST API's per-user throttles (e.g. `StockRateThrottle()`) to the caller, sharing
-    its budget, so a tool cannot be used to get around the limits of the endpoint it stands in for."""
-    caller = context.current()
-    if not rate_throttle.allow_request(SimpleNamespace(user=caller.user), None):
+def throttle(rate_throttle: Any, user: Any = None) -> None:
+    """Apply one of the REST API's per-user throttles (e.g. `StockRateThrottle()`) to the caller (or `user`),
+    sharing its budget, so a tool cannot be used to get around the limits of the endpoint it stands in for."""
+    if user is None:
+        user = context.current().user
+    if not rate_throttle.allow_request(SimpleNamespace(user=user), None):
         wait = math.ceil(rate_throttle.wait() or 1)
         raise ToolError(f"Too many requests of this kind. Wait {wait} s and try again.")
 
 
 RATE_CLAIM_ATTEMPTS = 3
+
+
+def charge_call() -> None:
+    """Count one more call against the caller's per-minute budget (for tools that do many calls' work, e.g.
+    one design per row); raises ToolError when the budget is spent."""
+    _check_rate(context.current())
 
 
 def _check_rate(caller: context.Caller) -> None:

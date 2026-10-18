@@ -120,6 +120,8 @@ def test_scopes_are_enforced(user):
         owner=user, title="T", width=10, height=10, document=make_doc(width=10, height=10)
     )
     assert call(read_only.plaintext, "list_fields", {"design_id": str(design.pk)})["isError"] is False
+    refused = call(read_only.plaintext, "bulk_fill", {"design_id": str(design.pk), "rows": [{}]})
+    assert refused["isError"] is True and "designs:write" in refused["content"][0]["text"]
 
 
 def test_bad_arguments_are_explained(issued):

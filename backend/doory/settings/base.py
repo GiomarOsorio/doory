@@ -127,6 +127,7 @@ USER_STORAGE_QUOTA_BYTES = env.int("USER_STORAGE_QUOTA_BYTES", default=2 * 1024*
 MAX_DESIGNS_PER_USER = env.int("MAX_DESIGNS_PER_USER", default=5000)
 MAX_API_TOKENS_PER_USER = env.int("MAX_API_TOKENS_PER_USER", default=20)
 MAX_DESIGN_PAGES = 100
+BULK_FILL_MAX_ROWS = env.int("BULK_FILL_MAX_ROWS", default=100)  # rows per bulk fill (MCP and REST)
 MAX_AVATAR_BYTES = 5 * 1024 * 1024
 
 # ---- Security headers (Permissions-Policy comes from apps.core.middleware) ----

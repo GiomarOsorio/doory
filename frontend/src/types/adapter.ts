@@ -8,6 +8,8 @@ import type {
   Asset,
   AssetQuery,
   BrandKit,
+  BulkFillInput,
+  BulkFillResult,
   CommentInput,
   CommentMove,
   CommentT,
@@ -29,6 +31,7 @@ import type {
   StockProviders,
   TemplateCategory,
   TemplateDetail,
+  TemplateField,
   TemplateQuery,
   TemplateSummary,
   UserFontUploadInput,
@@ -202,6 +205,14 @@ export interface EditorServices {
     move?(id: string, to: CommentMove): Promise<CommentT>
     /** Who is looking, to tell their comments from the others'. `null`: not signed in. Absent: treated as the owner. */
     viewer?(): Promise<CommentViewer | null>
+  } | null
+  /** Bulk create from this design's template fields (signed-in owner only); `null` or absent hides it. */
+  bulkFill?: {
+    /** The fields as saved (the editor's changes are saved first). */
+    fields(): Promise<TemplateField[]>
+    /** A new folder for the created designs. */
+    createFolder(name: string): Promise<{ id: string; name: string }>
+    run(input: BulkFillInput): Promise<BulkFillResult>
   } | null
 }
 
