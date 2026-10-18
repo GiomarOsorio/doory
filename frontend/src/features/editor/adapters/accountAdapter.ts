@@ -3,12 +3,14 @@ import type { AppConfig } from '@/types/api'
 import type { EditorAdapter } from '@/types/adapter'
 import { RevisionConflictError } from './errors'
 import { createRealtimeConnection, flushLiveRoom } from './realtime'
-import { assetToRef, createAccountServices } from './services'
+import { assetToRef, createAccountServices, createAiService } from './services'
 
 export interface AccountAdapterOptions {
   /** Called with the revision the server assigned after each successful save. */
   onRevision?(revision: number): void
-  config?: Pick<AppConfig, 'features' | 'exports'>
+  config?: Pick<AppConfig, 'features' | 'exports' | 'ai'>
+  /** The signed-in user, so the editor remembers choices (e.g. the background-removal option) per user. */
+  userId?: string | (() => string | undefined)
   /** Minimum gap between thumbnail uploads (ms). */
   thumbnailIntervalMs?: number
   /** Opens the shell's sign-in flow when the live room needs a session; resolves `true` once the user is signed in. */
@@ -67,7 +69,11 @@ export function createAccountAdapter(designId: string, getRevision: () => number
       return assetToRef(await assetsApi.upload(file, { name: opts?.name }))
     },
     resolveSrc: async (src) => src,
-    services: createAccountServices(designId, () => flushLiveRoom(realtime)),
+    services: createAccountServices(
+      designId,
+      () => flushLiveRoom(realtime),
+      options.config?.ai && options.config.features.ai_providers === true ? createAiService({ config: options.config.ai, userId: options.userId }) : null,
+    ),
     realtime,
   }
   const exports = options.config?.exports

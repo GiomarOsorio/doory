@@ -36,7 +36,7 @@ def test_config_is_public_and_has_the_documented_shape(api):
         "mcp",
         "ai_providers",
     }
-    assert set(body["ai"]) == {"user_providers", "background_removal"}
+    assert set(body["ai"]) == {"user_providers", "offsite_notice", "background_removal"}
     assert body["exports"] == {"filename_style": "simple", "filename_timestamp": False}
     assert set(body["limits"]) == {
         "max_upload_bytes",

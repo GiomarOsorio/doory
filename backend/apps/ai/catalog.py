@@ -354,7 +354,10 @@ def has_server_options() -> bool:
 def ai_config() -> dict[str, Any]:
     """The `ai` part of the public `/config/`: per task (`background-removal` → `background_removal`), the
     options every signed-in user has and the default."""
-    config: dict[str, Any] = {"user_providers": user_providers_mode()}
+    config: dict[str, Any] = {
+        "user_providers": user_providers_mode(),
+        "offsite_notice": str(getattr(settings, "AI_OFFSITE_NOTICE", "")).strip(),
+    }
     for task in TASKS:
         available = public_options(task)
         config[task.replace("-", "_")] = {

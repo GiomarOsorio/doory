@@ -7,7 +7,7 @@ from pathlib import Path
 
 from django.conf import settings
 from django.db import transaction
-from django.http import FileResponse, Http404
+from django.http import FileResponse
 from django.shortcuts import get_object_or_404
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_schema
@@ -76,7 +76,7 @@ class TaskView(APIView):
     def post(self, request, task: str):
         """Run `task` (e.g. background-removal) on one of the user's images; the result is a new asset."""
         if task not in TASKS:
-            raise Http404
+            raise ApiError("unknown_task", "Unknown task.", status.HTTP_404_NOT_FOUND)
         body = TaskRequestSerializer(data=request.data)
         body.is_valid(raise_exception=True)
         asset = get_object_or_404(Asset, pk=body.validated_data["asset_id"], owner=request.user)

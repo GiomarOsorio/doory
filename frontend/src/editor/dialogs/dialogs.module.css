@@ -78,6 +78,26 @@ small.error {
   background: var(--color-brand);
   transition: width var(--duration-base) var(--ease-out);
 }
+/* A server run reports no percentage: a bar that slides back and forth. */
+.progressIndeterminate > div {
+  width: 35%;
+  animation: progress-slide 1.4s var(--ease-out) infinite alternate;
+}
+@keyframes progress-slide {
+  from {
+    transform: translateX(-10%);
+  }
+  to {
+    transform: translateX(195%);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .progressIndeterminate > div {
+    width: 100%;
+    animation: none;
+    opacity: 0.6;
+  }
+}
 
 .formats {
   display: flex;

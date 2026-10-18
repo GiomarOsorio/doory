@@ -337,6 +337,8 @@ AI_MAX_IMAGE_BYTES = env.int("AI_MAX_IMAGE_BYTES", default=25 * 1024 * 1024)
 AI_CACHE_SECONDS = env.int("AI_CACHE_SECONDS", default=7 * 24 * 60 * 60)  # identical calls reuse the result
 # The option the editor starts with, per task: "device" (in the browser) or an id from /api/v1/ai/models/.
 AI_TASK_DEFAULTS = {"background-removal": env("BACKGROUND_REMOVAL_DEFAULT", default="device")}
+# The editor's one-line notice under options that send the image off this installation; empty: its own.
+AI_OFFSITE_NOTICE = env("AI_OFFSITE_NOTICE", default="")
 # Operator providers from the environment: AI_PROVIDER_1_URL … AI_PROVIDER_9_URL (see .env.example and
 # apps.ai.env). Kept as the raw strings here; apps.ai.env checks them.
 AI_ENV_PROVIDER_FIELDS = (

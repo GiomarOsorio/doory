@@ -4,6 +4,7 @@
  */
 import type { ReactNode } from 'react'
 import type {
+  AiTaskOptions,
   Asset,
   AssetQuery,
   BrandKit,
@@ -104,6 +105,26 @@ export interface UserFontsService {
   remove(id: string): Promise<void>
 }
 
+/**
+ * Remote AI image tasks (`background-removal` first). Signed-in users only; without it the editor offers the
+ * in-browser model alone.
+ */
+export interface AiService {
+  /** The options this user may pick for `task` and the one to start with. */
+  options(task: string): Promise<AiTaskOptions>
+  /**
+   * Runs `task` with the server option `model` on an image and resolves with the new asset. `assetId` is the
+   * image's asset when it has one; otherwise (or when it is not this user's) `image` is uploaded first.
+   * Rejects with the server's `ApiError` (`ai_timeout`, `ai_quota`, …).
+   */
+  run(task: string, input: { model: string; image: Blob | (() => Promise<Blob>); assetId?: string; signal?: AbortSignal }): Promise<AssetRef>
+  /** The option this user last picked for `task`, if any. */
+  remembered(task: string): string | null
+  remember(task: string, option: string): void
+  /** The operator's wording of the notice for options that send the image away; empty: the editor's own. */
+  offsiteNotice?: string
+}
+
 /** The person looking at the comments: `owner` is true for the design's owner, who may delete and move every comment. */
 export interface CommentViewer {
   id: string
@@ -139,6 +160,8 @@ export interface EditorServices {
     search(q: string, page: number | string, provider?: string): Promise<StockPage>
     importPhoto(photo: StockPhoto): Promise<AssetRef>
   } | null
+  /** Remote AI image tasks; `null` or absent: only the in-browser model (guests, shared links). */
+  ai?: AiService | null
   /**
    * Freesound sounds for the Audio tool, through the server. Optional: absent or null (guests, adapters without it)
    * hides the Freesound tab, and so does `info()` answering `configured: false`.

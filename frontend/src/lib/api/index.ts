@@ -1,5 +1,6 @@
 export { ApiError, buildQuery, ensureCsrf, http, isApiError, resetClientState, setUnauthorizedHandler } from './client'
 export type { RequestOptions } from './client'
+export { aiApi } from './ai'
 export { assetsApi } from './assets'
 export { authApi } from './auth'
 export { brandApi } from './brand'

@@ -134,7 +134,7 @@ def test_running_a_task_on_somebody_elses_asset_is_not_found(other_api, x, photo
 @pytest.mark.parametrize(
     "path, body, status, code",
     [
-        ("/api/v1/ai/upscale/", {"model": "x"}, 404, "not_found"),
+        ("/api/v1/ai/upscale/", {"model": "x"}, 404, "unknown_task"),
         (f"/api/v1/ai/{TASK}/", {"model": "nope:"}, 404, "ai_model_not_found"),
         (f"/api/v1/ai/{TASK}/", {"model": "X", "options": {"a": 1}}, 400, "invalid_options"),
         (f"/api/v1/ai/{TASK}/", {}, 400, "validation_error"),
@@ -271,6 +271,34 @@ def test_the_secret_is_kept_replaced_or_removed(byos, api):
     assert Provider.objects.get(pk=pk).secret() == "new"
     body = api.patch(f"/api/v1/ai/providers/{pk}/", {"secret": ""}, format="json").json()
     assert body["has_secret"] is False and not Provider.objects.get(pk=pk).has_secret
+
+
+def test_changing_host_requires_secret_again(byos, api):
+    pk = create(api, base_url="https://ai.example.com").json()["id"]
+    # Same host with different path or query doesn't require secret again
+    res_path = api.patch(
+        f"/api/v1/ai/providers/{pk}/", {"base_url": "https://ai.example.com/v2"}, format="json"
+    )
+    assert res_path.status_code == 200
+    assert Provider.objects.get(pk=pk).secret() == SECRET
+
+    # Changing host without providing secret again is rejected
+    res_host = api.patch(f"/api/v1/ai/providers/{pk}/", {"base_url": "https://attacker.com"}, format="json")
+    assert res_host.status_code == 400
+    assert (
+        "Enter the key again when changing the server address."
+        in res_host.json()["error"]["fields"]["secret"]
+    )
+    assert Provider.objects.get(pk=pk).secret() == SECRET
+
+    # Changing host with a new secret is accepted
+    res_with_key = api.patch(
+        f"/api/v1/ai/providers/{pk}/",
+        {"base_url": "https://attacker.com", "secret": "new-key"},
+        format="json",
+    )
+    assert res_with_key.status_code == 200
+    assert Provider.objects.get(pk=pk).secret() == "new-key"
 
 
 @pytest.mark.parametrize(
@@ -502,3 +530,10 @@ def test_config_without_providers(settings):
     assert body["ai"]["background_removal"] == {"default": None, "models": []}
     settings.AI_USER_PROVIDERS = "everyone"
     assert APIClient().get("/api/v1/config/").json()["features"]["ai_providers"] is True
+
+
+def test_config_carries_the_operators_offsite_notice(settings):
+    assert APIClient().get("/api/v1/config/").json()["ai"]["offsite_notice"] == ""
+    settings.AI_OFFSITE_NOTICE = "  Images go to our partner's servers in the EU.  "
+    body = APIClient().get("/api/v1/config/").json()
+    assert body["ai"]["offsite_notice"] == "Images go to our partner's servers in the EU."
