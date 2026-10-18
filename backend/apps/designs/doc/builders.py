@@ -12,7 +12,7 @@ import math
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 SHAPE_FILL = "#7a64e0"
 TEXT_COLOR = "#1c1517"
@@ -145,6 +145,25 @@ def text_height(lines: int, font_size: float, line_height: float) -> float:
 
 
 MIN_FONT_SIZE = 4
+MAX_FONT_SIZE = 999
+
+
+def valid_font_size(value: Any) -> float | None:
+    """`value` as a float when it is a finite number inside the editor's font size range (1..999)."""
+    if (
+        isinstance(value, int | float)
+        and not isinstance(value, bool)
+        and math.isfinite(value)
+        and 1 <= float(value) <= MAX_FONT_SIZE
+    ):
+        return float(value)
+    return None
+
+
+def _pos_float(value: Any, default: float) -> float:
+    if isinstance(value, int | float) and not isinstance(value, bool) and math.isfinite(value) and value > 0:
+        return float(value)
+    return default
 
 
 def default_min_font_size(font_size: float) -> int:
@@ -160,16 +179,26 @@ def fit_font_size(
     line_height: float = 1.16,
     min_font_size: float | None = None,
 ) -> int | float:
-    """Step `font_size` down by 1 px until `text` wraps inside `width x height` or hits `min_font_size`."""
-    target = max(float(MIN_FONT_SIZE), float(font_size))
+    """Largest font size (stepped down in 1 px steps from `font_size` to `min_font_size`) at which `text`
+    wraps inside `width x height`, found by binary search."""
+    target = min(float(MAX_FONT_SIZE), max(float(MIN_FONT_SIZE), float(font_size)))
     raw_min = float(min_font_size) if min_font_size is not None else float(default_min_font_size(target))
-    floor = min(target, max(float(MIN_FONT_SIZE), raw_min))
-    current = target
-    while True:
-        lines = estimate_text_lines(text, width, current, weight)
-        if text_height(lines, current, line_height) <= height + 1e-3 or current <= floor:
-            return _num(current)
-        current = max(floor, current - 1.0)
+    floor = min(target, max(float(MIN_FONT_SIZE), min(float(MAX_FONT_SIZE), raw_min)))
+
+    def fits(size: float) -> bool:
+        lines = estimate_text_lines(text, width, size, weight)
+        return text_height(lines, size, line_height) <= height + 1e-3
+
+    if fits(target) or target <= floor:
+        return _num(target)
+    low, high = 1, math.ceil(target - floor)
+    while low < high:
+        mid = (low + high) // 2
+        if fits(max(floor, target - mid)):
+            high = mid
+        else:
+            low = mid + 1
+    return _num(max(floor, target - low))
 
 
 def apply_fit(obj: dict, fit: dict | None) -> None:
@@ -178,12 +207,15 @@ def apply_fit(obj: dict, fit: dict | None) -> None:
         obj.pop("fit", None)
         obj.pop("fitFontSize", None)
         return
+    size = valid_font_size(obj.get("fontSize", 40.0))
+    if size is None:
+        obj.pop("fitFontSize", None)
+        return
     obj["fit"] = fit
-    size = float(obj.get("fontSize") or 40.0)
-    width = float(obj.get("width") or 200.0)
-    leading = float(obj.get("lineHeight") or 1.16)
-    height = float(obj.get("height") or text_height(1, size, leading))
-    weight = int(float(obj.get("fontWeight") or 400))
+    width = _pos_float(obj.get("width"), 200.0)
+    leading = _pos_float(obj.get("lineHeight"), 1.16)
+    height = _pos_float(obj.get("height"), text_height(1, size, leading))
+    weight = int(_pos_float(obj.get("fontWeight"), 400.0))
     min_size = fit.get("minFontSize")
     obj["fitFontSize"] = fit_font_size(
         str(obj.get("text", "")),

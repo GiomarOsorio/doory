@@ -610,7 +610,7 @@ def test_shrink_to_fit_steps_font_size_down_without_growing_the_box():
     box_height = document["pages"][0]["objects"][0]["height"]
     fitted = run(
         document,
-        {"op": "update_object", "object_id": "t", "fit": {"mode": "shrink", "min_font_size": 24}},
+        {"op": "update_object", "object_id": "t", "fit": {"mode": "shrink", "minFontSize": 24}},
         {"op": "update_object", "object_id": "t", "text": "Summer Music Festival Live"},
     ).document
     text = fitted["pages"][0]["objects"][0]
@@ -626,6 +626,12 @@ def test_shrink_to_fit_steps_font_size_down_without_growing_the_box():
     unfitted = cleared["pages"][0]["objects"][0]
     assert "fit" not in unfitted and "fitFontSize" not in unfitted
     assert unfitted["height"] > box_height
+
+    # Out-of-range stored fontSize is ignored by apply_fit / fit_font_size rather than spinning.
+    huge = dict(document["pages"][0]["objects"][0], fontSize=200_000)
+    builders.apply_fit(huge, {"mode": "shrink"})
+    assert "fit" not in huge and "fitFontSize" not in huge
+    assert builders.fit_font_size("x" * 1000, 100, 50, 200_000, min_font_size=4) == 4
 
     with pytest.raises(EditError, match="Only text can shrink to fit"):
         run(document, {"op": "update_object", "object_id": "r", "fit": {"mode": "shrink"}})

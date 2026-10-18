@@ -162,6 +162,8 @@ describe('serialization', () => {
     expect(out.height).toBeCloseTo(67.8, 3)
     expect(out.fit).toEqual({ mode: 'shrink', minFontSize: 24 })
     expect(out.fitFontSize).toBe(tb.fontSize)
+    const [outOfRange] = await deserializeObjects([{ ...doc, id: 'fit-huge', fontSize: 200_000 }], ctx)
+    expect(asDory(outOfRange).fit).toBeUndefined()
     c.dispose()
   })
 

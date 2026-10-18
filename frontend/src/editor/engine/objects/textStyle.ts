@@ -19,6 +19,10 @@ export function defaultMinFontSize(fontSize: number): number {
   return Math.max(MIN_FIT_FONT_SIZE, Math.round(fontSize * 0.5))
 }
 
+export function validFitFontSize(value: unknown): number | null {
+  return isFiniteNumber(value) && value >= FONT_SIZE_RANGE[0] && value <= FONT_SIZE_RANGE[1] ? value : null
+}
+
 /** Reads an untrusted `fit` value from a document object; returns null if absent or malformed. */
 export function readTextFit(raw: unknown): DocTextFit | null {
   if (!raw || typeof raw !== 'object') return null
@@ -27,20 +31,27 @@ export function readTextFit(raw: unknown): DocTextFit | null {
   const minRaw = r.minFontSize ?? r.min_font_size
   if (minRaw === undefined || minRaw === null) return { mode: 'shrink' }
   if (typeof minRaw !== 'number' || !Number.isFinite(minRaw)) return null
-  return { mode: 'shrink', minFontSize: Math.max(MIN_FIT_FONT_SIZE, Math.round(minRaw)) }
+  return {
+    mode: 'shrink',
+    minFontSize: Math.min(FONT_SIZE_RANGE[1], Math.max(MIN_FIT_FONT_SIZE, Math.round(minRaw))),
+  }
 }
 
 /**
- * Steps the live `fontSize` of `t` down by 1 px from the user's preferred size (`userFontSize`) until the wrapped lines
- * fit inside the fixed box height (`fitBoxHeight`) or reach `minFontSize`, then restores the box height on `t`.
+ * Finds the largest integer-stepped `fontSize` (from `userFontSize` down to `minFontSize`, both clamped to
+ * `FONT_SIZE_RANGE`) at which the wrapped lines of `t` fit inside `fitBoxHeight`, using binary search, then restores
+ * the fixed box height on `t`. Ignores `fit` when `fontSize` is non-finite or outside `FONT_SIZE_RANGE`.
  */
 export function refitTextbox(t: IText): void {
   const d = asDory(t)
   const fit = readTextFit(d.fit)
   if (!fit) return
-  const target = isFiniteNumber(d.userFontSize) && d.userFontSize > 0 ? d.userFontSize : t.fontSize
+  const rawTarget = validFitFontSize(d.userFontSize) ?? validFitFontSize(t.fontSize)
+  if (rawTarget === null) return
+  const target = Math.min(FONT_SIZE_RANGE[1], Math.max(MIN_FIT_FONT_SIZE, rawTarget))
   const boxH = isFiniteNumber(d.fitBoxHeight) && d.fitBoxHeight > 0 ? d.fitBoxHeight : t.height
   const boxW = t.width
+  if (!isFiniteNumber(boxH) || boxH <= 0 || !isFiniteNumber(boxW) || boxW <= 0) return
   d.userFontSize = target
   d.fitBoxHeight = boxH
   if (d.curveAmount) {
@@ -49,14 +60,24 @@ export function refitTextbox(t: IText): void {
     return
   }
   const minRequested = fit.minFontSize ?? defaultMinFontSize(target)
-  const floor = Math.min(target, Math.max(MIN_FIT_FONT_SIZE, minRequested))
-  let current = target
-  while (true) {
-    t.fontSize = current
+  const floor = Math.min(target, Math.max(MIN_FIT_FONT_SIZE, Math.min(FONT_SIZE_RANGE[1], minRequested)))
+  const fitsAt = (size: number): boolean => {
+    t.fontSize = size
     t.width = boxW
     t.initDimensions()
-    if (t.height <= boxH + 1e-3 || current <= floor) break
-    current = Math.max(floor, current - 1)
+    return t.height <= boxH + 1e-3
+  }
+  let current = target
+  if (!fitsAt(target) && target > floor) {
+    let low = 1
+    let high = Math.ceil(target - floor)
+    while (low < high) {
+      const mid = (low + high) >> 1
+      if (fitsAt(Math.max(floor, target - mid))) high = mid
+      else low = mid + 1
+    }
+    current = Math.max(floor, target - low)
+    fitsAt(current)
   }
   d.fitFontSize = Number(current.toFixed(3))
   t.width = boxW

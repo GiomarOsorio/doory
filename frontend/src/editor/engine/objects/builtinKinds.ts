@@ -12,7 +12,7 @@ import { applyMask } from './masks'
 import { asDory } from './dory'
 import { registerObjectKind, typeName as typeOf } from './kinds'
 import { validSlot } from './slot'
-import { readTextFit, refitTextbox } from './textStyle'
+import { readTextFit, refitTextbox, validFitFontSize } from './textStyle'
 import { qrDataUrl } from './qr'
 import { t } from '../../strings'
 
@@ -101,11 +101,13 @@ export function registerBuiltinKinds(): void {
       if (d.effects) applyEffects(obj, d.effects)
       if (obj instanceof IText) {
         const fit = readTextFit(json.fit)
-        if (fit) {
-          if (typeof json.width === 'number' && json.width > 0) obj.width = json.width
+        const userSize = validFitFontSize(json.fontSize !== undefined ? json.fontSize : obj.fontSize)
+        if (fit && userSize !== null) {
+          if (typeof json.width === 'number' && Number.isFinite(json.width) && json.width > 0) obj.width = json.width
           d.fit = fit
-          d.userFontSize = typeof json.fontSize === 'number' && json.fontSize > 0 ? json.fontSize : obj.fontSize
-          d.fitBoxHeight = typeof json.height === 'number' && json.height > 0 ? json.height : obj.height
+          d.userFontSize = userSize
+          d.fitBoxHeight =
+            typeof json.height === 'number' && Number.isFinite(json.height) && json.height > 0 ? json.height : obj.height
           refitTextbox(obj)
         } else {
           delete d.fit

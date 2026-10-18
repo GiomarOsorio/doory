@@ -7,6 +7,7 @@ it must have the same type everywhere.
 
 from __future__ import annotations
 
+import math
 import re
 from collections.abc import Iterator
 from typing import Annotated, Any, Literal
@@ -47,17 +48,13 @@ class TextFit(BaseModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     mode: Literal["shrink"] = "shrink"
-    min_font_size: (
-        Annotated[
-            float,
-            Field(
-                ge=builders.MIN_FONT_SIZE,
-                le=2000,
-                validation_alias=AliasChoices("min_font_size", "minFontSize"),
-            ),
-        ]
-        | None
-    ) = Field(None, description="Smallest font size to shrink to (px). Default: half the font size.")
+    min_font_size: Annotated[float, Field(ge=builders.MIN_FONT_SIZE, le=builders.MAX_FONT_SIZE)] | None = (
+        Field(
+            None,
+            validation_alias=AliasChoices("min_font_size", "minFontSize"),
+            description="Smallest font size to shrink to (px). Default: half the font size.",
+        )
+    )
 
     def document(self) -> dict:
         out: dict = {"mode": self.mode}
@@ -85,23 +82,25 @@ def read_fit(value: Any) -> dict | None:
     if (
         isinstance(min_size, int | float)
         and not isinstance(min_size, bool)
+        and math.isfinite(min_size)
         and min_size >= builders.MIN_FONT_SIZE
     ):
-        return {"mode": "shrink", "minFontSize": builders._num(float(min_size))}
+        clamped = min(float(builders.MAX_FONT_SIZE), float(min_size))
+        return {"mode": "shrink", "minFontSize": builders._num(clamped)}
     return {"mode": "shrink"}
 
 
 def text_overflows(obj: dict) -> bool:
     """True when a shrink-to-fit text still does not fit inside its box at `minFontSize`."""
     fit = read_fit(obj.get("fit"))
-    if not fit:
+    size = builders.valid_font_size(obj.get("fontSize", 40.0))
+    if not fit or size is None:
         return False
     text = str(obj.get("text", ""))
-    width = float(obj.get("width") or 200.0)
-    size = float(obj.get("fontSize") or 40.0)
-    leading = float(obj.get("lineHeight") or 1.16)
-    height = float(obj.get("height") or builders.text_height(1, size, leading))
-    weight = int(float(obj.get("fontWeight") or 400))
+    width = builders._pos_float(obj.get("width"), 200.0)
+    leading = builders._pos_float(obj.get("lineHeight"), 1.16)
+    height = builders._pos_float(obj.get("height"), builders.text_height(1, size, leading))
+    weight = int(builders._pos_float(obj.get("fontWeight"), 400.0))
     min_size = fit.get("minFontSize")
     fitted = builders.fit_font_size(
         text,
