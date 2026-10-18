@@ -4,13 +4,14 @@
  * scrubbing) pass a `key` so their steps coalesce into one undo step.
  */
 import { type FabricImage, type FabricObject, IText, Polygon, Rect, Shadow } from 'fabric'
-import type { ArrowHead, ImageFilterSpec, MaskShape, ObjectEffects, ShadowSpec } from '@/types/document'
+import type { ArrowHead, DocField, ImageFilterSpec, MaskShape, ObjectEffects, ShadowSpec } from '@/types/document'
 import type { EditorEngine } from '../editor'
 import { removeBackground as runRemoval, type BgRemovalPhase } from '../bgRemoval'
 import { DoryLine } from '../objects/DoryLine'
 import { asDory } from '../objects/dory'
 import { applyColorMap } from '../objects/elements'
 import { applyEffects } from '../objects/effects'
+import { readField } from '../fields'
 import { type FillSpec, buildFill } from '../objects/fills'
 import { FILTER_PRESETS, applyImageFilters, normalizeSpecs, withSpec } from '../objects/filters'
 import { applyMask } from '../objects/masks'
@@ -417,6 +418,16 @@ export class StyleApi {
     this.each((o) => {
       asDory(o).link = safe ? { url: safe } : undefined
     }, safe ? t.history.addLink : t.history.removeLink)
+  }
+
+  /** Tags the selected object as a template field, or clears the tag (`null`). An invalid key is ignored. */
+  setField(field: DocField | null): void {
+    const tag = field === null ? null : readField(field)
+    if (field !== null && tag === null) return
+    if (this.targets().length !== 1) return
+    this.each((o) => {
+      asDory(o).field = tag ?? undefined
+    }, tag ? t.history.setField : t.history.removeField)
   }
 
   async setQr(patch: Partial<QrSpec>): Promise<void> {

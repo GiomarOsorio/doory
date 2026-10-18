@@ -146,6 +146,19 @@ export interface SlotSpec {
   src?: string
 }
 
+/** What a template field holds: replaceable text, a picture, or a colour (the object's fill). */
+export type FieldType = 'text' | 'image' | 'color'
+
+/**
+ * A template field tag (`field` on an object): a stable name for data to fill. `key` matches `FIELD_KEY`
+ * (engine/fields.ts) and is unique per design, except that the same key on several pages means the same value.
+ */
+export interface DocField {
+  key: string
+  type: FieldType
+  label?: string
+}
+
 /* ------------------------------------------------------------------------------------------------
  * Animation. Optional everywhere: a document without any of it means
  * exactly what it always did. Preset ids are open strings; an id the editor does not know plays as "none".

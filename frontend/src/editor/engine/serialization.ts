@@ -21,6 +21,7 @@ import './objects/complexText'
 import { type KindLoadContext, kindOfDoc, kindOfLive, objectKinds } from './objects/kinds'
 import { applyLock, asDory, ensureId } from './objects/dory'
 import { type FontUse, fontsInObjects } from './docOps'
+import { readField } from './fields'
 import { t } from '../strings'
 
 export const EXTRA_PROPS: readonly string[] = [
@@ -50,6 +51,8 @@ export const EXTRA_PROPS: readonly string[] = [
   'slot',
   /** Hyperlink for PDF / shared view. */
   'link',
+  /** Template field tag: a stable name for data to fill. */
+  'field',
   /** Regenerate-able QR code source. */
   'qr',
   /** Logical image src (the live element uses a resolved URL). */
@@ -186,6 +189,9 @@ export function serializePage(canvas: StaticCanvas, base: DocPage): DocPage {
 
 async function prepareTree(json: DocObject, ctx: LoadContext): Promise<void> {
   if (typeof json.type === 'string') json.type = json.type.toLowerCase()
+  // Fabric revives every nested object that has a `type` as a class instance (`{type: 'image'}` → an image), so
+  // the field tag skips Fabric and is put back by `hydrateTree` from the original JSON.
+  delete json.field
   const kind = objectKinds.list().find((k) => k.id === kindOfDoc(json))
   await kind?.prepare?.(json, ctx)
   if (Array.isArray(json.objects)) await Promise.all((json.objects as DocObject[]).map((c) => prepareTree(c, ctx)))
@@ -194,6 +200,8 @@ async function prepareTree(json: DocObject, ctx: LoadContext): Promise<void> {
 async function hydrateTree(obj: FabricObject, json: DocObject, ctx: LoadContext): Promise<void> {
   const d = asDory(obj)
   if (!d.id) d.id = typeof json.id === 'string' ? json.id : ensureId(obj)
+  const field = readField(json.field)
+  if (field) d.field = field
   const kind = objectKinds.list().find((k) => k.id === kindOfLive(obj))
   await kind?.hydrate?.(obj, json, ctx)
   applyLock(obj)

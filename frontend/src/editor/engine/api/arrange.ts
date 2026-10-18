@@ -22,9 +22,13 @@ export type AlignTarget = 'page' | 'selection'
 /** Distance a duplicate or paste lands from its source, in page px. */
 export const DUPLICATE_OFFSET = 20
 
-/** Re-assigns ids to an object and every object nested in it. */
+/**
+ * Re-assigns ids to an object and every object nested in it. A copy also loses its template field tag: the same
+ * key twice on one page would clash, and the user tags the copy when it is meant to be a field too.
+ */
 export function reidTree(obj: FabricObject): void {
   asDory(obj).id = newId()
+  asDory(obj).field = undefined
   if (obj instanceof Group) for (const child of obj.getObjects()) reidTree(child)
 }
 
@@ -99,7 +103,9 @@ export class ArrangeApi {
     // Leave the multi-selection before cloning: inside it, objects are placed relative to its centre, and copies
     // taken there would land around the page's top-left corner (#39). Copying does the same.
     view.canvas.discardActiveObject()
-    const clones = await Promise.all(objs.map((o) => o.clone(getExtraProps())))
+    // Not `field`: Fabric would revive the tag (it has a `type`) as an object, and copies drop it anyway.
+    const props = getExtraProps().filter((p) => p !== 'field')
+    const clones = await Promise.all(objs.map((o) => o.clone(props)))
     for (const c of clones) {
       reidTree(c)
       c.set({ left: c.left + offset, top: c.top + offset })

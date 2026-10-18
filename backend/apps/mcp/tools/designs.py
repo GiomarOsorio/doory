@@ -11,6 +11,7 @@ from pydantic import Field, TypeAdapter
 
 from apps.apitokens.scopes import DESIGNS_READ, DESIGNS_WRITE
 from apps.designs import services
+from apps.designs.doc import fields
 from apps.designs.doc.ops import MAX_OPS, Operation
 from apps.designs.doc.summary import summarize_document
 from apps.designs.edits import apply_edit, read_current
@@ -120,6 +121,15 @@ def get_design(
     if include_document:
         out["document"] = document
     return out
+
+
+@tool(scope=DESIGNS_READ, title="List template fields", read_only=True)
+def list_fields(design_id: DesignId) -> dict[str, Any]:
+    """The template fields of a design: objects tagged with a field key (set with edit_design →
+    update_object `field`), one entry per key, with its type (text, image, color), label, pages, object ids
+    and current value. Photo placeholders without a tag are listed as suggested image fields (`key: null`)."""
+    document, _live = read_current(_design(design_id))
+    return {"fields": fields.list_fields(document)}
 
 
 @tool(scope=DESIGNS_WRITE, title="Create a design")
