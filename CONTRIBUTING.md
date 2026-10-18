@@ -9,6 +9,7 @@ report a bug or suggest a feature. For a security problem, please report it priv
 - Set up a development environment with [docs/development](docs/development/README.md).
 - Run `make test` and `make lint` before you push. CI only runs when started by hand.
 - Keep each pull request to one change, and link the issue it closes.
+- Using an AI coding agent? [AGENTS.md](AGENTS.md) (also loaded through `CLAUDE.md`) gives it these rules.
 
 ## Documentation
 

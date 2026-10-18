@@ -50,3 +50,4 @@ Then set `DATABASE_URL` (and `REDIS_URL`) in `backend/.env`.
 - [architecture.md](architecture.md): how the code is organised
 - [testing.md](testing.md): unit and end-to-end tests
 - [CONTRIBUTING.md](../../CONTRIBUTING.md): pull requests and documentation rules
+- [AGENTS.md](../../AGENTS.md): instructions for AI coding agents (`CLAUDE.md` loads the same file)
