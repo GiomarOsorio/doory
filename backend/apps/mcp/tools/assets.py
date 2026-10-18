@@ -80,23 +80,40 @@ def import_stock_photo(
     ] = False,
     model: Annotated[
         str | None,
-        Field(description="The AI model option to use (from list_ai_models). If omitted, uses the default server model."),
+        Field(description="A server model from list_ai_models; omitted: its `server_default`."),
     ] = None,
 ) -> dict[str, Any]:
-    """Copy a stock photo into your uploads (once; importing it again returns the same asset). When
-    remove_background is true, runs background removal on the photo and returns the transparent cut-out."""
-    throttle(UploadRateThrottle())
+    """Copy a stock photo into your uploads (once; importing it again returns the same asset). With
+    remove_background, the transparent cut-out is returned instead (a second upload), with the `model`."""
     user = current().user
+    option = _reserve_cutout(user, model) if remove_background else None
+    throttle(UploadRateThrottle())
     asset, _ = stock.import_photo(user, provider, photo_id)
-    if remove_background:
-        from apps.ai.throttling import AIRateThrottle
+    return _with_cutout(user, asset, option)
 
-        from .ai import resolve_and_run_background_removal
 
-        throttle(AIRateThrottle())
-        cutout = resolve_and_run_background_removal(user, asset, model)
-        return _asset(cutout)
-    return _asset(asset)
+def _reserve_cutout(user, model: str | None):
+    """Pick the AI model and take its throttles and quota before anything is imported."""
+    from .ai import choose_model, reserve_run
+
+    option = choose_model(user, model)
+    reserve_run(user, option)
+    return option
+
+
+def _with_cutout(user, asset: Asset, option) -> dict[str, Any]:
+    if option is None:
+        return _asset(asset)
+    from .ai import model_info, run_model
+
+    try:
+        cutout = run_model(user, asset, option)
+    except ToolError as exc:
+        raise ToolError(
+            f"{exc} The original picture was kept in your uploads as asset_id {asset.pk}: retry with "
+            "remove_asset_background instead of importing it again."
+        ) from exc
+    return {**_asset(cutout), "model": model_info(option), "original_asset_id": str(asset.pk)}
 
 
 def import_url_asset(user, url: str, name: str | None = None) -> Asset:
@@ -123,23 +140,15 @@ def upload_image_from_url(
     ] = False,
     model: Annotated[
         str | None,
-        Field(description="The AI model option to use (from list_ai_models). If omitted, uses the default server model."),
+        Field(description="A server model from list_ai_models; omitted: its `server_default`."),
     ] = None,
 ) -> dict[str, Any]:
     """Copy an image from a public https URL into your uploads; it is checked like any upload. Only use
-    images the user has the right to use. When remove_background is true, runs background removal and returns
-    the transparent cut-out."""
+    images the user has the right to use. With remove_background, the transparent cut-out is returned instead
+    (a second upload), with the `model` used."""
     user = current().user
-    asset = import_url_asset(user, url, name)
-    if remove_background:
-        from apps.ai.throttling import AIRateThrottle
-
-        from .ai import resolve_and_run_background_removal
-
-        throttle(AIRateThrottle())
-        cutout = resolve_and_run_background_removal(user, asset, model)
-        return _asset(cutout)
-    return _asset(asset)
+    option = _reserve_cutout(user, model) if remove_background else None
+    return _with_cutout(user, import_url_asset(user, url, name), option)
 
 
 @tool(scope=DESIGNS_READ, title="Search sounds", read_only=True)

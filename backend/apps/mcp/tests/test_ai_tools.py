@@ -1,59 +1,100 @@
-"""Tests for AI MCP tools and design operations: list_ai_models, import_stock_photo(remove_background=True),
-and edit_design with remove_background."""
+"""The AI tools (list_ai_models, remove_asset_background, remove_background on imports and in edit_design),
+run end to end against a local stand-in for a provider: only its HTTP server is fake."""
 
 from __future__ import annotations
 
 import pytest
-from django.core.files.base import ContentFile
+from django.core.cache import cache
 from mcp.server.mcpserver.exceptions import ToolError
 
-from apps.ai.models import Provider
+from apps.accounts.models import User
+from apps.ai import catalog
+from apps.ai.models import AICall, Provider
+from apps.ai.tests.fakes import FakeServer
 from apps.ai.throttling import AIRateThrottle
-from apps.assets import stock
+from apps.assets import remote, stock
 from apps.assets.models import Asset
+from apps.assets.services import create_asset
 from apps.assets.tests.helpers import image_bytes
+from apps.designs import edits
 from apps.designs.models import Design
 from apps.designs.tests.helpers import make_design, make_doc
+from apps.gallery.models import Template
 from apps.mcp.tools import ai, assets, designs
 
 pytestmark = pytest.mark.django_db
 
 
-def make_test_asset(owner, name="Hero", width=200, height=100) -> Asset:
-    asset = Asset(owner=owner, name=name, width=width, height=height, mime="image/png", size=10)
-    asset.file.save(
-        f"{name.lower()}.png", ContentFile(image_bytes(mode="RGB", size=(width, height))), save=False
-    )
-    asset.save()
-    return asset
+@pytest.fixture(autouse=True)
+def _ai_on(settings, monkeypatch):
+    settings.AI_PROVIDERS_ENABLED = True
+    monkeypatch.setattr(catalog, "device_available", lambda task: False)
+    cache.clear()
+    yield
+    cache.clear()
 
 
-def make_provider(base_url="http://ai.example.com", name="Server Provider", style="doory") -> Provider:
+@pytest.fixture
+def fake():
+    server = FakeServer().start()
+    yield server
+    server.stop()
+
+
+def make_provider(fake, *, name="Server X", sends_offsite=False, **fields) -> Provider:
     return Provider.objects.create(
         name=name,
-        base_url=base_url,
-        style=style,
+        base_url=fake.url,
+        style="multipart",
+        style_config={"path": "/api/remove"},
         tasks=["background-removal"],
-        enabled=True,
+        sends_offsite=sends_offsite,
+        **fields,
     )
 
 
-# ---------------------------------------------------------------------------------------------
+@pytest.fixture
+def provider(fake):
+    return make_provider(fake)
+
+
+def picture(owner, name="Hero", size=(80, 40)) -> Asset:
+    return create_asset(owner, image_bytes(size=size), name=name)
+
+
+def image_obj(asset: Asset, **extra) -> dict:
+    return {
+        "id": "hero",
+        "type": "image",
+        "src": asset.file.url,
+        "assetId": str(asset.pk),
+        "left": 50,
+        "top": 60,
+        "width": 80,
+        "height": 40,
+        "scaleX": 2,
+        "scaleY": 2,
+        **extra,
+    }
+
+
+def remove(design, object_id="hero", **op):
+    return designs.edit_design(str(design.pk), [{"op": "remove_background", "object_id": object_id, **op}])
+
+
+def first_object(design) -> dict:
+    return Design.objects.get(pk=design.pk).document["pages"][0]["objects"][0]
+
+
 # list_ai_models
-# ---------------------------------------------------------------------------------------------
 
 
-def test_list_ai_models(as_caller, settings):
-    settings.AI_PROVIDERS_ENABLED = True
-    provider = make_provider()
+def test_list_ai_models_shows_public_data_and_the_server_default(as_caller, provider):
     listed = ai.list_ai_models()
-    assert listed["task"] == "background-removal"
-    assert listed["server_default"] is not None
-    models = listed["models"]
-    assert any(m["provider_name"] == provider.name for m in models)
-    for m in models:
-        assert "id" in m and "label" in m and "kind" in m and "provider_name" in m
-        assert "secret" not in m and "base_url" not in m and "url" not in m
+    assert listed["server_default"].startswith(str(provider.pk))
+    (model,) = listed["models"]
+    assert model["sends_offsite"] is False
+    assert not {"base_url", "url", "secret"} & set(model)
 
 
 def test_list_ai_models_unknown_task_is_refused(as_caller):
@@ -67,265 +108,203 @@ def test_list_ai_models_requires_assets_write_scope(as_caller):
         ai.list_ai_models()
 
 
-# ---------------------------------------------------------------------------------------------
-# import_stock_photo with remove_background
-# ---------------------------------------------------------------------------------------------
+# Choosing the model
 
 
-def test_import_stock_photo_with_remove_background(as_caller, user, monkeypatch, settings):
-    settings.AI_PROVIDERS_ENABLED = True
-    make_provider()
-    raw = make_test_asset(user, name="Raw Stock Photo")
-    cutout = make_test_asset(user, name="Cutout Photo")
+def test_the_configured_default_is_used(as_caller, user, fake, settings):
+    make_provider(fake, name="First")
+    second = make_provider(fake, name="Second")
+    wanted = ai.list_ai_models()["models"][1]["id"]
+    assert wanted.startswith(str(second.pk))
+    settings.AI_TASK_DEFAULTS = {"background-removal": wanted}
+    result = ai.remove_asset_background(str(picture(user).pk))
+    assert result["model"]["id"] == wanted
 
+
+def test_an_offsite_model_is_never_picked_silently(as_caller, user, fake):
+    make_provider(fake, sends_offsite=True)
+    hero = picture(user)
+    with pytest.raises(ToolError, match="sends_offsite"):
+        ai.remove_asset_background(str(hero.pk))
+    model = ai.list_ai_models()["models"][0]["id"]
+    result = ai.remove_asset_background(str(hero.pk), model=model)
+    assert result["model"] == {"id": model, "label": result["model"]["label"], "sends_offsite": True}
+
+
+# remove_asset_background
+
+
+def test_remove_asset_background_runs_the_real_path(as_caller, user, provider, fake):
+    hero = picture(user)
+    result = ai.remove_asset_background(str(hero.pk))
+    cutout = Asset.objects.get(pk=result["asset_id"], owner=user)
+    assert cutout.pk != hero.pk and (cutout.width, cutout.height) == (80, 40)
+    assert len(fake.requests) == 1
+    assert AICall.objects.filter(user=user, status=AICall.Status.OK).count() == 1
+
+
+def test_remove_asset_background_refuses_others_and_bad_ids(as_caller, user, provider, fake):
+    others = picture(User.objects.create_user(email="eve@example.com", password="x-very-long-pass-1"))
+    for asset_id in (str(others.pk), "not-a-uuid", "00000000-0000-0000-0000-000000000000"):
+        with pytest.raises(ToolError, match="There is no picture"):
+            ai.remove_asset_background(asset_id)
+    assert fake.requests == []
+
+
+def test_the_daily_quota_is_checked_before_any_work(as_caller, user, fake):
+    make_provider(fake, daily_quota=1)
+    hero = picture(user)
+    ai.remove_asset_background(str(hero.pk))
+    with pytest.raises(ToolError, match="today's calls"):
+        ai.remove_asset_background(str(picture(user, "Other").pk))
+    assert len(fake.requests) == 1
+
+
+# Imports with remove_background
+
+
+def test_import_stock_photo_with_remove_background(as_caller, user, provider, monkeypatch):
+    raw = picture(user, "Stock")
     monkeypatch.setattr(stock, "import_photo", lambda u, p, pid: (raw, True))
-    monkeypatch.setattr(ai, "resolve_and_run_background_removal", lambda u, a, m: cutout)
+    result = assets.import_stock_photo("unsplash", "photo-1", remove_background=True)
+    assert result["original_asset_id"] == str(raw.pk)
+    assert result["asset_id"] != str(raw.pk) and result["model"]["sends_offsite"] is False
 
-    imported = assets.import_stock_photo("unsplash", "photo-1", remove_background=True)
-    assert imported["asset_id"] == str(cutout.pk)
 
-
-def test_import_stock_photo_remove_background_fails_when_no_server_provider(
-    as_caller, user, monkeypatch, settings
-):
-    settings.AI_PROVIDERS_ENABLED = True
-    raw = make_test_asset(user, name="Raw Stock Photo")
-    monkeypatch.setattr(stock, "import_photo", lambda u, p, pid: (raw, True))
-
-    with pytest.raises(ToolError, match="No AI server is configured for background removal"):
+def test_nothing_is_imported_when_no_server_model_exists(as_caller, user, monkeypatch):
+    called = []
+    monkeypatch.setattr(stock, "import_photo", lambda *a: called.append(a))
+    with pytest.raises(ToolError, match="No AI server"):
         assets.import_stock_photo("unsplash", "photo-1", remove_background=True)
+    assert called == []
 
 
-def test_import_stock_photo_shares_ai_rate_throttle(as_caller, user, monkeypatch, settings):
-    settings.AI_PROVIDERS_ENABLED = True
-    make_provider()
-    raw = make_test_asset(user, name="Raw Stock Photo")
-    cutout = make_test_asset(user, name="Cutout Photo")
+def test_nothing_is_imported_once_the_ai_throttle_is_used_up(as_caller, user, provider, monkeypatch):
+    imported = []
 
-    monkeypatch.setattr(stock, "import_photo", lambda u, p, pid: (raw, True))
-    monkeypatch.setattr(ai, "resolve_and_run_background_removal", lambda u, a, m: cutout)
+    def import_photo(u, p, pid):
+        imported.append(pid)
+        return picture(user, pid), True
+
+    monkeypatch.setattr(stock, "import_photo", import_photo)
     monkeypatch.setattr(AIRateThrottle, "THROTTLE_RATES", {"ai": "1/min"})
-
     assets.import_stock_photo("unsplash", "photo-1", remove_background=True)
     with pytest.raises(ToolError, match="Too many requests"):
         assets.import_stock_photo("unsplash", "photo-2", remove_background=True)
+    assert imported == ["photo-1"]
 
 
-# ---------------------------------------------------------------------------------------------
+def test_a_failed_removal_names_the_kept_original(as_caller, user, provider, fake, monkeypatch):
+    fake.routes[("POST", "/api/remove")] = lambda request: (500, {}, b"")
+    monkeypatch.setattr(remote, "fetch_image", lambda url, max_bytes: image_bytes())
+    with pytest.raises(ToolError, match="kept in your uploads as asset_id") as caught:
+        assets.upload_image_from_url("https://img.example/pic.png", remove_background=True)
+    (raw,) = Asset.objects.filter(owner=user)
+    assert str(raw.pk) in str(caught.value)
+
+
 # edit_design with remove_background
-# ---------------------------------------------------------------------------------------------
 
 
-def test_edit_design_remove_background_replaces_image_in_place(as_caller, user, monkeypatch, settings):
-    settings.AI_PROVIDERS_ENABLED = True
-    make_provider()
-    hero = make_test_asset(user, name="Hero", width=400, height=200)
-    cutout = make_test_asset(user, name="Hero (cutout)", width=400, height=200)
+def test_edit_design_swaps_the_picture_and_keeps_frame_crop_and_mask(as_caller, user, provider):
+    hero = picture(user)
+    mask = {"type": "circle", "radius": 20}
+    design = make_design(user, document=make_doc(objects=[image_obj(hero, cropX=5, cropY=3, clipPath=mask)]))
+    before = first_object(design)
 
-    monkeypatch.setattr(ai, "resolve_and_run_background_removal", lambda u, a, m: cutout)
+    assert remove(design)["revision"] == 2
 
-    design = make_design(
-        user,
+    after = first_object(design)
+    assert after["assetId"] != str(hero.pk)
+    assert after["src"] == Asset.objects.get(pk=after["assetId"]).file.url
+    assert {k: v for k, v in after.items() if k not in ("src", "assetId")} == {
+        k: v for k, v in before.items() if k not in ("src", "assetId")
+    }
+
+
+def test_edit_design_runs_the_ai_call_before_locking_the_design(as_caller, user, provider, monkeypatch):
+    hero = picture(user)
+    design = make_design(user, document=make_doc(objects=[image_obj(hero)]))
+    order = []
+    real_run, real_saved = ai.run_model, edits._apply_saved
+    monkeypatch.setattr(ai, "run_model", lambda *a, **k: order.append("ai") or real_run(*a, **k))
+    monkeypatch.setattr(edits, "_apply_saved", lambda *a, **k: order.append("lock") or real_saved(*a, **k))
+    remove(design)
+    assert order == ["ai", "lock"]
+
+
+def test_a_failing_later_op_keeps_the_call_and_the_cutout(as_caller, user, provider):
+    hero = picture(user)
+    design = make_design(user, document=make_doc(objects=[image_obj(hero)]))
+    with pytest.raises(ToolError, match="no object"):
+        designs.edit_design(
+            str(design.pk),
+            [
+                {"op": "remove_background", "object_id": "hero"},
+                {"op": "delete_objects", "object_ids": ["nope"]},
+            ],
+        )
+    assert first_object(design)["assetId"] == str(hero.pk)
+    assert AICall.objects.filter(user=user).count() == 1  # the quota counts the paid call
+    assert Asset.objects.filter(owner=user).count() == 2
+
+
+def test_edit_design_refuses_another_users_picture(as_caller, user, provider, fake):
+    eve = User.objects.create_user(email="eve@example.com", password="x-very-long-pass-1")
+    theirs = picture(eve, "Private")
+    design = make_design(user, document=make_doc(objects=[image_obj(theirs)]))
+    with pytest.raises(ToolError, match="Only pictures from your uploads or a template"):
+        remove(design)
+    assert fake.requests == [] and not Asset.objects.filter(owner=user).exists()
+
+
+def test_edit_design_never_reads_a_file_by_its_path(as_caller, user, provider, fake):
+    eve = User.objects.create_user(email="eve@example.com", password="x-very-long-pass-1")
+    theirs = picture(eve, "Private")
+    obj = image_obj(theirs)
+    del obj["assetId"]
+    design = make_design(user, document=make_doc(objects=[obj]))
+    with pytest.raises(ToolError, match="Only pictures from your uploads or a template"):
+        remove(design)
+    assert fake.requests == [] and not Asset.objects.filter(owner=user).exists()
+
+
+def test_a_published_templates_picture_is_copied_once(as_caller, user, provider):
+    author = User.objects.create_user(email="author@example.com", password="x-very-long-pass-1")
+    shared = picture(author, "Template photo")
+    Template.objects.create(
         title="Poster",
-        document=make_doc(
-            objects=[
-                {
-                    "id": "hero-obj",
-                    "type": "image",
-                    "src": hero.file.url,
-                    "assetId": str(hero.pk),
-                    "left": 50,
-                    "top": 60,
-                    "width": 200,
-                    "height": 100,
-                    "scaleX": 1,
-                    "scaleY": 1,
-                }
-            ]
-        ),
+        width=800,
+        height=600,
+        is_published=True,
+        created_by=author,
+        document=make_doc(objects=[image_obj(shared)]),
     )
-
-    result = designs.edit_design(
-        str(design.pk),
-        [{"op": "remove_background", "object_id": "hero-obj"}],
-    )
-    assert result["revision"] == 2
-    doc = Design.objects.get(pk=design.pk).document
-    obj = doc["pages"][0]["objects"][0]
-    assert obj["assetId"] == str(cutout.pk)
-    assert obj["src"] == cutout.file.url
-    assert obj["left"] == 50 and obj["top"] == 60
+    for _ in range(2):
+        design = make_design(user, document=make_doc(objects=[image_obj(shared)]))
+        remove(design)
+    copies = Asset.objects.filter(owner=user, meta__copied_from=str(shared.pk))
+    assert copies.count() == 1
 
 
-def test_edit_design_remove_background_needs_assets_write_scope(as_caller, user, monkeypatch, settings):
-    settings.AI_PROVIDERS_ENABLED = True
-    make_provider()
-    hero = make_test_asset(user, name="Hero")
-
-    design = make_design(
-        user,
-        title="Poster",
-        document=make_doc(
-            objects=[
-                {
-                    "id": "hero-obj",
-                    "type": "image",
-                    "src": hero.file.url,
-                    "assetId": str(hero.pk),
-                    "left": 0,
-                    "top": 0,
-                    "width": 100,
-                    "height": 100,
-                }
-            ]
-        ),
-    )
-
+def test_edit_design_needs_assets_write_scope(as_caller, user, provider):
+    design = make_design(user, document=make_doc(objects=[image_obj(picture(user))]))
     as_caller.token.scopes = ["designs:read", "designs:write"]
     with pytest.raises(ToolError, match="`assets:write` scope"):
-        designs.edit_design(
-            str(design.pk),
-            [{"op": "remove_background", "object_id": "hero-obj"}],
-        )
+        remove(design)
 
 
-def test_edit_design_remove_background_refuses_non_images(as_caller, user):
-    design = make_design(
-        user,
-        title="Poster",
-        document=make_doc(
-            objects=[
-                {
-                    "id": "text-obj",
-                    "type": "textbox",
-                    "text": "Hello",
-                    "left": 0,
-                    "top": 0,
-                    "width": 100,
-                    "height": 50,
-                }
-            ]
-        ),
-    )
-
+def test_edit_design_refuses_non_pictures(as_caller, user):
+    text = {"id": "t", "type": "textbox", "text": "Hi", "left": 0, "top": 0, "width": 100, "height": 50}
+    design = make_design(user, document=make_doc(objects=[text]))
     with pytest.raises(ToolError, match="Only pictures can have their background removed"):
-        designs.edit_design(
-            str(design.pk),
-            [{"op": "remove_background", "object_id": "text-obj"}],
-        )
+        remove(design, object_id="t")
 
 
-def test_edit_design_remove_background_fails_atomically_on_provider_error(
-    as_caller, user, monkeypatch, settings
-):
-    settings.AI_PROVIDERS_ENABLED = True
-    make_provider()
-    hero = make_test_asset(user, name="Hero")
-
-    def failing_removal(u, a, m):
-        raise ToolError("The AI provider timed out.")
-
-    monkeypatch.setattr(ai, "resolve_and_run_background_removal", failing_removal)
-
-    design = make_design(
-        user,
-        title="Poster",
-        document=make_doc(
-            objects=[
-                {
-                    "id": "hero-obj",
-                    "type": "image",
-                    "src": hero.file.url,
-                    "assetId": str(hero.pk),
-                    "left": 10,
-                    "top": 20,
-                    "width": 100,
-                    "height": 100,
-                }
-            ]
-        ),
-    )
-
-    with pytest.raises(ToolError, match=r"AI provider timed out.*Nothing was changed"):
-        designs.edit_design(
-            str(design.pk),
-            [{"op": "remove_background", "object_id": "hero-obj"}],
-        )
-
-    # Design document unchanged
-    unchanged_doc = Design.objects.get(pk=design.pk).document
-    assert unchanged_doc["pages"][0]["objects"][0]["src"] == hero.file.url
-
-
-def test_remove_asset_background(as_caller, user, monkeypatch, settings):
-    settings.AI_PROVIDERS_ENABLED = True
-    make_provider()
-    hero = make_test_asset(user, name="Hero")
-    cutout = make_test_asset(user, name="Hero (cutout)")
-
-    monkeypatch.setattr(ai, "resolve_and_run_background_removal", lambda u, a, m: cutout)
-
-    result = ai.remove_asset_background(str(hero.pk))
-    assert result["asset_id"] == str(cutout.pk)
-
-    with pytest.raises(ToolError, match="Invalid asset id"):
-        ai.remove_asset_background("not-a-uuid")
-
-    with pytest.raises(ToolError, match="There is no picture"):
-        ai.remove_asset_background("00000000-0000-0000-0000-000000000000")
-
-
-def test_upload_image_from_url_with_remove_background(as_caller, user, monkeypatch, settings):
-    settings.AI_PROVIDERS_ENABLED = True
-    make_provider()
-    raw = make_test_asset(user, name="URL Pic")
-    cutout = make_test_asset(user, name="Cutout Pic")
-
-    from apps.assets import remote
-
-    monkeypatch.setattr(remote, "fetch_image", lambda url, max_bytes: image_bytes())
-    monkeypatch.setattr(ai, "resolve_and_run_background_removal", lambda u, a, m: cutout)
-
-    result = assets.upload_image_from_url("https://img.example/pic.png", remove_background=True)
-    assert result["asset_id"] == str(cutout.pk)
-
-
-def test_edit_design_remove_background_on_placeholder_slot(as_caller, user, monkeypatch, settings):
-    settings.AI_PROVIDERS_ENABLED = True
-    make_provider()
-    hero = make_test_asset(user, name="Hero")
-    cutout = make_test_asset(user, name="Hero (cutout)")
-
-    monkeypatch.setattr(ai, "resolve_and_run_background_removal", lambda u, a, m: cutout)
-
-    design = make_design(
-        user,
-        title="Poster",
-        document=make_doc(
-            objects=[
-                {
-                    "id": "slot-obj",
-                    "type": "image",
-                    "isPlaceholder": True,
-                    "slot": {"cx": 100, "cy": 100, "width": 100, "height": 100, "mask": "circle"},
-                    "src": hero.file.url,
-                    "assetId": str(hero.pk),
-                    "left": 50,
-                    "top": 50,
-                    "width": 100,
-                    "height": 100,
-                }
-            ]
-        ),
-    )
-
-    result = designs.edit_design(
-        str(design.pk),
-        [{"op": "remove_background", "object_id": "slot-obj"}],
-    )
-    assert result["revision"] == 2
-    doc = Design.objects.get(pk=design.pk).document
-    obj = doc["pages"][0]["objects"][0]
-    assert obj["assetId"] == str(cutout.pk)
-    assert obj["src"] == cutout.file.url
-
+def test_a_provider_error_changes_nothing(as_caller, user, provider, fake):
+    fake.routes[("POST", "/api/remove")] = lambda request: (500, {}, b"")
+    hero = picture(user)
+    design = make_design(user, document=make_doc(objects=[image_obj(hero)]))
+    with pytest.raises(ToolError, match="Nothing was changed"):
+        remove(design)
+    assert first_object(design)["assetId"] == str(hero.pk)

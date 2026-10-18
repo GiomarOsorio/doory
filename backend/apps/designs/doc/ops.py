@@ -241,7 +241,7 @@ class RemoveBackground(_Op):
     object_id: ObjectId
     model: str | None = Field(
         None,
-        description="The AI model option to use (from list_ai_models). If omitted, uses the default server model.",
+        description="A server model from list_ai_models; omitted: its `server_default`.",
     )
 
 
@@ -431,7 +431,11 @@ class Resolver(Protocol):
         """The picture to place; raises `LookupError` with a message for the agent when there is none."""
 
     def remove_background(self, *, obj: dict, model: str | None = None) -> ImageSource:
-        """Cut out the background of `obj`; raises `LookupError` with a message for the agent on failure."""
+        """The picture of `obj` without its background; raises `LookupError` with a message for the agent."""
+
+    def seal(self) -> None:
+        """Optional. Called once the design is locked: from then on, lookups must not do slow work (network,
+        AI)."""
 
     def font_category(self, family: str) -> str | None:
         """The catalogue category of a font family (serif, display…), None when it is unknown."""
@@ -666,14 +670,10 @@ class _Editor:
             source = self.resolver.remove_background(obj=obj, model=op.model)
         except LookupError as exc:
             raise self.fail(str(exc)) from exc
-        builders.replace_image(
-            obj,
-            src=source.src,
-            natural_width=source.width,
-            natural_height=source.height,
-            asset_id=source.asset_id,
-            name=source.name,
-        )
+        # The cut-out has the picture's pixel size, so the frame, crop and mask stay as they are.
+        obj["src"] = source.src
+        if source.asset_id:
+            obj["assetId"] = source.asset_id
         return {"object_id": obj["id"], "box": box(obj)}
 
     def add_qr_code(self, op: AddQrCode) -> dict:

@@ -41,9 +41,7 @@ class Resolver:
     def remove_background(self, *, obj, model=None):
         if obj.get("id") == "bad-bg":
             raise LookupError("Background removal failed: provider unreachable.")
-        return ImageSource(
-            "/media/assets/u/cutout.png", 400, 200, asset_id="asset-cutout", name="Cutout"
-        )
+        return ImageSource("/media/assets/u/cutout.png", 400, 200, asset_id="asset-cutout", name="Cutout")
 
     def font_category(self, family):
         return {"Playfair Display": "serif"}.get(family)
