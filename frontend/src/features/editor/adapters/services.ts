@@ -1,6 +1,7 @@
-import { assetsApi, authApi, brandApi, commentsApi, designsApi, elementsApi, fontsApi, shareApi, stockApi, templatesApi } from '@/lib/api'
-import type { Asset, BrandKit, BrandKitInput, Page } from '@/types/api'
-import type { AssetRef, CommentViewer, EditorServices, UserFontsService } from '@/types/adapter'
+import { aiApi, assetsApi, authApi, brandApi, commentsApi, designsApi, elementsApi, fontsApi, isApiError, shareApi, stockApi, templatesApi } from '@/lib/api'
+import { safeGetItem, safeSetItem } from '@/lib/storage'
+import type { AiConfig, AiTaskOptions, Asset, BrandKit, BrandKitInput, Page } from '@/types/api'
+import type { AiService, AssetRef, CommentViewer, EditorServices, UserFontsService } from '@/types/adapter'
 
 /** The page's language for stock providers that search in it (Pixabay). */
 function uiLanguage(): string | undefined {
@@ -50,6 +51,58 @@ export function createUserFontsService(): UserFontsService {
   }
 }
 
+/** How long the options of a task are reused before they are asked for again (a new server in Settings shows up). */
+const AI_OPTIONS_TTL = 60_000
+
+function configOptions(config: AiConfig | undefined, task: string): AiTaskOptions | undefined {
+  return (config as Record<string, unknown> | undefined)?.[task.replace(/-/g, '_')] as AiTaskOptions | undefined
+}
+
+/**
+ * AI image tasks for a signed-in user: their options (`GET /ai/models/`, which includes their own servers; the
+ * public list from `/config/` when that fails), runs on the server, and the last choice per user and task.
+ */
+export function createAiService({ config, userId }: { config?: AiConfig; userId?: string } = {}): AiService {
+  const cached = new Map<string, { at: number; value: Promise<AiTaskOptions> }>()
+  const storageKey = (task: string): string => `doory.ai.choice.${userId ?? 'me'}.${task}`
+  const upload = async (image: Blob, signal?: AbortSignal): Promise<string> => {
+    const ext = image.type === 'image/jpeg' ? 'jpg' : (image.type.split('/')[1] ?? 'png').replace(/\W.*$/, '')
+    return (await assetsApi.upload(image, { name: `image.${ext}`, signal })).id
+  }
+  return {
+    offsiteNotice: config?.offsite_notice ?? '',
+    options(task) {
+      const hit = cached.get(task)
+      if (hit && Date.now() - hit.at < AI_OPTIONS_TTL) return hit.value
+      const fallback = configOptions(config, task)
+      const value = aiApi.options(task).then(
+        (models) => ({ default: fallback?.default ?? 'device', models }),
+        () => {
+          cached.delete(task) // ask again next time
+          return fallback ?? { default: null, models: [] }
+        },
+      )
+      cached.set(task, { at: Date.now(), value })
+      return value
+    },
+    async run(task, { model, image, assetId, signal }) {
+      if (assetId) {
+        try {
+          return assetToRef(await aiApi.run(task, { asset_id: assetId, model }, signal))
+        } catch (error) {
+          // Not this user's asset (a template's picture, say): upload the picture and run on that copy.
+          if (!isApiError(error) || error.status !== 404 || error.code === 'ai_model_not_found') throw error
+        }
+      }
+      return assetToRef(await aiApi.run(task, { asset_id: await upload(image, signal), model }, signal))
+    },
+    remembered: (task) => safeGetItem(storageKey(task)),
+    remember: (task, option) => {
+      safeSetItem(storageKey(task), option)
+    },
+  }
+}
+
 function brandInput(kit: BrandKit): BrandKitInput {
   return { name: kit.name, is_default: kit.is_default, colors: kit.colors, fonts: kit.fonts, logo_ids: kit.logos.map((logo) => logo.id) }
 }
@@ -62,9 +115,10 @@ export function createAccountAssetsService(): EditorServices['assets'] {
 }
 
 /** Everything an authenticated user can reach from the editor. */
-export function createAccountServices(designId: string | null, beforeVersion: () => Promise<void> = () => Promise.resolve()): EditorServices {
+export function createAccountServices(designId: string | null, beforeVersion: () => Promise<void> = () => Promise.resolve(), ai: AiService | null = null): EditorServices {
   const publicServices = createPublicServices()
   return {
+    ai,
     ...publicServices,
     fonts: { ...publicServices.fonts, mine: createUserFontsService() },
     assets: createAccountAssetsService(),

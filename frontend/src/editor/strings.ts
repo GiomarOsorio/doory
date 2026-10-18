@@ -562,6 +562,47 @@ export const t = {
     bgRemovalProcessing: 'Removing the background…',
     bgRemovalDone: 'Background removed',
   },
+  /** The Remove background dialog's choice of option and the errors of server options. */
+  bgRemoval: {
+    choose: 'Quality',
+    device: 'On this device',
+    deviceHint: 'Runs in your browser. The image stays on your computer.',
+    serverHint: 'Runs on this site\'s server.',
+    externalHint: 'Runs on an external service.',
+    ownServerHint: (name: string) => (name ? `Your server: ${name}` : 'Your server'),
+    offsite: 'The image is sent to an external service.',
+    start: 'Remove background',
+    loading: 'Loading the options…',
+    serverProcessing: 'Removing the background on the server…',
+    retryOnDevice: 'Retry on this device',
+    otherOption: 'Choose another option',
+    unavailable: 'Background removal is not available here.',
+    errors: {
+      timeout: 'The server took too long to answer.',
+      unreachable: 'The server could not be reached.',
+      busy: 'The server is busy. Try again in a moment.',
+      quota: (wait: string | null) => (wait ? `You have used today's removals with this option. It resets ${wait}.` : 'You have used today\'s removals with this option.'),
+      throttled: (wait: string | null) => (wait ? `Too many removals at once. Try again ${wait}.` : 'Too many removals at once. Try again shortly.'),
+      authFailed: 'The server refused its credentials.',
+      ownAuthFailed: 'Your server refused its credentials. Check the key in Settings → AI providers.',
+      badResponse: 'The server\'s answer could not be used.',
+      tooLarge: 'This image is too large for the server.',
+      refusedAddress: 'That server\'s address is not allowed.',
+      secretUnreadable: 'The server\'s key can no longer be read. Enter it again in Settings → AI providers.',
+      modelGone: 'This option is no longer available. Choose another one.',
+      unsupported: 'Only PNG, JPEG, WebP, GIF and AVIF pictures can be processed on a server.',
+      network: 'You seem to be offline. Check your connection and try again.',
+      generic: 'The server could not remove the background.',
+    },
+    /** `seconds` from now in words, for "It resets …" / "Try again …". */
+    wait: (seconds: number) => {
+      if (seconds < 90) return `in ${seconds} ${plural(seconds, 'second', 'seconds')}`
+      const minutes = Math.round(seconds / 60)
+      if (minutes < 90) return `in ${minutes} ${plural(minutes, 'minute', 'minutes')}`
+      const hours = Math.round(minutes / 60)
+      return `in ${hours} ${plural(hours, 'hour', 'hours')}`
+    },
+  },
   kinds: {
     text: 'Text',
     shape: 'Shape',

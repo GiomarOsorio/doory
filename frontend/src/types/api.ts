@@ -34,13 +34,45 @@ export interface BackgroundRemovalModel {
 
 export interface AppConfig {
   google_client_id: string
-  /** `background_removal` is absent on servers that predate it. */
-  features: { stock_photos: boolean; server_pdf: boolean; google_login: boolean; email_verification: boolean; background_removal?: boolean; realtime?: boolean; mcp?: boolean }
+  /** `background_removal` (and `ai_providers`, …) are absent on servers that predate them. */
+  features: { stock_photos: boolean; server_pdf: boolean; google_login: boolean; email_verification: boolean; background_removal?: boolean; realtime?: boolean; mcp?: boolean; ai_providers?: boolean }
   limits: { max_upload_bytes: number; max_pages: number; max_document_bytes: number; realtime_max_participants?: number }
   /** Files the browser downloads at run time; absent on servers that predate it. */
   assets?: { background_removal_model: BackgroundRemovalModel | null }
   /** The instance's default export file names; absent on servers that predate them (simple, no timestamp). */
   exports?: { filename_style: 'simple' | 'structured'; filename_timestamp: boolean }
+  /** Remote AI image providers; absent on servers that predate them. */
+  ai?: AiConfig
+}
+
+/** Who may add their own AI servers in Settings (`staff`: staff accounts only). */
+export type AiUserProviders = 'off' | 'staff' | 'everyone'
+
+/** The `ai` part of `/config/`: per task, the options every signed-in user has and the one to start with. */
+export interface AiConfig {
+  user_providers: AiUserProviders
+  /** The operator's wording of the notice under options that send the image away; empty: the editor's own. */
+  offsite_notice?: string
+  background_removal?: AiTaskOptions
+}
+
+export interface AiTaskOptions {
+  /** The option to start with; `null` when there is none. */
+  default: string | null
+  models: AiOption[]
+}
+
+/** One option a user may pick for an AI task (`GET /ai/models/`): the browser model, or a server's model. */
+export interface AiOption {
+  /** `device`, or `<provider id>:<model name>`. */
+  id: string
+  label: string
+  task: string
+  kind: 'device' | 'server'
+  provider_name: string
+  owner: 'device' | 'operator' | 'user'
+  /** The image leaves this installation. */
+  sends_offsite: boolean
 }
 
 export interface ApiUser {
@@ -464,4 +496,52 @@ export interface IssuedApiToken extends ApiToken {
 export interface ApiTokenScope {
   id: string
   description: string
+}
+
+/** The API styles a provider can speak (see the backend's `apps.ai.styles`). */
+export type AiProviderStyle = 'doory' | 'multipart' | 'json' | 'mask' | 'custom'
+
+/** A model a user's provider offers for a task, as they picked and labelled it. */
+export interface AiProviderModel {
+  id?: string
+  task: string
+  /** Sent to the server as the model; empty: the server's default. */
+  remote_name: string
+  label: string
+  enabled: boolean
+  sort_order?: number
+}
+
+/** A user's own AI server (`/ai/providers/`). The secret is write-only: only `has_secret` comes back. */
+export interface AiProvider {
+  id: string
+  name: string
+  base_url: string
+  style: AiProviderStyle
+  style_config: Record<string, unknown>
+  auth_header: string
+  has_secret: boolean
+  tasks: string[]
+  timeout_seconds: number
+  max_image_bytes: number
+  sends_offsite: boolean
+  enabled: boolean
+  sort_order: number
+  models: AiProviderModel[]
+  created_at: string
+  updated_at: string
+}
+
+/** What `POST`/`PATCH /ai/providers/` accept: `secret` omitted keeps the stored one, `''` removes it. */
+export type AiProviderInput = Partial<Pick<AiProvider, 'name' | 'base_url' | 'style' | 'style_config' | 'auth_header' | 'tasks' | 'timeout_seconds' | 'sends_offsite' | 'enabled'>> & { secret?: string }
+
+/** `POST /ai/providers/{id}/test/`: a built-in sample picture sent to the server. */
+export interface AiProviderTestResult {
+  ok: boolean
+  duration_ms: number
+  task: string
+  model: string
+  /** `data:` URL of the result (PNG, at most 256 px) when it worked. */
+  preview: string
+  error: { code: string; message: string } | null
 }

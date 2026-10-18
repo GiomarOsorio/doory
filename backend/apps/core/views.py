@@ -93,6 +93,10 @@ _CONFIG_SCHEMA = inline_serializer(
             "AppConfigAI",
             {
                 "user_providers": serializers.ChoiceField(choices=["off", "staff", "everyone"]),
+                "offsite_notice": serializers.CharField(
+                    help_text="The operator's wording of the notice under options that send the image off "
+                    "this installation; empty: the editor's own."
+                ),
                 "background_removal": TaskOptionsSerializer(
                     help_text="The options every signed-in user has; "
                     "GET /api/v1/ai/models/ lists those of the signed-in user."

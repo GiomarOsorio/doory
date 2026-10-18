@@ -2,6 +2,7 @@ import { Crop, Frame, Replace } from 'lucide-react'
 import { I } from '../../chrome/icons'
 import { useEditor, useSelection } from '../../context'
 import { isBackgroundRemovalAvailable } from '../../engine/bgRemoval'
+import { useBackgroundRemovalOptions } from '../../hooks/useBackgroundRemovalOptions'
 import { FILTER_PRESETS, FILTER_RANGES, TOGGLE_FILTERS, specValue } from '../../engine/objects/filters'
 import { MASK_SHAPE_IDS, maskPath } from '../../engine/objects/shapeGeometry'
 import type { ImageFilterSpec, MaskShape } from '@/types/document'
@@ -95,6 +96,9 @@ export function ImageSection() {
   const editor = useEditor()
   const sel = useSelection()
   const fillsPlaceholder = sel.objects[0]?.slot !== undefined
+  // The in-browser model, or a server option for this user (the list arrives a moment later).
+  const removal = useBackgroundRemovalOptions()
+  const canRemoveBackground = isBackgroundRemovalAvailable() || removal?.options.some((option) => option.kind === 'server') === true
   return (
     <>
       {fillsPlaceholder ? (
@@ -109,7 +113,7 @@ export function ImageSection() {
       <ToolButton label={t.toolbar.replaceImage} testId="ed-replace-image" onClick={() => void editor.insert.pickAndReplaceImage()}>
         <Replace size={18} aria-hidden="true" />
       </ToolButton>
-      {isBackgroundRemovalAvailable() ? (
+      {canRemoveBackground ? (
         <ToolButton label={t.toolbar.removeBackground} featured testId="ed-remove-bg" onClick={() => editor.openDialog('background-removal')}>
           {I.removeBg}
           <span className={ed.toolText}>{t.ctx.removeBackground}</span>

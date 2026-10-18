@@ -420,3 +420,10 @@ def test_config_without_providers(settings):
     assert body["ai"]["background_removal"] == {"default": None, "models": []}
     settings.AI_USER_PROVIDERS = "everyone"
     assert APIClient().get("/api/v1/config/").json()["features"]["ai_providers"] is True
+
+
+def test_config_carries_the_operators_offsite_notice(settings):
+    assert APIClient().get("/api/v1/config/").json()["ai"]["offsite_notice"] == ""
+    settings.AI_OFFSITE_NOTICE = "  Images go to our partner's servers in the EU.  "
+    body = APIClient().get("/api/v1/config/").json()
+    assert body["ai"]["offsite_notice"] == "Images go to our partner's servers in the EU."

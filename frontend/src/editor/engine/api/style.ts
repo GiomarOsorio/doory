@@ -5,8 +5,9 @@
  */
 import { type FabricImage, type FabricObject, IText, Polygon, Rect, Shadow } from 'fabric'
 import type { ArrowHead, DocField, DocTextFit, ImageFilterSpec, MaskShape, ObjectEffects, ShadowSpec } from '@/types/document'
+import type { AssetRef } from '@/types/adapter'
 import type { EditorEngine } from '../editor'
-import { removeBackground as runRemoval, type BgRemovalPhase } from '../bgRemoval'
+import { BACKGROUND_REMOVAL_TASK, BackgroundRemovalError, DEVICE_OPTION, removeBackground as runRemoval, type BgRemovalPhase } from '../bgRemoval'
 import { DoryLine } from '../objects/DoryLine'
 import { asDory } from '../objects/dory'
 import { applyColorMap } from '../objects/elements'
@@ -388,24 +389,30 @@ export class StyleApi {
   }
 
   /**
-   * Cuts the background out of the selected image and swaps the result in. Resolves `false` without
-   * touching the design when cancelled or when the selection moved to another object while it ran.
+   * Cuts the background out of the selected image and swaps the result in. `option` picks how: `device` (the
+   * default) runs the in-browser model, any other option id runs on a server through the adapter's AI service.
+   * Either way the cut-out is a new asset and the swap is one undo step. Resolves `false` without touching the
+   * design when cancelled or when the selection moved to another object while it ran.
    */
-  async removeBackground(onProgress?: (phase: BgRemovalPhase, percent: number) => void, signal?: AbortSignal): Promise<boolean> {
+  async removeBackground(onProgress?: (phase: BgRemovalPhase, percent: number) => void, signal?: AbortSignal, option: string = DEVICE_OPTION): Promise<boolean> {
     const img = this.images()[0]
     if (!img || signal?.aborted) return false
     const stale = (): boolean => signal?.aborted === true || this.images()[0] !== img
-    let result: Blob
+    const ai = option === DEVICE_OPTION ? null : this.engine.adapter.services.ai
+    if (option !== DEVICE_OPTION && !ai) throw new BackgroundRemovalError('No server option is available here.')
+    let result: Blob | AssetRef
     try {
       const blob = await (await fetch(img.getSrc(), { signal })).blob()
-      result = await runRemoval(blob, onProgress, signal)
+      result = ai
+        ? await ai.run(BACKGROUND_REMOVAL_TASK, { model: option, image: blob, assetId: asDory(img).assetId, signal })
+        : await runRemoval(blob, onProgress, signal)
     } catch (error) {
       // Cancel is not a failure: the engine has stopped its work and the design stays as it was.
       if (signal?.aborted) return false
       throw error
     }
     if (stale()) return false
-    const ref = await this.engine.assets.upload(result, 'cutout.png')
+    const ref = result instanceof Blob ? await this.engine.assets.upload(result, 'cutout.png') : result
     if (stale()) return false
     await this.engine.insert.replaceSelectedImage(ref)
     return true
