@@ -18,3 +18,9 @@ class StockRateThrottle(_UserScopedThrottle):
     """Per-user limit for stock-photo searches (`stock` rate); keeps provider quotas safe."""
 
     scope = "stock"
+
+
+class StockPreviewRateThrottle(_UserScopedThrottle):
+    """Per-user limit for listening to sound previews (`stock_preview` rate), apart from searches."""
+
+    scope = "stock_preview"

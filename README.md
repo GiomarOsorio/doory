@@ -48,7 +48,7 @@ reports are very welcome.
 | **Elements** | Shapes, lines and arrows, about 27,500 icons, emoji and illustrations, stickers, QR codes |
 | **Photos** | Upload, crop, masks and filters, background removal that runs in the browser, stock photo search with an Unsplash or Pexels key |
 | **Layout** | Layers, groups, alignment guides, snapping, rulers, several pages per design (each its own size), resize to another format |
-| **Motion and sound** | 27 enter and exit animations, 12 emphasis animations, 16 page transitions, 24 music loops and 88 sound effects (CC0), voiceover recording |
+| **Motion and sound** | 27 enter and exit animations, 12 emphasis animations, 16 page transitions, 24 music loops and 88 sound effects (CC0), Freesound search with a key (CC0 by default), voiceover recording |
 | **Present** | Present mode with speaker notes, timing, auto-advance and a second presenter window |
 | **Together** | Share links that view, comment or edit (with an optional password), pinned comments, version history, real-time co-editing |
 | **Brand** | Brand kits with your colours, fonts and logos |
@@ -183,6 +183,7 @@ saved, edited and imported again. `manage.py seed_size_presets --update` resets 
 | `INSTALL_CHROMIUM` | `false` skips the headless browser that server-side PDF export needs |
 | `GOOGLE_CLIENT_ID` | Turns on "Sign in with Google" |
 | `UNSPLASH_ACCESS_KEY`, `PEXELS_API_KEY`, `PIXABAY_API_KEY` | Turn on stock photo search, one tab per provider plus an "All" tab |
+| `FREESOUND_API_KEY`, `FREESOUND_LICENSES` | Turn on the Audio tool's Freesound tab (music, effects, ambience). Only CC0 sounds by default; `cc0,by` also allows CC BY, and the editor then lists the credits to publish. Freesound's API terms cover non-commercial use: a commercial service needs an agreement with Freesound first |
 | `STOCK_PROVIDERS`, `STOCK_ALL_PROVIDERS`, `STOCK_DEFAULT_TAB` | Which providers are offered, in which order, and which the "All" tab searches |
 | `STOCK_<PROVIDER>_RATE`, `STOCK_<PROVIDER>_CACHE_SECONDS`, `STOCK_<PROVIDER>_SAFESEARCH` | An optional cap on calls per API key (all users together, e.g. `5000/h`; none by default, a provider is still paused when it answers 429), how long searches are cached, and safe search (Unsplash off, Pixabay on). Caps and cache times only hold across workers with a shared cache (the Docker setup uses the database cache; `locmem` is for development) |
 | `USE_S3` and `AWS_*` | Store uploads in S3-compatible storage instead of a local volume |
