@@ -220,6 +220,7 @@ REST_FRAMEWORK = {
         "auth": "20/min",  # login / register / password reset
         "upload": "60/min",
         "stock": "60/min",
+        "stock_preview": "300/min",  # listening to Freesound previews; searches keep the `stock` budget
         "export": "30/min",  # server-side image renders (REST and MCP)
     },
     "DEFAULT_RENDERER_CLASSES": ["rest_framework.renderers.JSONRenderer"],

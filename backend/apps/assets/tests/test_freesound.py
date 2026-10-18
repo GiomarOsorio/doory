@@ -261,3 +261,16 @@ class TestCredits:
 
     def test_nothing_to_credit(self, user):
         assert credits.design_credits({}, user) == {"credits": [], "required": False, "credits_text": ""}
+
+
+def test_previews_have_their_own_throttle(api, key, net, monkeypatch):
+    from apps.assets.throttling import StockPreviewRateThrottle, StockRateThrottle
+
+    monkeypatch.setattr(StockRateThrottle, "THROTTLE_RATES", {"stock": "1/min"})
+    monkeypatch.setattr(StockPreviewRateThrottle, "THROTTLE_RATES", {"stock_preview": "2/min"})
+    net.add(API_SEARCH, page(sound()))
+    assert api.get(SEARCH).status_code == 200  # the one search this minute
+    net.add("https://cdn.freesound.org/previews/0/101-lq.mp3", FakeResponse(body=mp3_bytes()))
+    for _ in range(2):
+        assert api.get("/api/v1/stock/audio/101/preview/").status_code == 200
+    assert api.get("/api/v1/stock/audio/101/preview/").status_code == 429

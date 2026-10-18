@@ -24,7 +24,7 @@ from .exceptions import FileTooLarge, StockBusy, StockNotConfigured, StockUnavai
 from .models import Asset
 from .serializers import AssetSerializer
 from .services import create_asset
-from .throttling import StockRateThrottle, UploadRateThrottle
+from .throttling import StockPreviewRateThrottle, StockRateThrottle, UploadRateThrottle
 from .uploads import clean_name
 
 DEFAULT_PER_PAGE = 20
@@ -210,7 +210,7 @@ class AudioStockPreviewView(APIView):
     """The sound's short MP3 preview, relayed from Freesound's CDN."""
 
     def get_throttles(self):
-        return [*super().get_throttles(), StockRateThrottle()]
+        return [*super().get_throttles(), StockPreviewRateThrottle()]
 
     @extend_schema(responses={(200, "audio/mpeg"): bytes}, tags=["stock"])
     def get(self, request, sound_id: str):
