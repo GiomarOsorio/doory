@@ -61,12 +61,13 @@ class DjangoResolver:
     """Pictures come from the caller's own uploads or the published element catalogue; fonts from the
     catalogue plus the caller's uploaded fonts."""
 
-    def __init__(self, user, *, allow_urls: bool | None = None) -> None:
+    def __init__(self, user, *, allow_urls: bool | None = None, url_throttle=None) -> None:
         self.user = user
         self._urls: dict[str, ImageSource] = {}
         self._cutouts: dict[tuple, ImageSource] = {}
         self._sealed = False
         self.allow_urls = allow_urls  # None: when the MCP caller has `assets:write`
+        self.url_throttle = url_throttle  # throttle class charged per new URL; None: `upload`
 
     def image(
         self, *, asset_id: str | None = None, element_id: str | None = None, url: str | None = None
@@ -86,7 +87,9 @@ class DjangoResolver:
                     "Create a token with it in Doory: Account settings > API tokens."
                 )
             try:
-                asset = import_url_asset(self.user, url)
+                asset = import_url_asset(
+                    self.user, url, rate_throttle=self.url_throttle() if self.url_throttle else None
+                )
             except (ToolError, APIException) as exc:
                 raise LookupError(str(getattr(exc, "detail", exc))) from exc
             source = ImageSource(

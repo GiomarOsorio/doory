@@ -13,12 +13,10 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.assets.ordering import order_queryset
-from apps.assets.throttling import UploadRateThrottle
 from apps.assets.uploads import reject_oversize_request
 
 from . import fill as filling
 from . import services
-from .throttling import BulkFillRateThrottle
 from .doc.fields import list_fields
 from .edits import read_current
 from .exceptions import RevisionConflict
@@ -40,6 +38,7 @@ from .serializers import (
     VersionSummarySerializer,
 )
 from .services import THUMBNAIL_MAX_BYTES
+from .throttling import BulkFillImageRateThrottle, BulkFillRateThrottle
 
 UUID_REGEX = "[0-9a-fA-F-]{36}"
 FULL_DOCUMENT_ACTIONS = {"retrieve", "restore", "duplicate", "fields", "fill", "bulk_fill"}
@@ -50,10 +49,10 @@ ORDERING = {
 }
 
 
-def _resolver(user):
+def _resolver(user, url_throttle=None):
     from apps.mcp.resolver import DjangoResolver  # the same picture lookups as the MCP tools
 
-    return DjangoResolver(user, allow_urls=settings.URL_IMAGE_UPLOADS)
+    return DjangoResolver(user, allow_urls=settings.URL_IMAGE_UPLOADS, url_throttle=url_throttle)
 
 
 def conflict_response(conflict: RevisionConflict) -> Response:
@@ -213,9 +212,10 @@ class DesignViewSet(viewsets.GenericViewSet):
         request=BulkFillSerializer,
         responses=OpenApiTypes.OBJECT,
         description="One new design per row, filled like `fill`; each row reports its design or its error. "
-        "Each row counts against the `bulk_fill` rate and each exported image against the `export` rate; a row "
-        "over the limit reports its error. Image URLs are fetched only when URL_IMAGE_UPLOADS is on. Many "
-        "URL images or exports make a long request: keep it under the worker timeout with fewer rows.",
+        "Each row counts against the `bulk_fill` rate, each new image URL against `bulk_fill_images` and "
+        "each exported image against `export`; a row over a limit reports its error. Image URLs are "
+        "fetched only when URL_IMAGE_UPLOADS is on. Many URL images or exports make a long request: keep "
+        "it under the worker timeout with fewer rows.",
     )
     @action(detail=True, methods=["post"], url_path="bulk-fill")
     def bulk_fill(self, request, pk=None):
@@ -227,7 +227,7 @@ class DesignViewSet(viewsets.GenericViewSet):
             request.user,
             data["rows"],
             row_numbers=data.get("row_numbers"),
-            resolver=_resolver(request.user),
+            resolver=_resolver(request.user, BulkFillImageRateThrottle),
             name_pattern=data.get("name_pattern"),
             folder=data.get("folder"),
             before_row=lambda: filling.charge(BulkFillRateThrottle(), request.user),

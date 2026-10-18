@@ -19,6 +19,7 @@ from apps.designs.doc.summary import summarize_document
 from apps.designs.edits import apply_edit, read_current
 from apps.designs.models import Design, Folder
 from apps.designs.serializers import DesignCreateSerializer, TitleField
+from apps.designs.throttling import BulkFillImageRateThrottle
 from apps.designs.validators import MAX_DIMENSION
 
 from ..context import current
@@ -315,7 +316,7 @@ def bulk_fill(
         template,
         caller.user,
         rows,
-        resolver=DjangoResolver(caller.user),
+        resolver=DjangoResolver(caller.user, url_throttle=BulkFillImageRateThrottle),
         name_pattern=name_pattern,
         folder=folder,
         before_row=before_row,
@@ -326,6 +327,7 @@ def bulk_fill(
         for row in results:
             img = row.get("image")
             if img and "data_base64" in img:
+                content.append(TextContent(text=f"Row {row['row']}: design {row['design_id']}"))
                 content.append(ImageContent(data=img["data_base64"], mime_type=img["mime"]))
                 row["image"] = {"mime": img["mime"], "bytes": img.get("bytes", len(img["data_base64"]))}
         summary = {"created": sum(row["ok"] for row in results), "rows": results}

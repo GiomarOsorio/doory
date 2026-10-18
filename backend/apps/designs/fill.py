@@ -303,14 +303,14 @@ def image_exporter(export: str | None, user) -> Callable[[Design], dict[str, Any
         image = export_image(
             Design.objects.get(pk=design.pk), page=1, format=export, quality=90, scale=1, transparent=False
         )
-        inline_limit = getattr(settings, "MCP_EXPORT_INLINE_MAX_BYTES", 500_000)
+        inline_limit = settings.MCP_EXPORT_INLINE_MAX_BYTES
         if len(image.data) > inline_limit:
             return {
                 "image": {
                     "mime": image.mime,
                     "url": store_image(image.data, image.mime),
                     "bytes": len(image.data),
-                    "expires_in_seconds": getattr(settings, "MCP_EXPORT_URL_TTL_SECONDS", 900),
+                    "expires_in_seconds": settings.MCP_EXPORT_URL_TTL_SECONDS,
                 }
             }
         return {

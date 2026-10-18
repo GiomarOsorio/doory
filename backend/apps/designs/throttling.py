@@ -10,3 +10,10 @@ class BulkFillRateThrottle(SimpleRateThrottle):
         if not request.user or not request.user.is_authenticated:
             return None
         return self.cache_format % {"scope": self.scope, "ident": request.user.pk}
+
+
+class BulkFillImageRateThrottle(BulkFillRateThrottle):
+    """Per-user limit for image URLs fetched by a bulk fill (`bulk_fill_images` rate), instead of `upload`, so
+    a full run of `BULK_FILL_MAX_ROWS` rows with a few photo links each fits."""
+
+    scope = "bulk_fill_images"

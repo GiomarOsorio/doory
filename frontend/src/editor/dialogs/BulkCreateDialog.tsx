@@ -92,14 +92,16 @@ export function BulkCreateDialog() {
         const folder = await service.createFolder(folderName.trim().slice(0, 120))
         createdFolderId = folder.id
       }
-      setResult(
-        await service.run({
-          rows: good.map((c) => c.values),
-          row_numbers: good.map((c) => c.index),
-          name_pattern: namePattern,
-          folder: createdFolderId,
-        }),
-      )
+      const outcome = await service.run({
+        rows: good.map((c) => c.values),
+        row_numbers: good.map((c) => c.index),
+        name_pattern: namePattern,
+        folder: createdFolderId,
+      })
+      if (outcome.created === 0 && createdFolderId && service.removeFolder) {
+        await service.removeFolder(createdFolderId).catch(() => {})
+      }
+      setResult(outcome)
       setStep('done')
     } catch (err: unknown) {
       if (createdFolderId && service.removeFolder) {

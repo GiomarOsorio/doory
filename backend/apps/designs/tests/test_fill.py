@@ -184,6 +184,25 @@ class TestRest:
         assert res.json()["created"] == 2 and not rows[2]["ok"] and "throttled" in rows[2]["error"]
         cache.clear()
 
+    def test_bulk_fill_url_images_use_their_own_rate_not_upload(self, api, template, monkeypatch):
+        from django.core.cache import cache
+
+        from apps.assets import remote
+        from apps.assets.tests.helpers import image_bytes
+        from apps.assets.throttling import UploadRateThrottle
+        from apps.designs.throttling import BulkFillImageRateThrottle
+
+        cache.clear()
+        monkeypatch.setattr(remote, "fetch_image", lambda url, max_bytes: image_bytes())
+        monkeypatch.setattr(UploadRateThrottle, "THROTTLE_RATES", {"upload": "1/min"})
+        monkeypatch.setattr(
+            BulkFillImageRateThrottle, "THROTTLE_RATES", {"bulk_fill": "100/min", "bulk_fill_images": "2/min"}
+        )
+        body = {"rows": [{"photo": f"https://img.example/{n}.png"} for n in range(3)]}
+        rows = api.post(f"{URL}{template.pk}/bulk-fill/", body, format="json").json()["rows"]
+        assert [r["ok"] for r in rows] == [True, True, False] and "Too many requests" in rows[2]["error"]
+        cache.clear()
+
     def test_bulk_fill_respects_row_numbers(self, api, template):
         body = {"rows": [{"name": "A"}, {"name": "C"}], "row_numbers": [1, 3]}
         res = api.post(f"{URL}{template.pk}/bulk-fill/", body, format="json")
@@ -193,7 +212,9 @@ class TestRest:
 
     def test_url_images_switched_off_reports_clear_error(self, api, template, settings):
         settings.URL_IMAGE_UPLOADS = False
-        res = api.post(f"{URL}{template.pk}/fill/", {"values": {"photo": "https://img.example/a.png"}}, format="json")
+        res = api.post(
+            f"{URL}{template.pk}/fill/", {"values": {"photo": "https://img.example/a.png"}}, format="json"
+        )
         assert res.status_code == 400
         assert "switched off" in str(res.json())
 
