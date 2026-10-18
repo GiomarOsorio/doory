@@ -39,10 +39,7 @@ def _probe(data: bytes, *, what: str = "result") -> Image.Image:
     try:
         probe = Image.open(BytesIO(data), formats=RESULT_FORMATS)
         width, height = probe.size
-        if (
-            not (0 < width <= MAX_DIMENSION and 0 < height <= MAX_DIMENSION)
-            or width * height > MAX_PIXELS
-        ):
+        if not (0 < width <= MAX_DIMENSION and 0 < height <= MAX_DIMENSION) or width * height > MAX_PIXELS:
             raise AIProviderError("not_image", f"The server's {what} is too large an image.")
         return probe
     except AIProviderError:
@@ -59,24 +56,37 @@ def _probe(data: bytes, *, what: str = "result") -> Image.Image:
         raise AIProviderError("not_image", f"The server's {what} is not a valid image.") from exc
 
 
+def _busy(exc: ImageBusy) -> AIProviderError:
+    error = AIProviderError("busy", "The image decoder is busy. Try again in a moment.")
+    error.refused = True
+    return error
+
+
+def _load(probe: Image.Image) -> Image.Image:
+    probe.seek(0)
+    probe.load()
+    return probe
+
+
 def decode(data: bytes, *, what: str = "result") -> Image.Image:
     """`data` decoded (first frame) within the size limits, or AIProviderError("not_image")."""
     try:
         probe = _probe(data, what=what)
         width, height = probe.size
         with decode_slot(width * height):
-            probe.seek(0)
-            probe.load()
-            return probe
+            return _load(probe)
     except ImageBusy as exc:
-        error = AIProviderError("busy", "The image decoder is busy. Try again in a moment.")
-        error.refused = True
-        raise error from exc
+        raise _busy(exc) from exc
 
 
 def decode_source(source: SourceImage) -> Image.Image:
     image = decode(source.data, what="source")
     return ImageOps.exif_transpose(image)
+
+
+def _decode_source_unslotted(source: SourceImage) -> Image.Image:
+    """The source decoded by a caller that already holds a decode slot covering it."""
+    return ImageOps.exif_transpose(_load(_probe(source.data, what="source")))
 
 
 def _fit(image: Image.Image, width: int, height: int, *, any_aspect: bool) -> Image.Image:
@@ -105,9 +115,7 @@ def from_image(task: Task, source: SourceImage, data: bytes) -> bytes:
         probe = _probe(data, what="result")
         width, height = probe.size
         with decode_slot(width * height):
-            probe.seek(0)
-            probe.load()
-            result = probe
+            result = _load(probe)
             if task.output == "image-alpha":
                 if not _has_alpha(result):
                     raise AIProviderError("bad_response", "The server's result has no transparency.")
@@ -118,9 +126,7 @@ def from_image(task: Task, source: SourceImage, data: bytes) -> bytes:
                 result = _fit(result, source.width, source.height, any_aspect=False)
             return _png(result)
     except ImageBusy as exc:
-        error = AIProviderError("busy", "The image decoder is busy. Try again in a moment.")
-        error.refused = True
-        raise error from exc
+        raise _busy(exc) from exc
 
 
 def from_mask(task: Task, source: SourceImage, data: bytes) -> bytes:
@@ -128,24 +134,21 @@ def from_mask(task: Task, source: SourceImage, data: bytes) -> bytes:
     with transparency of its own uses that transparency; any size is scaled to the source."""
     try:
         mask_probe = _probe(data, what="mask")
-        pixels = max(mask_probe.size[0] * mask_probe.size[1], source.width * source.height)
+        # One slot covers both images: a second one taken inside it could wait on a call doing the same.
+        pixels = mask_probe.size[0] * mask_probe.size[1] + source.width * source.height
         with decode_slot(pixels):
-            mask_probe.seek(0)
-            mask_probe.load()
-            mask = mask_probe
+            mask = _load(mask_probe)
             if _has_alpha(mask):
                 rgba = mask.convert("RGBA")
                 alpha = rgba.getchannel("A")
                 mask = alpha if alpha.getextrema() != (255, 255) else rgba.convert("L")
             else:
                 mask = mask.convert("L")
-            image = decode_source(source).convert("RGBA")
+            image = _decode_source_unslotted(source).convert("RGBA")
             mask = _fit(mask, image.width, image.height, any_aspect=True)
             if _has_alpha(image):  # keep what was already transparent
                 mask = Image.composite(mask, Image.new("L", mask.size, 0), image.getchannel("A"))
             image.putalpha(mask)
             return _png(image)
     except ImageBusy as exc:
-        error = AIProviderError("busy", "The image decoder is busy. Try again in a moment.")
-        error.refused = True
-        raise error from exc
+        raise _busy(exc) from exc

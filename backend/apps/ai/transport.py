@@ -2,9 +2,9 @@
 
 Every call is checked against a network policy before anything is sent:
 
-* **user** providers (anyone's own server): https only (http only with `AI_USER_PROVIDERS_ALLOW_HTTP`), any
-  port, and every address the host resolves to must be public, so nobody can aim the server at its own network
-  or a cloud metadata service.
+* **user** providers (anyone's own server): https only (http only with `AI_USER_PROVIDERS_ALLOW_HTTP`), ports
+  443 and 8443 (80 and 8080 with http, more in `AI_USER_PROVIDERS_ALLOWED_PORTS`), and every address the host
+  resolves to must be public, so nobody can aim the server at its own network or a cloud metadata service.
 * **operator** providers (admin and `.env`): http or https, any port; private addresses only for host names in
   `AI_ALLOWED_PRIVATE_HOSTS` or IP literals the operator typed, public addresses for everything else.
 
@@ -64,9 +64,7 @@ def user_policy() -> Policy:
     ports = {443, 8443}
     if getattr(settings, "AI_USER_PROVIDERS_ALLOW_HTTP", False):
         ports.update({80, 8080})
-    extra = getattr(settings, "AI_USER_PROVIDERS_ALLOWED_PORTS", [])
-    if extra:
-        ports.update(int(p) for p in extra)
+    ports.update(int(port) for port in settings.AI_USER_PROVIDERS_ALLOWED_PORTS)
     return Policy(
         "user",
         allow_http=bool(settings.AI_USER_PROVIDERS_ALLOW_HTTP),
@@ -250,6 +248,8 @@ def send(
         def timed_lookup(host: str) -> list[str]:
             try:
                 return remote.resolve_within(lookup, host, watchdog.left())
+            except remote.RemoteImageTimeout as exc:  # the lookup overran what was left of the deadline
+                raise _timeout() from exc
             except remote.RemoteImageError as exc:
                 if watchdog.left() <= 0:
                     raise _timeout() from exc

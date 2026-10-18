@@ -58,6 +58,13 @@ def test_adding_a_provider_stores_the_secret_encrypted(admin_client, fake):
     assert "admin-secret-value" not in page and "Set (hidden)" in page
 
 
+def test_moving_a_provider_to_another_host_drops_its_secret(admin_client, fake):
+    provider = make_provider(fake.url, secret=SECRET, auth_header="Authorization")
+    url = reverse("admin:ai_provider_change", args=[provider.pk])
+    assert admin_client.post(url, form_data("http://other.example:7000")).status_code == 302
+    assert not Provider.objects.get().has_secret
+
+
 def test_an_empty_secret_keeps_the_stored_one_and_clear_removes_it(admin_client, fake):
     provider = make_provider(fake.url, secret=SECRET, auth_header="Authorization")
     url = reverse("admin:ai_provider_change", args=[provider.pk])
@@ -85,7 +92,9 @@ def test_invalid_settings_are_shown_in_the_form(admin_client, fake, fields, erro
 def test_load_models_and_test_connection(admin_client, fake):
     provider = make_provider(fake.url, "doory")
     # GET returns the confirmation page without modifying models
-    confirm_page = admin_client.get(reverse("admin:ai_provider_load_models", args=[provider.pk])).content.decode()
+    confirm_page = admin_client.get(
+        reverse("admin:ai_provider_load_models", args=[provider.pk])
+    ).content.decode()
     assert "Load models" in confirm_page
     assert not provider.models.exists()
 
@@ -94,11 +103,15 @@ def test_load_models_and_test_connection(admin_client, fake):
     assert list(provider.models.values_list("remote_name", flat=True)) == ["general-fast", "general-best"]
 
     # GET returns confirmation page without running test
-    test_confirm = admin_client.get(reverse("admin:ai_provider_test_connection", args=[provider.pk])).content.decode()
+    test_confirm = admin_client.get(
+        reverse("admin:ai_provider_test_connection", args=[provider.pk])
+    ).content.decode()
     assert "Test connection" in test_confirm
     assert not AICall.objects.exists()
 
-    page = admin_client.post(reverse("admin:ai_provider_test_connection", args=[provider.pk])).content.decode()
+    page = admin_client.post(
+        reverse("admin:ai_provider_test_connection", args=[provider.pk])
+    ).content.decode()
     assert "It works" in page and "data:image/png;base64," in page
     assert AICall.objects.get().status == "ok"
 
@@ -110,7 +123,9 @@ def test_a_failing_test_shows_the_reason_but_not_the_secret(admin_client, fake):
         auth_header="X-Api-Key",
         secret="wrong-key-value",
     )
-    page = admin_client.post(reverse("admin:ai_provider_test_connection", args=[provider.pk])).content.decode()
+    page = admin_client.post(
+        reverse("admin:ai_provider_test_connection", args=[provider.pk])
+    ).content.decode()
     assert "refused the credentials" in page and "wrong-key-value" not in page
 
 

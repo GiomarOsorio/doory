@@ -14,7 +14,7 @@ import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field, replace
 from typing import Any, Literal
-from urllib.parse import quote, urlsplit
+from urllib.parse import quote, unquote_plus, urlsplit
 
 import urllib3
 
@@ -148,8 +148,11 @@ _AUTH_WORD_BOUNDARY = re.compile(
 _AUTH_SUBSTRINGS = ("token", "secret", "bearer", "apikey", "api-key", "api_key")
 
 
+_AUTH_SCHEMES = re.compile(r"^\s*(bearer|basic|digest|token)\s", re.IGNORECASE)
+
+
 def _is_auth_like(name: str) -> bool:
-    clean = name.strip().lower()
+    clean = unquote_plus(name).strip().lower()
     return bool(_AUTH_WORD_BOUNDARY.search(clean) or any(sub in clean for sub in _AUTH_SUBSTRINGS))
 
 
@@ -181,8 +184,7 @@ def _fields(value: Any) -> dict[str, Any]:
         _field_name(key, "An extra field name")
         if _is_auth_like(key):
             raise ConfigError(
-                f"Field {key!r} looks like an authentication field; "
-                "use the provider's secret field instead."
+                f"Field {key!r} looks like an authentication field; use the provider's secret field instead."
             )
         if isinstance(item, str):
             _text(item, f"extra_fields.{key}")
@@ -215,6 +217,11 @@ def _headers(value: Any) -> dict[str, str]:
                 "use the provider's auth_header and secret fields instead."
             )
         header_val = _text(item, f"extra_headers.{key}")
+        if _AUTH_SCHEMES.match(header_val):
+            raise ConfigError(
+                f"Header {header_name!r} carries credentials; "
+                "use the provider's auth_header and secret fields instead."
+            )
         try:
             header_name.encode("latin-1")
             header_val.encode("latin-1")
@@ -385,12 +392,8 @@ def expect_ok(response: HttpResponse) -> None:
     raise AIProviderError("bad_response", f"The server failed (HTTP {status}).")
 
 
-MAX_JSON_RESPONSE_BYTES = 16 * 1024 * 1024
-
-
 def load_json(response: HttpResponse) -> Any:
-    if len(response.body) > MAX_JSON_RESPONSE_BYTES:
-        raise AIProviderError("too_large", "The server's JSON answer is too large.")
+    """The answer parsed as JSON. Its size is already capped by the read limit of the request."""
     try:
         return json.loads(response.body)
     except (ValueError, RecursionError) as exc:

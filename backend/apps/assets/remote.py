@@ -49,6 +49,10 @@ class RemoteImageTooLarge(RemoteImageError):
     pass
 
 
+class RemoteImageTimeout(RemoteImageError):
+    """A step overran the time it was given."""
+
+
 @dataclass(frozen=True)
 class Target:
     host: str
@@ -137,7 +141,7 @@ def resolve_within(lookup: Callable[[str], list[str]], host: str, seconds: float
     thread.start()
     thread.join(max(0.0, seconds))
     if thread.is_alive():
-        raise RemoteImageError("The download took too long.")
+        raise RemoteImageTimeout("The download took too long.")
     if "error" in outcome:
         raise outcome["error"]
     return outcome["addresses"]

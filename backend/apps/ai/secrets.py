@@ -9,11 +9,14 @@ installs work without another setting; rotating `SECRET_KEY` then needs the old 
 
 import base64
 import binascii
+import logging
 
 from cryptography.fernet import Fernet, InvalidToken, MultiFernet
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from django.conf import settings
+
+logger = logging.getLogger(__name__)
 
 _SALT = b"doory.ai.secrets"
 _INFO = b"provider secrets v1"
@@ -45,12 +48,16 @@ def _keys() -> list[bytes]:
 
 
 def _fernet() -> MultiFernet:
+    """The primary key first (it encrypts), then the fallbacks. An invalid primary key is an error; an
+    invalid fallback is skipped with a warning, so it does not make every secret unreadable."""
     fernets = []
-    for key in _keys():
+    for index, key in enumerate(_keys()):
         try:
             fernets.append(Fernet(key))
         except (ValueError, binascii.Error) as exc:
-            raise SecretUnreadable("A configured secrets key is not a valid Fernet key.") from exc
+            if index == 0:
+                raise SecretUnreadable("AI_SECRETS_KEY is not a valid Fernet key.") from exc
+            logger.warning("A secrets fallback key is not a valid Fernet key; it is skipped.")
     if not fernets:
         raise SecretUnreadable("No valid secrets key is configured.")
     return MultiFernet(fernets)
@@ -58,6 +65,15 @@ def _fernet() -> MultiFernet:
 
 def encrypt(value: str) -> bytes:
     return _fernet().encrypt(value.encode())
+
+
+def can_encrypt() -> bool:
+    """Whether new secrets can be stored (the primary key is valid)."""
+    try:
+        _fernet()
+    except SecretUnreadable:
+        return False
+    return True
 
 
 def decrypt(token: bytes) -> str:

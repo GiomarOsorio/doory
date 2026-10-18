@@ -23,6 +23,7 @@ from PIL import Image, ImageDraw
 from apps.assets.models import Asset
 from apps.assets.services import create_asset
 from apps.assets.uploads import clean_name
+from apps.core.images import LARGE_DECODE_WAIT_SECONDS
 
 from . import catalog, quotas
 from .catalog import Option
@@ -30,6 +31,7 @@ from .env import EnvProvider
 from .errors import AIProviderError, ModelNotAvailable, QuotaReached, RunsOnDevice, UnsupportedAsset
 from .models import AICall, Provider, ProviderModel
 from .results import SourceImage, decode_source
+from .serializers import USER_PROVIDER_MAX_TIMEOUT
 from .styles import Connection, get_style
 from .tasks import TASKS, Task, validate_options
 
@@ -37,7 +39,9 @@ SENT_AS_IS = ("image/png", "image/jpeg", "image/webp")
 PREVIEW_SIDE = 256
 JSON_OVERHEAD = 64 * 1024
 MAX_IN_FLIGHT_PER_USER = 1
-IN_FLIGHT_TIMEOUT = 65
+# Longer than any call can last: the longest user timeout, waiting for a decode slot for the source and for
+# the result, and a margin.
+IN_FLIGHT_TIMEOUT = int(USER_PROVIDER_MAX_TIMEOUT + 2 * LARGE_DECODE_WAIT_SECONDS) + 10
 
 logger = logging.getLogger(__name__)
 E = TypeVar("E", bound=Exception)
@@ -51,9 +55,12 @@ class Outcome:
 
 
 def answer_limit(conn: Connection) -> int:
-    """The largest answer read from the provider: the image limit plus room for base64 and JSON."""
+    """The largest answer read from the provider: the image limit, plus room for base64 when the style may
+    answer with JSON."""
     limit = min(conn.max_image_bytes, settings.AI_MAX_IMAGE_BYTES)
-    return limit * 4 // 3 + JSON_OVERHEAD
+    if conn.config.response_format == "json" or conn.config.response == "auto":
+        limit = limit * 4 // 3
+    return limit + JSON_OVERHEAD
 
 
 @contextmanager

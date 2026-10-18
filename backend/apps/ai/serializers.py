@@ -4,7 +4,7 @@ from typing import Any
 from django.conf import settings
 from rest_framework import serializers
 
-from . import transport
+from . import secrets, transport
 from .models import Provider, ProviderModel, Style
 from .styles import ConfigError, get_style
 from .styles.base import check_header_name
@@ -98,7 +98,8 @@ class ProviderSerializer(serializers.ModelSerializer):
         max_length=MAX_SECRET_LENGTH,
         trim_whitespace=True,
         help_text="The value of the auth header (e.g. `Bearer …`). Omit to keep the stored one; "
-        "empty to remove it.",
+        "empty to remove it. Changing the server's scheme, host or port removes a stored secret unless a new "
+        "one is sent in the same request.",
     )
     has_secret = serializers.BooleanField(read_only=True)
     models = ProviderModelSerializer(many=True, read_only=True)
@@ -168,6 +169,10 @@ class ProviderSerializer(serializers.ModelSerializer):
             value.encode("latin-1")
         except UnicodeEncodeError:
             raise serializers.ValidationError("The secret must contain only Latin-1 characters.")
+        if value and not secrets.can_encrypt():
+            raise serializers.ValidationError(
+                "Secrets cannot be stored: the server's secrets key is invalid."
+            )
         return value
 
     def validate_tasks(self, value: list[str]) -> list[str]:
@@ -185,6 +190,9 @@ class ProviderSerializer(serializers.ModelSerializer):
     def save(self, **kwargs) -> Provider:
         secret = self.validated_data.pop("secret", None)
         provider = self.instance or Provider(**kwargs)
+        new_url = self.validated_data.get("base_url")
+        if secret is None and provider.pk and new_url and not provider.keeps_secret_for(new_url):
+            secret = ""  # the stored key was entered for the old server; it must be entered again
         for field, value in self.validated_data.items():
             setattr(provider, field, value)
         if secret is not None:

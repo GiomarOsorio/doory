@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 
 from django import forms
+from django.conf import settings
 from django.contrib import admin, messages
 from django.core.exceptions import PermissionDenied
 from django.http import Http404, HttpRequest, HttpResponseRedirect
@@ -20,7 +21,7 @@ from unfold.widgets import (
     UnfoldAdminTextareaWidget,
 )
 
-from . import env, services
+from . import env, secrets, services
 from .errors import AIProviderError
 from .models import AICall, Provider, ProviderModel, UserProvider
 from .serializers import MAX_SECRET_LENGTH, validate_base_url
@@ -85,6 +86,14 @@ class ProviderAdminForm(forms.ModelForm):
         except serializers.ValidationError as exc:
             raise forms.ValidationError(exc.detail[0]) from None
 
+    def clean_max_image_bytes(self) -> int:
+        value = self.cleaned_data.get("max_image_bytes") or 0
+        if value > settings.AI_MAX_IMAGE_BYTES:
+            raise forms.ValidationError(
+                _("At most %(limit)s bytes (the server-wide limit).") % {"limit": settings.AI_MAX_IMAGE_BYTES}
+            )
+        return value
+
     def clean_auth_header(self) -> str:
         value = self.cleaned_data.get("auth_header", "").strip()
         if not value:
@@ -98,6 +107,8 @@ class ProviderAdminForm(forms.ModelForm):
         value = self.cleaned_data.get("secret", "")
         if "\r" in value or "\n" in value:
             raise forms.ValidationError(_("The secret may not contain line breaks."))
+        if value and not secrets.can_encrypt():
+            raise forms.ValidationError(_("Secrets cannot be stored: AI_SECRETS_KEY is not a valid key."))
         return value
 
     def clean(self):
@@ -112,8 +123,10 @@ class ProviderAdminForm(forms.ModelForm):
         return cleaned
 
     def save(self, commit: bool = True) -> Provider:
+        old_url = Provider.objects.filter(pk=self.instance.pk).values_list("base_url", flat=True).first()
         provider = super().save(commit=False)
-        if self.cleaned_data.get("clear_secret"):
+        moved = old_url is not None and not Provider(base_url=old_url).keeps_secret_for(provider.base_url)
+        if self.cleaned_data.get("clear_secret") or (moved and not self.cleaned_data.get("secret")):
             provider.set_secret("")
         elif self.cleaned_data.get("secret"):
             provider.set_secret(self.cleaned_data["secret"])

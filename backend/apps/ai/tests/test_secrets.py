@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from io import StringIO
+
 import pytest
 from cryptography.fernet import Fernet
 
@@ -97,6 +99,23 @@ def test_invalid_ai_secrets_key_raises_secret_unreadable(settings):
     with pytest.raises(secrets.SecretUnreadable) as exc:
         secrets.encrypt("val")
     assert "not a valid Fernet key" in str(exc.value)
+
+
+def test_an_invalid_fallback_key_is_skipped(settings):
+    settings.AI_SECRETS_KEY = Fernet.generate_key().decode()
+    token = secrets.encrypt("value")
+    settings.AI_SECRETS_KEY_FALLBACKS = ["not-a-valid-fernet-key"]
+    assert secrets.decrypt(token) == "value" and secrets.can_encrypt()
+
+
+def test_reencrypt_fails_when_a_secret_cannot_be_read(settings, fake):
+    from django.core.management import CommandError, call_command
+
+    make_provider(fake.url, secret="abc")
+    settings.AI_SECRETS_KEY = Fernet.generate_key().decode()
+    settings.SECRET_KEY = "a-completely-different-key"
+    with pytest.raises(CommandError, match="1 provider secret"):
+        call_command("reencrypt_ai_secrets", stdout=StringIO(), stderr=StringIO())
 
 
 def test_an_unreadable_secret_is_a_clean_provider_error(settings, fake, user, photo):

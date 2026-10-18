@@ -322,6 +322,8 @@ AI_PROVIDERS_ENABLED = env.bool("AI_PROVIDERS_ENABLED", default=True)
 # Whether users may add their own servers ("bring your own server"): off, staff or everyone.
 AI_USER_PROVIDERS = env("AI_USER_PROVIDERS", default="off")
 AI_USER_PROVIDERS_ALLOW_HTTP = env.bool("AI_USER_PROVIDERS_ALLOW_HTTP", default=False)
+# Extra ports for users' own servers (443 and 8443 always; 80 and 8080 with AI_USER_PROVIDERS_ALLOW_HTTP).
+AI_USER_PROVIDERS_ALLOWED_PORTS = env.list("AI_USER_PROVIDERS_ALLOWED_PORTS", cast=int, default=[])
 AI_MAX_PROVIDERS_PER_USER = env.int("AI_MAX_PROVIDERS_PER_USER", default=10)
 # Host names an operator provider may reach on a private network (e.g. a model server container). IP addresses
 # the operator types are allowed too; everything else must resolve to public addresses only.

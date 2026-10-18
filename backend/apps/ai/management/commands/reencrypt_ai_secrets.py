@@ -4,7 +4,7 @@ Decrypts all secrets stored in the database using the configured key and fallbac
 and writes them back encrypted with the primary key. This allows retiring old fallback keys.
 """
 
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 
 from apps.ai import secrets
 from apps.ai.models import Provider
@@ -45,7 +45,7 @@ class Command(BaseCommand):
 
         action_word = "Would re-encrypt" if dry_run else "Re-encrypted"
         self.stdout.write(
-            self.style.SUCCESS(
-                f"{action_word} {reencrypted} provider secret(s). {failed} failed."
-            )
+            self.style.SUCCESS(f"{action_word} {reencrypted} provider secret(s). {failed} failed.")
         )
+        if failed:
+            raise CommandError(f"{failed} provider secret(s) could not be decrypted; enter them again.")

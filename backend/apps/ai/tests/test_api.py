@@ -274,6 +274,33 @@ def test_the_secret_is_kept_replaced_or_removed(byos, api):
 
 
 @pytest.mark.parametrize(
+    "new_url",
+    ["https://other.example", "https://ai.example.com:8443", "http://ai.example.com"],
+)
+def test_moving_a_server_to_another_address_drops_its_secret(byos, settings, api, new_url):
+    settings.AI_USER_PROVIDERS_ALLOW_HTTP = True
+    pk = create(api).json()["id"]
+    body = api.patch(f"/api/v1/ai/providers/{pk}/", {"base_url": new_url}, format="json").json()
+    assert body["has_secret"] is False and not Provider.objects.get(pk=pk).has_secret
+
+
+def test_the_secret_stays_for_the_same_address_or_comes_with_the_new_one(byos, api):
+    pk = create(api).json()["id"]
+    api.patch(f"/api/v1/ai/providers/{pk}/", {"base_url": "https://AI.example.com:443/v2"}, format="json")
+    assert Provider.objects.get(pk=pk).secret() == SECRET
+    api.patch(
+        f"/api/v1/ai/providers/{pk}/", {"base_url": "https://other.example", "secret": "fresh"}, format="json"
+    )
+    assert Provider.objects.get(pk=pk).secret() == "fresh"
+
+
+def test_an_invalid_secrets_key_refuses_the_secret_instead_of_failing(byos, settings, api):
+    settings.AI_SECRETS_KEY = "not-a-valid-fernet-key"
+    response = create(api)
+    assert response.status_code == 400 and "secrets key" in response.content.decode()
+
+
+@pytest.mark.parametrize(
     "fields",
     [
         {"base_url": "http://ai.example.com"},
