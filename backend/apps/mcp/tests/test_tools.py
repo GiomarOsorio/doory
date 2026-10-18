@@ -423,7 +423,7 @@ def test_images_can_be_uploaded_from_a_url(as_caller, user, monkeypatch, setting
     monkeypatch.setattr(remote, "fetch_image", refuse)
     with pytest.raises(ToolError, match=r"public internet\. Nothing was uploaded"):
         assets.upload_image_from_url("https://10.0.0.1/x.png")
-    settings.MCP_URL_UPLOADS = False
+    settings.URL_IMAGE_UPLOADS = False
     with pytest.raises(ToolError, match="switched off"):
         assets.upload_image_from_url("https://img.example/a.png")
 
@@ -473,7 +473,9 @@ def test_replace_image_through_edit_design_with_asset_element_and_url(
 
     events: list[str] = []
     real_apply_saved = edits._apply_saved
-    monkeypatch.setattr(remote, "fetch_image", lambda url, max_bytes: (events.append("fetch"), image_bytes())[1])
+    monkeypatch.setattr(
+        remote, "fetch_image", lambda url, max_bytes: (events.append("fetch"), image_bytes())[1]
+    )
     monkeypatch.setattr(
         edits,
         "_apply_saved",
@@ -541,7 +543,7 @@ def test_replace_image_through_edit_design_with_asset_element_and_url(
             [{"op": "replace_image", "object_id": "hero", "url": "https://img.example/a.png"}],
         )
     as_caller.token.scopes = list(SCOPES)
-    settings.MCP_URL_UPLOADS = False
+    settings.URL_IMAGE_UPLOADS = False
     with pytest.raises(ToolError, match="switched off"):
         designs.edit_design(
             str(design.pk),

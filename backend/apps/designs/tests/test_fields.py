@@ -98,7 +98,9 @@ def test_list_fields_merges_pages_and_suggests_untagged_placeholders():
 def test_clashing_keys_remain_savable_and_list_fields_drops_later_duplicates():
     first = tagged(text_object("First"), "title", "text")
     second = tagged(text_object("Second"), "title", "text")
-    clash = two_pages([first, second, tagged(picture("a1"), "logo", "image")], [tagged(shape(), "logo", "color")])
+    clash = two_pages(
+        [first, second, tagged(picture("a1"), "logo", "image")], [tagged(shape(), "logo", "color")]
+    )
     validate_document(clash, max_bytes=10**6)
     assert [(f["key"], f["type"], f["pages"], f["object_ids"]) for f in list_fields(clash)] == [
         ("title", "text", [1], [first["id"]]),
@@ -148,7 +150,9 @@ class TestRest:
         res = api.patch(f"{URL}{design.pk}/", {"document": doc, "base_revision": 1}, format="json")
         assert res.status_code == 200
         fields = api.get(f"{URL}{design.pk}/fields/").json()
-        assert [(f["key"], f["current"], f["object_ids"]) for f in fields] == [("title", "First", [first["id"]])]
+        assert [(f["key"], f["current"], f["object_ids"]) for f in fields] == [
+            ("title", "First", [first["id"]])
+        ]
 
     def test_tags_survive_duplicate_and_version_restore(self, api, user):
         doc = make_doc(objects=[tagged(text_object("Hi"), "title", "text", "Title")])

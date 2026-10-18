@@ -300,7 +300,7 @@ def bulk_fill(
     caller = current()
     template = _design(design_id)
     folder = _folder(folder_id)
-    after_row = fill.image_exporter(export)
+    after_row = fill.image_exporter(export, caller.user)
     first = True
 
     def before_row() -> None:

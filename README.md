@@ -348,6 +348,14 @@ needs `INSTALL_CHROMIUM=true`, the default, and reaches the web container's `ren
 same render is available to signed-in users at `POST /api/v1/designs/{id}/export/image/`. Revoke a token in
 the same settings page. Changing or resetting your password revokes all your tokens.
 
+Templates can be filled by field key, from an assistant (`fill_design`, `bulk_fill`) or from the REST API
+(`POST /api/v1/designs/{id}/fill/` and `/bulk-fill/`, one new design per row, at most `BULK_FILL_MAX_ROWS`).
+Each bulk row counts against the upload rate and each exported image against the export rate; a row over the
+limit reports its error and the others go on. Image values may be public https URLs, which the server copies into
+your uploads while `URL_IMAGE_UPLOADS` is on (the default; set it to `false` to turn off URL images for the
+assistant and the API alike). Many URL images or exports make one long request, so lower `BULK_FILL_MAX_ROWS` if
+requests hit the worker timeout.
+
 ## FAQ
 
 <details>

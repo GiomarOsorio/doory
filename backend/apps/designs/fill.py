@@ -12,13 +12,14 @@ import re
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from types import SimpleNamespace
 from typing import Any
 
 from django.conf import settings
 from django.db import transaction
 from pydantic import TypeAdapter
 from pydantic import ValidationError as PydanticValidationError
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import Throttled, ValidationError
 
 from apps.assets.models import Asset
 
@@ -276,16 +277,26 @@ def bulk_fill(
     return out
 
 
-def image_exporter(export: str | None) -> Callable[[Design], dict[str, Any]] | None:
-    """An `after_row` that adds the first page as a png/jpg (`apps.exports.services.export_image`)."""
+def charge(rate_throttle, user) -> None:
+    """Count one use of a per-user REST throttle (e.g. `UploadRateThrottle()`) for `user`; raises Throttled
+    when its budget is spent, so work done many times in one request still pays for each time."""
+    if not rate_throttle.allow_request(SimpleNamespace(user=user), None):
+        raise Throttled(wait=rate_throttle.wait())
+
+
+def image_exporter(export: str | None, user) -> Callable[[Design], dict[str, Any]] | None:
+    """An `after_row` that adds the first page as a png/jpg (`apps.exports.services.export_image`). Each
+    render counts against the `export` rate, like the export endpoint and the export_design tool."""
     if export is None:
         return None
     try:
         from apps.exports.services import export_image
+        from apps.exports.throttling import ExportRateThrottle
     except ImportError as exc:
         raise ValidationError({"export": "Image export is not available on this server."}) from exc
 
     def run(design: Design) -> dict[str, Any]:
+        charge(ExportRateThrottle(), user)
         image = export_image(
             Design.objects.get(pk=design.pk), page=1, format=export, quality=90, scale=1, transparent=False
         )

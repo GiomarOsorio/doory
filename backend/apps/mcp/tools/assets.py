@@ -117,7 +117,7 @@ def _with_cutout(user, asset: Asset, option) -> dict[str, Any]:
 
 
 def import_url_asset(user, url: str, name: str | None = None) -> Asset:
-    if not settings.MCP_URL_UPLOADS:
+    if not settings.URL_IMAGE_UPLOADS:
         raise ToolError("Uploading from a URL is switched off on this server.")
     throttle(UploadRateThrottle(), user)
     try:

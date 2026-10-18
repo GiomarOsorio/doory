@@ -1,5 +1,6 @@
 from uuid import UUID
 
+from django.conf import settings
 from django.db.models import F
 from django.db.models.functions import Lower
 from django.shortcuts import get_object_or_404
@@ -12,6 +13,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.assets.ordering import order_queryset
+from apps.assets.throttling import UploadRateThrottle
 from apps.assets.uploads import reject_oversize_request
 
 from . import fill as filling
@@ -50,7 +52,7 @@ ORDERING = {
 def _resolver(user):
     from apps.mcp.resolver import DjangoResolver  # the same picture lookups as the MCP tools
 
-    return DjangoResolver(user, allow_urls=True)
+    return DjangoResolver(user, allow_urls=settings.URL_IMAGE_UPLOADS)
 
 
 def conflict_response(conflict: RevisionConflict) -> Response:
@@ -185,7 +187,8 @@ class DesignViewSet(viewsets.GenericViewSet):
         request=FillSerializer,
         responses={200: OpenApiTypes.OBJECT, 201: OpenApiTypes.OBJECT},
         description="Fill the template fields by key ({key: value}); by default into a new copy (201). "
-        "All or nothing: a bad value is a 400 naming its key.",
+        "All or nothing: a bad value is a 400 naming its key. Image values may be public https URLs when "
+        "URL_IMAGE_UPLOADS is on (the server copies them into your uploads).",
     )
     @action(detail=True, methods=["post"])
     def fill(self, request, pk=None):
@@ -208,7 +211,10 @@ class DesignViewSet(viewsets.GenericViewSet):
     @extend_schema(
         request=BulkFillSerializer,
         responses=OpenApiTypes.OBJECT,
-        description="One new design per row, filled like `fill`; each row reports its design or its error.",
+        description="One new design per row, filled like `fill`; each row reports its design or its error. "
+        "Each row counts against the `upload` rate and each exported image against the `export` rate; a row "
+        "over the limit reports its error. Image URLs are fetched only when URL_IMAGE_UPLOADS is on. Many "
+        "URL images or exports make a long request: keep it under the worker timeout with fewer rows.",
     )
     @action(detail=True, methods=["post"], url_path="bulk-fill")
     def bulk_fill(self, request, pk=None):
@@ -222,7 +228,8 @@ class DesignViewSet(viewsets.GenericViewSet):
             resolver=_resolver(request.user),
             name_pattern=data.get("name_pattern"),
             folder=data.get("folder"),
-            after_row=filling.image_exporter(data.get("export")),
+            before_row=lambda: filling.charge(UploadRateThrottle(), request.user),
+            after_row=filling.image_exporter(data.get("export"), request.user),
         )
         return Response({"created": sum(row["ok"] for row in rows), "rows": rows})
 

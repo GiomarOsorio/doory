@@ -170,3 +170,38 @@ class TestRest:
         settings.BULK_FILL_MAX_ROWS = 1
         res = api.post(f"{URL}{template.pk}/bulk-fill/", body, format="json")
         assert res.status_code == 400
+
+    def test_bulk_fill_rows_count_against_the_upload_rate(self, api, template, monkeypatch):
+        from django.core.cache import cache
+
+        from apps.assets.throttling import UploadRateThrottle
+
+        cache.clear()
+        monkeypatch.setattr(UploadRateThrottle, "THROTTLE_RATES", {"upload": "2/min"})
+        body = {"rows": [{"name": str(n)} for n in range(3)]}
+        res = api.post(f"{URL}{template.pk}/bulk-fill/", body, format="json")
+        rows = res.json()["rows"]
+        assert res.json()["created"] == 2 and not rows[2]["ok"] and "throttled" in rows[2]["error"]
+        cache.clear()
+
+
+def test_image_exporter_counts_each_render_against_the_export_rate(user, template, monkeypatch):
+    from django.core.cache import cache
+
+    pytest.importorskip("apps.exports.services")
+    from apps.exports import services as exports
+    from apps.exports.throttling import ExportRateThrottle
+
+    cache.clear()
+    monkeypatch.setattr(ExportRateThrottle, "THROTTLE_RATES", {"export": "1/min"})
+    image = type("Image", (), {"mime": "image/png", "data": b"png"})()
+    monkeypatch.setattr(exports, "export_image", lambda *a, **k: image)
+    rows = fill.bulk_fill(
+        template,
+        user,
+        [{"name": "A"}, {"name": "B"}],
+        resolver=DjangoResolver(user),
+        after_row=fill.image_exporter("png", user),
+    )
+    assert "image" in rows[0] and "throttled" in rows[1]["export_error"]
+    cache.clear()
