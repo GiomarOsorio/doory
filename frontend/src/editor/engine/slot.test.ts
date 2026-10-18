@@ -285,6 +285,50 @@ describe('filling a placeholder', () => {
     expect(objectsOf(engine)[0].flipX).toBe(true)
     engine.dispose()
   })
+
+  it('replaces a placeholder, a slot picture or a masked picture in its frame and keeps its field tag', async () => {
+    const { commands, isCommandEnabled } = await import('../commands')
+    await import('../builtins/commands')
+    const { engine } = await setup()
+    await engine.insert.placeholder('circle')
+    const id = engine.state.selection.ids[0]
+    engine.style.setField({ key: 'avatar', type: 'image', label: 'Avatar' })
+    const cmd = commands.get('image.replace')
+    expect(cmd && isCommandEnabled(cmd, { editor: engine, state: engine.state })).toBe(true)
+
+    const first = await engine.assets.upload(new File([new Uint8Array([1])], 'first.png', { type: 'image/png' }), 'first.png')
+    await engine.insert.replaceSelectedImage(first)
+    const filled = objectsOf(engine)[0]
+    expect(filled.id).toBe(id)
+    expect(filled.type).toBe('image')
+    expect(filled.field).toEqual({ key: 'avatar', type: 'image', label: 'Avatar' })
+    expect((filled.slot as SlotSpec).mask).toBe('circle')
+
+    const second = await engine.assets.upload(new File([new Uint8Array([2])], 'second.png', { type: 'image/png' }), 'second.png')
+    await engine.insert.replaceSelectedImage(second)
+    const replacedSlot = objectsOf(engine)[0]
+    expect(replacedSlot.id).toBe(id)
+    expect(replacedSlot.assetId).toBe(second.id)
+    expect(replacedSlot.slot).toEqual(filled.slot)
+    expect(replacedSlot.field).toEqual({ key: 'avatar', type: 'image', label: 'Avatar' })
+
+    engine.style.resetToPlaceholder()
+    const reset = objectsOf(engine)[0]
+    expect(reset.id).toBe(id)
+    expect(reset.isPlaceholder).toBe(true)
+    expect(reset.field).toEqual({ key: 'avatar', type: 'image', label: 'Avatar' })
+
+    await engine.insert.imageFromAsset(first)
+    engine.style.setMask('rounded', 0.25)
+    engine.style.setField({ key: 'hero', type: 'image' })
+    await engine.insert.replaceSelectedImage(second)
+    const masked = objectsOf(engine)[1]
+    expect(masked.assetId).toBe(second.id)
+    expect(masked.maskShape).toBe('rounded')
+    expect(masked.maskRadius).toBe(0.25)
+    expect(masked.field).toEqual({ key: 'hero', type: 'image' })
+    engine.dispose()
+  })
 })
 
 describe('frames travel with their pictures when a whole selection is transformed', () => {

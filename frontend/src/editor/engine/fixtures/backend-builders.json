@@ -477,10 +477,73 @@
     }
   },
   {
+    "name": "replaced masked photo",
+    "kind": "image",
+    "object": {
+      "id": "case-15",
+      "type": "image",
+      "src": "/media/assets/a/new.png",
+      "originX": "center",
+      "originY": "center",
+      "left": 400,
+      "top": 300,
+      "width": 10,
+      "height": 5,
+      "scaleX": 20,
+      "scaleY": 20,
+      "strokeUniform": true,
+      "maskShape": "rounded",
+      "maskRadius": 0.2,
+      "cropX": 0,
+      "cropY": 1,
+      "assetId": "0b5e7a46-6f1e-4cf0-9f0e-6b3cf7f1d002",
+      "name": "Portrait"
+    },
+    "expect": {
+      "clipPath": true
+    }
+  },
+  {
+    "name": "photo filling a placeholder slot",
+    "kind": "image",
+    "object": {
+      "id": "case-16",
+      "type": "image",
+      "originX": "center",
+      "originY": "center",
+      "left": 400,
+      "top": 330,
+      "stroke": null,
+      "strokeWidth": 0,
+      "strokeUniform": true,
+      "width": 10,
+      "height": 10,
+      "name": "Portrait",
+      "slot": {
+        "cx": 400,
+        "cy": 300,
+        "width": 200,
+        "height": 100,
+        "angle": 0,
+        "mask": "circle"
+      },
+      "scaleX": 20,
+      "scaleY": 20,
+      "angle": 0,
+      "cropX": 0,
+      "cropY": 0,
+      "src": "/media/assets/a/new.png",
+      "assetId": "0b5e7a46-6f1e-4cf0-9f0e-6b3cf7f1d002"
+    },
+    "expect": {
+      "clipPath": true
+    }
+  },
+  {
     "name": "qr code",
     "kind": "qr",
     "object": {
-      "id": "case-15",
+      "id": "case-17",
       "type": "image",
       "name": "QR code",
       "qr": {
@@ -507,7 +570,7 @@
       "size": 168
     },
     "object": {
-      "id": "case-16",
+      "id": "case-18",
       "type": "path",
       "originX": "center",
       "originY": "center",
@@ -599,7 +662,7 @@
       "size": 168
     },
     "object": {
-      "id": "case-17",
+      "id": "case-19",
       "type": "path",
       "originX": "center",
       "originY": "center",
@@ -700,7 +763,7 @@
       "size": 168
     },
     "object": {
-      "id": "case-18",
+      "id": "case-20",
       "type": "path",
       "originX": "center",
       "originY": "center",
@@ -768,7 +831,7 @@
       "size": 168
     },
     "object": {
-      "id": "case-19",
+      "id": "case-21",
       "type": "path",
       "originX": "center",
       "originY": "center",
@@ -861,7 +924,7 @@
       "size": 168
     },
     "object": {
-      "id": "case-20",
+      "id": "case-22",
       "type": "path",
       "originX": "center",
       "originY": "center",
@@ -914,7 +977,7 @@
       "size": 168
     },
     "object": {
-      "id": "case-21",
+      "id": "case-23",
       "type": "path",
       "originX": "center",
       "originY": "center",
@@ -967,7 +1030,7 @@
       "size": 168
     },
     "object": {
-      "id": "case-22",
+      "id": "case-24",
       "type": "path",
       "originX": "center",
       "originY": "center",
@@ -1020,7 +1083,7 @@
       "size": 168
     },
     "object": {
-      "id": "case-23",
+      "id": "case-25",
       "type": "path",
       "originX": "center",
       "originY": "center",
@@ -1138,7 +1201,7 @@
       "size": 168
     },
     "object": {
-      "id": "case-24",
+      "id": "case-26",
       "type": "path",
       "originX": "center",
       "originY": "center",
@@ -1230,7 +1293,7 @@
       "size": 168
     },
     "object": {
-      "id": "case-25",
+      "id": "case-27",
       "type": "path",
       "originX": "center",
       "originY": "center",
@@ -1293,7 +1356,7 @@
       "size": 168
     },
     "object": {
-      "id": "case-26",
+      "id": "case-28",
       "type": "path",
       "originX": "center",
       "originY": "center",
@@ -1356,7 +1419,7 @@
       "size": 168
     },
     "object": {
-      "id": "case-27",
+      "id": "case-29",
       "type": "path",
       "originX": "center",
       "originY": "center",
@@ -1419,7 +1482,7 @@
       "size": 168
     },
     "object": {
-      "id": "case-28",
+      "id": "case-30",
       "type": "path",
       "originX": "center",
       "originY": "center",
@@ -1502,7 +1565,7 @@
       "size": 168
     },
     "object": {
-      "id": "case-29",
+      "id": "case-31",
       "type": "path",
       "originX": "center",
       "originY": "center",
@@ -1571,7 +1634,7 @@
     "name": "stretched heart with a border",
     "kind": "shape",
     "object": {
-      "id": "case-30",
+      "id": "case-32",
       "type": "path",
       "originX": "center",
       "originY": "center",
@@ -1683,7 +1746,7 @@
       ]
     },
     "object": {
-      "id": "case-31",
+      "id": "case-33",
       "type": "group",
       "originX": "center",
       "originY": "center",
@@ -1741,7 +1804,7 @@
     "name": "rotated, scaled group, ungrouped",
     "kind": "group",
     "object": {
-      "id": "case-32",
+      "id": "case-34",
       "type": "group",
       "originX": "center",
       "originY": "center",
@@ -1844,7 +1907,7 @@
     "name": "text with effects",
     "kind": "text",
     "object": {
-      "id": "case-33",
+      "id": "case-35",
       "type": "textbox",
       "text": "Glow up",
       "originX": "center",
@@ -1890,7 +1953,7 @@
     "name": "curved text",
     "kind": "text",
     "object": {
-      "id": "case-34",
+      "id": "case-36",
       "type": "textbox",
       "text": "Curved",
       "originX": "center",
@@ -1917,7 +1980,7 @@
     "name": "shape with a shadow",
     "kind": "shape",
     "object": {
-      "id": "case-35",
+      "id": "case-37",
       "type": "rect",
       "originX": "center",
       "originY": "center",

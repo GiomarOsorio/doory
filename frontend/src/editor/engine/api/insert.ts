@@ -387,11 +387,34 @@ export class InsertApi {
     if (!view || !placeholder) return
     const url = await this.engine.assets.resolve(ref.url)
     const img = await createImage({ src: ref.url, url, assetId: ref.id }, new Point(0, 0), { width: 1, height: 1 })
-    const sample = placeholder.type === 'image' ? asDory(placeholder).docSrc : undefined
+    const pd = asDory(placeholder)
+    const sample = placeholder.type === 'image' ? pd.docSrc : undefined
     const slot = slotOf(placeholder, sample)
     const cover = coverSlotTransform(slot, img.width, img.height)
-    img.set({ left: cover.cx, top: cover.cy, scaleX: cover.scale, scaleY: cover.scale, angle: slot.angle })
-    Object.assign(img, { slot, name: ref.name })
+    img.set({
+      left: cover.cx,
+      top: cover.cy,
+      scaleX: cover.scale,
+      scaleY: cover.scale,
+      angle: slot.angle,
+      opacity: placeholder.opacity,
+      flipX: placeholder.flipX,
+      flipY: placeholder.flipY,
+      shadow: placeholder.shadow,
+    })
+    const d = asDory(img)
+    d.id = pd.id
+    d.slot = slot
+    d.name = pd.name && pd.name !== t.history.imagePlaceholder ? pd.name : ref.name
+    d.field = pd.field
+    d.locked = pd.locked
+    d.link = pd.link
+    d.animation = pd.animation
+    d.effects = pd.effects
+    if (pd.filterSpecs && pd.filterSpecs.length > 0) {
+      d.filterSpecs = pd.filterSpecs
+      applyImageFilters(img, pd.filterSpecs)
+    }
     applySlotClip(img)
     const index = view.canvas.getObjects().indexOf(placeholder)
     view.canvas.discardActiveObject()
@@ -407,17 +430,29 @@ export class InsertApi {
   async replaceSelectedImage(ref: AssetRef): Promise<void> {
     const view = this.engine.activeView()
     const obj = view?.selectedObjects()[0]
-    if (!view || !obj || obj.type !== 'image') return
+    if (!view || !obj) return
+    const d = asDory(obj)
+    if (d.isPlaceholder) {
+      if (d.id) await this.fillPlaceholderWith(this.engine.state.activePageId, d.id, ref)
+      return
+    }
+    if (obj.type !== 'image') return
     const img = obj as FabricImage
     const frameW = img.getScaledWidth()
     const frameH = img.getScaledHeight()
     const url = await this.engine.assets.resolve(ref.url)
     await img.setSrc(url, { crossOrigin: 'anonymous' })
-    const d = asDory(img)
     d.docSrc = ref.url
     d.assetId = ref.id
-    img.set({ cropX: 0, cropY: 0, width: img.getElement().width, height: img.getElement().height })
-    coverFrame(img, frameW, frameH)
+    const natW = img.getElement().width || img.width || 1
+    const natH = img.getElement().height || img.height || 1
+    img.set({ cropX: 0, cropY: 0, width: natW, height: natH })
+    if (d.slot) {
+      const cover = coverSlotTransform(d.slot, natW, natH)
+      img.set({ left: cover.cx, top: cover.cy, scaleX: cover.scale, scaleY: cover.scale, angle: d.slot.angle })
+    } else {
+      coverFrame(img, frameW, frameH)
+    }
     if (d.filterSpecs && d.filterSpecs.length > 0) applyImageFilters(img, d.filterSpecs)
     applyMask(img)
     img.setCoords()

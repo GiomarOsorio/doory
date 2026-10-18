@@ -25,7 +25,7 @@ from apps.collab import engine, schema, store
 from apps.collab.notify import notify_design
 
 from . import services
-from .doc.ops import EditOutcome, Resolver, apply_ops
+from .doc.ops import MAX_OPS, EditError, EditOutcome, Resolver, apply_ops
 from .exceptions import DesignTrashed, RevisionConflict
 from .models import Design
 from .validators import validate_document
@@ -55,6 +55,22 @@ def _validated(outcome: EditOutcome) -> EditOutcome:
     return outcome
 
 
+def _prefetch_urls(ops: list, resolver: Resolver) -> None:
+    """Resolve `url` picture sources before taking the design's row lock."""
+    if len(ops) > MAX_OPS:
+        raise EditError(MAX_OPS, f"At most {MAX_OPS} operations per call.")
+    for index, op in enumerate(ops):
+        url = getattr(op, "url", None)
+        if url is not None and (getattr(op, "asset_id", None), getattr(op, "element_id", None)) == (
+            None,
+            None,
+        ):
+            try:
+                resolver.image(asset_id=None, element_id=None, url=url)
+            except LookupError as exc:
+                raise EditError(index, str(exc)) from exc
+
+
 def apply_edit(
     design_id: uuid.UUID,
     owner,
@@ -70,9 +86,13 @@ def apply_edit(
     if settings.REALTIME_ENABLED and store.room_is_live(design.pk):
         # The stored revision lags the live state by up to a flush, so `base_revision` is not checked here:
         # the edit merges into the session like one more collaborator's.
+        _prefetch_urls(ops, resolver)
         result = _apply_live(design, owner, ops, resolver, label)
         if result is not None:
             return result
+    if base_revision is not None and base_revision != design.revision:
+        raise RevisionConflict(design.revision, design.updated_at)
+    _prefetch_urls(ops, resolver)
     return _apply_saved(design.pk, owner, ops, resolver, base_revision, label)
 
 

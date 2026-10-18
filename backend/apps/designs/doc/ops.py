@@ -211,6 +211,29 @@ class AddImage(_Add):
     mask_radius: MaskRadius | None = Field(None, description=RADIUS_HELP)
 
 
+FocalPoint = Annotated[
+    tuple[Annotated[float, Field(ge=0, le=1)], Annotated[float, Field(ge=0, le=1)]],
+    Field(
+        description="Point of the picture to keep in the frame's centre, [x, y] from [0, 0] (top-left) "
+        "to [1, 1] (bottom-right)."
+    ),
+]
+
+
+class ReplaceImage(_Op):
+    """Put a new picture into an existing image or photo placeholder, keeping its frame, crop shape, filters,
+    effects and template field tag. The picture is scaled to cover the frame, centred on `focal`."""
+
+    op: Literal["replace_image"]
+    object_id: ObjectId
+    asset_id: str | None = Field(None, description="From list_assets or import_stock_photo.")
+    element_id: str | None = Field(None, description="From search_elements.")
+    url: Annotated[str, StringConstraints(min_length=8, max_length=2048)] | None = Field(
+        None, description="A public https link to an image (uploaded into your assets; needs `assets:write`)."
+    )
+    focal: FocalPoint = (0.5, 0.5)
+
+
 class AddQrCode(_Add):
     """Add a QR code that encodes `text` (usually a URL)."""
 
@@ -354,6 +377,7 @@ Operation = Annotated[
     | AddShape
     | AddLine
     | AddImage
+    | ReplaceImage
     | AddQrCode
     | UpdateObject
     | DeleteObjects
@@ -384,7 +408,9 @@ class ImageSource:
 
 
 class Resolver(Protocol):
-    def image(self, *, asset_id: str | None, element_id: str | None) -> ImageSource:
+    def image(
+        self, *, asset_id: str | None = None, element_id: str | None = None, url: str | None = None
+    ) -> ImageSource:
         """The picture to place; raises `LookupError` with a message for the agent when there is none."""
 
     def font_category(self, family: str) -> str | None:
@@ -587,6 +613,29 @@ class _Editor:
                 raise self.fail("Only uploaded pictures can be masked, not catalogue graphics.")
             builders.apply_mask(obj, op.mask, op.mask_radius)
         return self.insert(op, obj)
+
+    def replace_image(self, op: ReplaceImage) -> dict:
+        chosen = [op.asset_id is not None, op.element_id is not None, op.url is not None]
+        if sum(chosen) != 1:
+            raise self.fail("Send exactly one of asset_id, element_id and url.")
+        page, position = self.find(op.object_id)
+        obj = page["objects"][position]
+        if object_kind(obj) not in ("image", "placeholder"):
+            raise self.fail("Only pictures and photo placeholders can be replaced with a picture.")
+        try:
+            source = self.resolver.image(asset_id=op.asset_id, element_id=op.element_id, url=op.url)
+        except LookupError as exc:
+            raise self.fail(str(exc)) from exc
+        builders.replace_image(
+            obj,
+            src=source.src,
+            natural_width=source.width,
+            natural_height=source.height,
+            asset_id=source.asset_id,
+            name=source.name,
+            focal=(op.focal[0], op.focal[1]),
+        )
+        return {"object_id": obj["id"], "box": box(obj)}
 
     def add_qr_code(self, op: AddQrCode) -> dict:
         page = self.page(op.page)
@@ -896,6 +945,12 @@ def _origin_factor(origin: Any) -> float:
 
 def box(obj: dict) -> dict:
     """The object's unrotated box in page pixels: {x, y, width, height} (x, y = top-left corner)."""
+    slot = obj.get("slot")
+    if isinstance(slot, dict) and _float(slot.get("width")) > 0 and _float(slot.get("height")) > 0:
+        w, h = _float(slot["width"]), _float(slot["height"])
+        x = _float(slot.get("cx")) - w / 2
+        y = _float(slot.get("cy")) - h / 2
+        return {"x": round(x, 2), "y": round(y, 2), "width": round(w, 2), "height": round(h, 2)}
     width = _float(obj.get("width")) * abs(_float(obj.get("scaleX"), 1.0))
     height = _float(obj.get("height")) * abs(_float(obj.get("scaleY"), 1.0))
     left, top = _float(obj.get("left")), _float(obj.get("top"))
@@ -907,8 +962,13 @@ def box(obj: dict) -> dict:
 def place(obj: dict, x: float, y: float) -> None:
     """Move the object so its box's top-left corner is at (x, y), whatever its origin."""
     current = box(obj)
-    obj["left"] = round(_float(obj.get("left")) + (x - current["x"]), 3)
-    obj["top"] = round(_float(obj.get("top")) + (y - current["y"]), 3)
+    dx, dy = x - current["x"], y - current["y"]
+    obj["left"] = round(_float(obj.get("left")) + dx, 3)
+    obj["top"] = round(_float(obj.get("top")) + dy, 3)
+    slot = obj.get("slot")
+    if isinstance(slot, dict):
+        slot["cx"] = builders._num(_float(slot.get("cx")) + dx)
+        slot["cy"] = builders._num(_float(slot.get("cy")) + dy)
 
 
 def refit_text_height(obj: dict) -> None:

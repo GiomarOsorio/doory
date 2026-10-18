@@ -18,7 +18,7 @@ OPS = TypeAdapter(list[Operation])
 
 
 class NoPictures:
-    def image(self, *, asset_id, element_id) -> ImageSource:
+    def image(self, *, asset_id=None, element_id=None, url=None) -> ImageSource:
         raise LookupError("no pictures here")
 
     def font_category(self, family):

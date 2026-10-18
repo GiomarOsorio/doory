@@ -972,6 +972,7 @@ export const t = {
     pageDelete: 'Delete page',
     pagePrev: 'Previous page',
     pageNext: 'Next page',
+    imageReplace: 'Replace image',
     imageCrop: 'Crop image',
     fileShare: 'Share…',
     fileHistory: 'Version history…',

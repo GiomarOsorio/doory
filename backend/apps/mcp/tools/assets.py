@@ -80,13 +80,7 @@ def import_stock_photo(
     return _asset(asset)
 
 
-@tool(scope=ASSETS_WRITE, title="Upload an image from a URL")
-def upload_image_from_url(
-    url: Annotated[str, Field(min_length=8, max_length=2048, description="A public https link to an image.")],
-    name: Annotated[str | None, Field(max_length=120)] = None,
-) -> dict[str, Any]:
-    """Copy an image from a public https URL into your uploads; it is checked like any upload. Only use
-    images the user has the right to use."""
+def import_url_asset(user, url: str, name: str | None = None) -> Asset:
     if not settings.MCP_URL_UPLOADS:
         raise ToolError("Uploading from a URL is switched off on this server.")
     throttle(UploadRateThrottle())
@@ -97,7 +91,14 @@ def upload_image_from_url(
     if looks_like_audio(data):
         raise ToolError("That URL is not an image. Nothing was uploaded.")
     fallback = unquote(urlsplit(url).path.rsplit("/", 1)[-1]) or "Image"  # the path only, never the query
-    asset = create_asset(
-        current().user, data, name=clean_name(name or fallback), meta={"source_url": _bare(url)}
-    )
-    return _asset(asset)
+    return create_asset(user, data, name=clean_name(name or fallback), meta={"source_url": _bare(url)})
+
+
+@tool(scope=ASSETS_WRITE, title="Upload an image from a URL")
+def upload_image_from_url(
+    url: Annotated[str, Field(min_length=8, max_length=2048, description="A public https link to an image.")],
+    name: Annotated[str | None, Field(max_length=120)] = None,
+) -> dict[str, Any]:
+    """Copy an image from a public https URL into your uploads; it is checked like any upload. Only use
+    images the user has the right to use."""
+    return _asset(import_url_asset(current().user, url, name))

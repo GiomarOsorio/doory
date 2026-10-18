@@ -20,6 +20,7 @@ import {
   Keyboard,
   Lock,
   Redo2,
+  Replace,
   Save,
   Scissors,
   SendToBack,
@@ -127,6 +128,7 @@ export function registerBuiltinCommands(): void {
   registerCommand({ id: 'page.prev', label: t.cmd.pagePrev, shortcut: 'PageUp', group: t.cmdGroup.pages, run: (e) => stepPage(e, -1) })
   registerCommand({ id: 'page.next', label: t.cmd.pageNext, shortcut: 'PageDown', group: t.cmdGroup.pages, run: (e) => stepPage(e, 1) })
 
+  registerCommand({ id: 'image.replace', label: t.cmd.imageReplace, group: t.cmdGroup.image, icon: <Replace size={18} />, run: (e) => void e.insert.pickAndReplaceImage(), enabled: ({ state }) => !state.readOnly && state.selection.ids.length === 1 && (state.selection.kinds.includes('image') || state.selection.kinds.includes('placeholder')) && !state.selection.editing })
   registerCommand({ id: 'image.crop', label: t.cmd.imageCrop, shortcut: 'Enter', group: t.cmdGroup.image, run: (e) => (e.state.ui.cropping ? e.crop.apply() : e.crop.start()), enabled: ({ state }) => state.ui.cropping !== null || (state.selection.ids.length === 1 && state.selection.kinds.includes('image') && !state.selection.editing) })
 }
 
