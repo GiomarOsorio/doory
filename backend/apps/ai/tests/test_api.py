@@ -277,11 +277,16 @@ def test_the_secret_is_kept_replaced_or_removed(byos, api):
     "new_url",
     ["https://other.example", "https://ai.example.com:8443", "http://ai.example.com"],
 )
-def test_moving_a_server_to_another_address_drops_its_secret(byos, settings, api, new_url):
+def test_moving_a_server_to_another_address_needs_the_key_again(byos, settings, api, new_url):
     settings.AI_USER_PROVIDERS_ALLOW_HTTP = True
     pk = create(api).json()["id"]
-    body = api.patch(f"/api/v1/ai/providers/{pk}/", {"base_url": new_url}, format="json").json()
-    assert body["has_secret"] is False and not Provider.objects.get(pk=pk).has_secret
+    res = api.patch(f"/api/v1/ai/providers/{pk}/", {"base_url": new_url}, format="json")
+    assert res.status_code == 400
+    assert "Enter the key again" in res.json()["error"]["fields"]["secret"][0]
+    provider = Provider.objects.get(pk=pk)
+    assert provider.base_url != new_url and provider.secret() == SECRET
+    res = api.patch(f"/api/v1/ai/providers/{pk}/", {"base_url": new_url, "secret": ""}, format="json")
+    assert res.status_code == 200 and res.json()["has_secret"] is False
 
 
 def test_the_secret_stays_for_the_same_address_or_comes_with_the_new_one(byos, api):

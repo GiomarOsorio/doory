@@ -98,8 +98,8 @@ class ProviderSerializer(serializers.ModelSerializer):
         max_length=MAX_SECRET_LENGTH,
         trim_whitespace=True,
         help_text="The value of the auth header (e.g. `Bearer …`). Omit to keep the stored one; "
-        "empty to remove it. Changing the server's scheme, host or port removes a stored secret unless a new "
-        "one is sent in the same request.",
+        "empty to remove it. Changing the server's scheme, host or port while a secret is stored is refused "
+        "unless a new one (or an empty one) is sent in the same request.",
     )
     has_secret = serializers.BooleanField(read_only=True)
     models = ProviderModelSerializer(many=True, read_only=True)
@@ -185,6 +185,19 @@ class ProviderSerializer(serializers.ModelSerializer):
             get_style(style).config(style_config)
         except ConfigError as exc:
             raise serializers.ValidationError({"style_config": [str(exc)]}) from None
+        new_url = attrs.get("base_url")
+        if (
+            self.instance is not None
+            and self.instance.has_secret
+            and "secret" not in attrs
+            and new_url
+            and not self.instance.keeps_secret_for(new_url)
+        ):
+            # The stored key was entered for the old server: never send it to another one, and never drop it
+            # silently either.
+            raise serializers.ValidationError(
+                {"secret": ["Enter the key again when changing the server address."]}
+            )
         return attrs
 
     def save(self, **kwargs) -> Provider:
@@ -192,7 +205,7 @@ class ProviderSerializer(serializers.ModelSerializer):
         provider = self.instance or Provider(**kwargs)
         new_url = self.validated_data.get("base_url")
         if secret is None and provider.pk and new_url and not provider.keeps_secret_for(new_url):
-            secret = ""  # the stored key was entered for the old server; it must be entered again
+            secret = ""  # defence in depth: `validate` already refuses this
         for field, value in self.validated_data.items():
             setattr(provider, field, value)
         if secret is not None:
