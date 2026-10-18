@@ -74,10 +74,28 @@ def import_stock_photo(
     photo_id: Annotated[
         str, Field(min_length=1, max_length=64, description="`id` from search_stock_photos.")
     ],
+    remove_background: Annotated[
+        bool,
+        Field(description="Remove the photo's background immediately upon import (uses an AI server model)."),
+    ] = False,
+    model: Annotated[
+        str | None,
+        Field(description="The AI model option to use (from list_ai_models). If omitted, uses the default server model."),
+    ] = None,
 ) -> dict[str, Any]:
-    """Copy a stock photo into your uploads (once; importing it again returns the same asset)."""
+    """Copy a stock photo into your uploads (once; importing it again returns the same asset). When
+    remove_background is true, runs background removal on the photo and returns the transparent cut-out."""
     throttle(UploadRateThrottle())
-    asset, _ = stock.import_photo(current().user, provider, photo_id)
+    user = current().user
+    asset, _ = stock.import_photo(user, provider, photo_id)
+    if remove_background:
+        from apps.ai.throttling import AIRateThrottle
+
+        from .ai import resolve_and_run_background_removal
+
+        throttle(AIRateThrottle())
+        cutout = resolve_and_run_background_removal(user, asset, model)
+        return _asset(cutout)
     return _asset(asset)
 
 
@@ -99,10 +117,29 @@ def import_url_asset(user, url: str, name: str | None = None) -> Asset:
 def upload_image_from_url(
     url: Annotated[str, Field(min_length=8, max_length=2048, description="A public https link to an image.")],
     name: Annotated[str | None, Field(max_length=120)] = None,
+    remove_background: Annotated[
+        bool,
+        Field(description="Remove the image's background upon upload (uses an AI server model)."),
+    ] = False,
+    model: Annotated[
+        str | None,
+        Field(description="The AI model option to use (from list_ai_models). If omitted, uses the default server model."),
+    ] = None,
 ) -> dict[str, Any]:
     """Copy an image from a public https URL into your uploads; it is checked like any upload. Only use
-    images the user has the right to use."""
-    return _asset(import_url_asset(current().user, url, name))
+    images the user has the right to use. When remove_background is true, runs background removal and returns
+    the transparent cut-out."""
+    user = current().user
+    asset = import_url_asset(user, url, name)
+    if remove_background:
+        from apps.ai.throttling import AIRateThrottle
+
+        from .ai import resolve_and_run_background_removal
+
+        throttle(AIRateThrottle())
+        cutout = resolve_and_run_background_removal(user, asset, model)
+        return _asset(cutout)
+    return _asset(asset)
 
 
 @tool(scope=DESIGNS_READ, title="Search sounds", read_only=True)
