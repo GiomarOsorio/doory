@@ -18,6 +18,7 @@ import { ExportProblem } from './print/ExportProblem'
 import { PrintSection } from './print/PrintSection'
 import type { VideoFormat } from '../engine/export/video/options'
 import { LazyVideoSection } from './VideoSectionLoader'
+import { AudioCredits } from '../panels/AudioCredits'
 import { type ExportFailure, describeExportFailure, isCancellation } from './print/exportFailure'
 import { type PrintSettings, describeSizes, loadPrintSettings, savePrintSettings } from './print/printOptions'
 import printStyles from './print/print.module.css'
@@ -240,6 +241,7 @@ export function DownloadDialog({ props }: { props?: Record<string, unknown> } = 
 
         {printing ? <PrintSection settings={print} onChange={changePrint} sizes={chosen} unit={doc.unit} server={format?.server === true} /> : null}
 
+        {video ? <AudioCredits /> : null}
         {video && format ? <LazyVideoSection format={format.id as VideoFormat} pages={chosenPages} rangeInvalid={rangeInvalid} footer={footerSlot} onLockChange={setVideoLocked} /> : null}
 
         {zipped ? <small className={styles.muted}>{t.dialog.downloadZip}</small> : null}

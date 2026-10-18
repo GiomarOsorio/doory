@@ -610,7 +610,7 @@ def _stream(response: Any, deadline: float) -> Iterator[bytes]:
         yield chunk
 
 
-def download_image(url: str, *, hosts: frozenset[str], max_bytes: int) -> bytes:
+def download_image(url: str, *, hosts: frozenset[str], max_bytes: int, accept: str = "image/*") -> bytes:
     """Fetch `url` (https, allow-listed host on every redirect hop) with a byte cap and a deadline."""
     deadline = time.monotonic() + DOWNLOAD_DEADLINE_SECONDS
     current = check_https_host(url, hosts)
@@ -621,7 +621,7 @@ def download_image(url: str, *, hosts: frozenset[str], max_bytes: int) -> bytes:
                 stream=True,
                 timeout=DOWNLOAD_TIMEOUT,
                 allow_redirects=False,
-                headers={"User-Agent": USER_AGENT, "Accept": "image/*"},
+                headers={"User-Agent": USER_AGENT, "Accept": accept},
             )
         except requests.RequestException as exc:
             raise ProviderError("The download failed.") from exc
