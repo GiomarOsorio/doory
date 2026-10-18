@@ -21,8 +21,14 @@ The `DOORY_SYNC_*` downloads run before it starts serving. Wait, or turn them of
 The host name isn't in `DJANGO_ALLOWED_HOSTS`.
 
 **"CSRF verification failed", or you can't stay signed in.**
-`SITE_URL` must match the address in the browser exactly, including `https://`. Over plain http, set
-`SECURE_COOKIES=false` and `SECURE_SSL_REDIRECT=false`. Behind more than one proxy, check `NUM_PROXIES`.
+`SITE_URL` must match the address in the browser exactly, including `https://`. When you only try Doory on your
+own machine over plain http, set `SECURE_COOKIES=false` and `SECURE_SSL_REDIRECT=false`. Don't do this on a public
+server: set up HTTPS instead ([docker.md](docker.md#https)).
+
+**Everyone hits the rate limit or the login lockout at once.**
+The limits key on the client address that nginx sees. If your TLS proxy has a public address, nginx doesn't trust
+its `X-Forwarded-For` and every request looks like it comes from the proxy. Add `set_real_ip_from <proxy address>;`
+to the nginx config (`frontend/nginx.conf` for Docker, `deploy/nginx.conf` without it).
 
 **Endless redirects.**
 `SECURE_SSL_REDIRECT=true`, but the proxy in front doesn't send `X-Forwarded-Proto: https`.

@@ -36,7 +36,9 @@ certificate, or a load balancer), then:
 1. Set `WEB_BIND=127.0.0.1` if the proxy runs on the same host.
 2. Set `SITE_URL=https://your-domain` and `DJANGO_ALLOWED_HOSTS=your-domain`.
 3. Set `SECURE_SSL_REDIRECT=true` and `SECURE_COOKIES=true`.
-4. If there is more than one proxy in front of the API, raise `NUM_PROXIES`.
+4. If the proxy reaches nginx from a public address (not a private network or the same host), add
+   `set_real_ip_from <proxy address>;` to `frontend/nginx.conf`. Otherwise rate limits and the login lockout
+   count every user as the proxy.
 5. Make sure the proxy forwards WebSockets on `/ws/`.
 
 Then run `docker compose up -d` to apply the changes.

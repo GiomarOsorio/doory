@@ -10,7 +10,7 @@ root [`.env.example`](../../.env.example).
 A blank **Default** means the setting is empty or off. After changing a setting, restart the services
 (`docker compose up -d`, or `systemctl restart doory-api doory-realtime doory-mcp`).
 
-Every setting the code reads is listed here; `make docs-check` fails when one is missing. To add a setting,
+Every setting in the settings files and `.env.example` is listed here; `make docs-check` fails when one is missing. To add a setting,
 add a row to the matching section (see [CONTRIBUTING.md](../../CONTRIBUTING.md#documentation)).
 
 ## Required
@@ -18,7 +18,7 @@ add a row to the matching section (see [CONTRIBUTING.md](../../CONTRIBUTING.md#d
 | Setting | Default | What it does |
 |---------|---------|--------------|
 | `SITE_URL` | `http://localhost:5173` | Public address of the site, with the scheme and without a trailing slash. Used in emails, CSRF checks and export URLs |
-| `DJANGO_SECRET_KEY` | | A long random value (`openssl rand -base64 48`). Changing it signs everyone out |
+| `DJANGO_SECRET_KEY` | | A long random value (`openssl rand -base64 48`). Production refuses the development key and keys shorter than 32 characters. Changing it signs everyone out and revokes MCP tokens, unless the old key goes in `DJANGO_SECRET_KEY_FALLBACKS` |
 | `DJANGO_SECRET_KEY_FALLBACKS` | | Old secret keys, comma separated, so you can rotate the key without signing everyone out |
 | `POSTGRES_PASSWORD` | | Docker: the database password. Use letters and digits only, because it goes into `DATABASE_URL` |
 | `DJANGO_ALLOWED_HOSTS` | `localhost,127.0.0.1` | Host names the site answers to, comma separated. A leading dot also matches subdomains |
@@ -29,8 +29,8 @@ add a row to the matching section (see [CONTRIBUTING.md](../../CONTRIBUTING.md#d
 |---------|---------|--------------|
 | `SECURE_SSL_REDIRECT` | `true` in production | Redirect `http://` to `https://`. Set to `false` while you test over plain http |
 | `SECURE_COOKIES` | `true` in production | Send session and CSRF cookies over HTTPS only |
-| `NUM_PROXIES` | `1` | Number of reverse proxies in front of the API, used by rate limiting. The bundled nginx counts as 1 |
-| `CSRF_TRUSTED_ORIGINS` | `SITE_URL` | Extra origins allowed to send forms. Docker sets this from `SITE_URL` |
+| `NUM_PROXIES` | `1` | Number of reverse proxies in front of the API, used by rate limiting. Keep `1`: the bundled nginx passes the real client address on itself. A TLS proxy with a public address needs `set_real_ip_from` in nginx instead (see [troubleshooting](troubleshooting.md)) |
+| `CSRF_TRUSTED_ORIGINS` | `SITE_URL` | Origins allowed to send forms, comma separated. Without Docker only: under Docker, compose sets it from `SITE_URL`, so a value in `.env` has no effect |
 | `CORS_ALLOWED_ORIGINS` | none in production | Origins on other domains that may call the API from a browser |
 
 ## Ports and build options (Docker)
@@ -111,7 +111,7 @@ See [image-export.md](image-export.md).
 | `EXPORT_CHROMIUM_NO_SANDBOX` | `false` | Run Chromium without its sandbox. The Docker image sets this |
 | `EXPORT_WORK_DIR` | system temp folder | Where each export gets its own temporary folder |
 | `EXPORT_STORAGE_ROOT` | `backend/exports` | Where exported files wait to be downloaded. Docker uses the `exports` volume |
-| `EXPORT_ALLOWED_ORIGINS` | `SITE_URL` and `localhost:8000` | Origins Chromium may load `/media/` and `/static/` files from during an export |
+| `EXPORT_ALLOWED_ORIGINS` | `SITE_URL`, `http://127.0.0.1:8000` and `http://localhost:8000` | Origins Chromium may load `/media/` and `/static/` files from during an export |
 | `EXPORT_FILENAME_STYLE` | `simple` | Default file names: `simple` (`summer-sale-02.png`) or `structured` (`summer-sale_platform_preset_1080x1920_p02.png`). People can change this in the download dialog |
 | `EXPORT_FILENAME_TIMESTAMP` | `false` | End structured file names with the Unix time of the export |
 
@@ -157,12 +157,47 @@ See [stock-media.md](../integrations/stock-media.md).
 | `STOCK_DEFAULT_TAB` | `all` | Tab that opens first: `all` or a provider name |
 | `STOCK_LANG_FROM_UI` | `true` | Search in the interface language, where the provider supports it |
 | `STOCK_PIXABAY_IMAGE_TYPE` | `photo` | `photo`, `illustration`, `vector` or `all` |
-| `STOCK_<PROVIDER>_RATE` | | Limit on calls per API key across all users, e.g. `5000/h` or `100/m`. Without it, a provider is paused only when it answers 429 |
-| `STOCK_<PROVIDER>_CACHE_SECONDS` | `3600` (`86400` for pixabay) | How long search results are cached |
-| `STOCK_<PROVIDER>_SAFESEARCH` | depends on the provider | Ask the provider to filter out unsafe results |
+| `STOCK_<PROVIDER>_RATE` | `60/m` for freesound | Limit on calls per API key across all users, e.g. `5000/h` or `100/m`. Without it, a provider is paused only when it answers 429 |
+| `STOCK_<PROVIDER>_CACHE_SECONDS` | `3600` (`86400` for pixabay and freesound) | How long search results are cached |
+| `STOCK_<PROVIDER>_SAFESEARCH` | off for unsplash, on for pexels and pixabay | Ask the provider to filter out unsafe results |
+| `FREESOUND_API_KEY` | | API key for the Freesound tab in the Audio tool |
+| `FREESOUND_LICENSES` | `cc0` | Licences to offer: `cc0`, or `cc0,by` to also allow CC BY (the editor then lists the credits to publish). Freesound's API terms cover non-commercial use; a commercial service needs an agreement with Freesound first |
 
-`<PROVIDER>` is the provider's name in capitals, e.g. `STOCK_PEXELS_RATE`. Limits and caching only work across
+`<PROVIDER>` is the provider's name in capitals, e.g. `STOCK_PEXELS_RATE` or `STOCK_FREESOUND_RATE`. Limits and caching only work across
 workers when they share a cache (`CACHE_URL`).
+
+## AI image providers
+
+Remote servers for background removal. In-browser removal stays the default. Providers can also be set up in the
+admin under "AI providers".
+
+| Setting | Default | What it does |
+|---------|---------|--------------|
+| `AI_PROVIDERS_ENABLED` | `true` | Offer the configured providers in the editor |
+| `AI_PROVIDER_<n>_URL` | | Address of provider `<n>` (1 to 9), e.g. `http://model-server:7000` |
+| `AI_PROVIDER_<n>_STYLE` | | How its API looks: `doory` (the contract at `/api/v1/ai/contract.yaml`), `multipart`, `json`, `mask` or `custom` |
+| `AI_PROVIDER_<n>_STYLE_CONFIG` | | JSON details for the style, e.g. `{"path": "/remove", "file_field": "image"}` |
+| `AI_PROVIDER_<n>_TASKS` | | Tasks it serves, e.g. `background-removal` |
+| `AI_PROVIDER_<n>_MODELS` | | `name:Label,name2:Label2`. Empty: the server's own list (`doory` style) or its default |
+| `AI_PROVIDER_<n>_AUTH_HEADER` | | Header for the key, e.g. `Authorization` or `X-Api-Key` |
+| `AI_PROVIDER_<n>_AUTH_VALUE` | | Value sent as is (e.g. `Bearer …`). Never shown in the browser or the logs |
+| `AI_PROVIDER_<n>_LABEL` | | Name shown in the editor |
+| `AI_PROVIDER_<n>_SENDS_OFFSITE` | `false` | The editor tells users their image leaves this installation |
+| `AI_PROVIDER_<n>_TIMEOUT_SECONDS` | `AI_DEFAULT_TIMEOUT_SECONDS` | Time limit for one call |
+| `AI_PROVIDER_<n>_MAX_IMAGE_BYTES` | `AI_MAX_IMAGE_BYTES` | Largest image sent to it |
+| `AI_PROVIDER_<n>_DAILY_QUOTA` | `0` | Calls per user per day. `0` means no limit |
+| `AI_ALLOWED_PRIVATE_HOSTS` | | Host names a provider may reach on a private network. Others must resolve to public addresses (IP addresses you type are allowed) |
+| `BACKGROUND_REMOVAL_DEFAULT` | `device` | Option the editor starts with: `device` (in the browser) or an id from `/api/v1/ai/models/` |
+| `AI_OFFSITE_NOTICE` | | Notice under options that send images offsite. Empty: a built-in one |
+| `AI_USER_PROVIDERS` | `off` | Whether users may add their own servers: `off`, `staff` or `everyone`. Their servers must be public https hosts |
+| `AI_USER_PROVIDERS_ALLOW_HTTP` | `false` | Also allow plain http for users' servers |
+| `AI_USER_PROVIDERS_ALLOWED_PORTS` | | Extra ports for users' servers, comma separated. 443 and 8443 always work (80 and 8080 with `AI_USER_PROVIDERS_ALLOW_HTTP`) |
+| `AI_MAX_PROVIDERS_PER_USER` | `10` | Servers each user may add |
+| `AI_SECRETS_KEY` | | Fernet key that encrypts stored provider keys. Empty: derived from `DJANGO_SECRET_KEY`, so changing that key needs the old one in `DJANGO_SECRET_KEY_FALLBACKS` |
+| `AI_SECRETS_KEY_FALLBACKS` | | Earlier `AI_SECRETS_KEY` values, still accepted for reading |
+| `AI_DEFAULT_TIMEOUT_SECONDS` | `60` | Time limit for a provider call |
+| `AI_MAX_IMAGE_BYTES` | `26214400` (25 MB) | Largest image sent to or read back from a provider |
+| `AI_CACHE_SECONDS` | `604800` (7 days) | Identical requests reuse the result this long |
 
 ## Realtime co-editing
 

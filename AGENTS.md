@@ -40,6 +40,5 @@ In short:
 - Add pages to the existing folders (`self-hosting/`, `integrations/`, `development/`). Don't add folders, and
   don't rename or move existing pages.
 - Name pages after what they do, never after a provider or an issue number.
-- Don't name third-party services in docs, issues or PR text. Use generic wording and `example.com` addresses.
 
 Changes that only affect the editor, with nothing for admins to do, don't need docs.

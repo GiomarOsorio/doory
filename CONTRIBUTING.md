@@ -27,7 +27,7 @@ Documentation lives in [`docs/`](docs/README.md) and changes in the same pull re
 | Changes the code layout or adds a backend app | [`docs/development/architecture.md`](docs/development/architecture.md) |
 | Only changes the editor, with nothing for admins to do | No docs needed. Add it to the feature list in the README if it's a notable feature |
 
-`make docs-check` (part of `make lint` and CI) fails when a setting in the code, either `.env.example` or
+`make docs-check` (part of `make lint`) fails when a setting in the code, either `.env.example` or
 `docker-compose.yml` is missing from `configuration.md`.
 
 ### Rules

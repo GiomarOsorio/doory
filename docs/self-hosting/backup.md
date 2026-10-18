@@ -15,7 +15,7 @@ Fonts, element packs, audio and models can be downloaded again ([content.md](con
 
 ```bash
 # Database
-docker compose exec -T db pg_dump -U doory -Fc doory > doory-$(date +%F).dump
+docker compose exec -T db sh -c 'pg_dump -U "$POSTGRES_USER" -Fc "$POSTGRES_DB"' > doory-$(date +%F).dump
 # Media
 docker compose run --rm -v "$PWD":/backup --entrypoint tar api czf /backup/media-$(date +%F).tgz -C /app media
 ```
@@ -24,7 +24,7 @@ Restore into a fresh stack:
 
 ```bash
 docker compose up -d db
-docker compose exec -T db pg_restore -U doory -d doory --clean --if-exists < doory-YYYY-MM-DD.dump
+docker compose exec -T db sh -c 'pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" --clean --if-exists' < doory-YYYY-MM-DD.dump
 docker compose run --rm -v "$PWD":/backup --entrypoint tar api xzf /backup/media-YYYY-MM-DD.tgz -C /app
 docker compose up -d
 ```
