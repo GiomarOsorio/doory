@@ -1,0 +1,111 @@
+import { useEffect, useRef, useState } from 'react'
+import { fitsOutput, targetSize } from '../engine/upscale'
+import { useEditor } from '../context'
+import { t } from '../strings'
+import { Button } from '../ui/Button'
+import { Dialog } from '../ui/Dialog'
+import { Segmented } from '../ui/Segmented'
+import styles from './dialogs.module.css'
+
+type Status = { kind: 'idle' } | { kind: 'running'; percent: number } | { kind: 'error'; message: string }
+
+const SCALES = [
+  { value: '2', label: '2×' },
+  { value: '4', label: '4×' },
+] as const
+
+/** Upscales the selected photo locally with the pure-code Lanczos resampler. */
+export function UpscaleDialog() {
+  const editor = useEditor()
+  const [source] = useState(() => editor.style.selectedImageSource())
+  const [scaleId, setScaleId] = useState<'2' | '4'>('2')
+  const [status, setStatus] = useState<Status>({ kind: 'idle' })
+  const controller = useRef<AbortController | null>(null)
+
+  useEffect(() => () => controller.current?.abort(), [])
+
+  const scale = Number(scaleId)
+  const target = source ? targetSize(source.width, source.height, scale) : null
+  const tooLarge = target ? !fitsOutput(target) : false
+
+  const start = (): void => {
+    if (!source || tooLarge || controller.current) return
+    const run = new AbortController()
+    controller.current = run
+    setStatus({ kind: 'running', percent: 0 })
+    editor.style
+      .upscale({ scale }, (percent) => {
+        if (!run.signal.aborted) setStatus({ kind: 'running', percent })
+      }, run.signal)
+      .then((applied) => {
+        if (run.signal.aborted) return
+        controller.current = null
+        editor.closeDialog()
+        if (applied) editor.toast(t.dialog.upscaleDone, 'success')
+      })
+      .catch((err: unknown) => {
+        if (run.signal.aborted) return
+        controller.current = null
+        setStatus({ kind: 'error', message: err instanceof Error && err.message ? err.message : t.errors.upscale })
+      })
+  }
+
+  const close = (): void => {
+    controller.current?.abort()
+    editor.closeDialog()
+  }
+
+  return (
+    <Dialog
+      title={t.dialog.upscaleTitle}
+      onClose={close}
+      width={400}
+      footer={
+        status.kind === 'running' ? (
+          <Button onClick={close}>{t.dialog.cancel}</Button>
+        ) : (
+          <>
+            <Button onClick={close}>{t.dialog.cancel}</Button>
+            <Button variant="primary" disabled={!source || tooLarge} onClick={start}>
+              {status.kind === 'error' ? t.dialog.upscaleRetry : t.dialog.upscaleButton}
+            </Button>
+          </>
+        )
+      }
+    >
+      {!source ? (
+        <p role="alert" className={styles.error}>
+          {t.errors.upscale}
+        </p>
+      ) : status.kind === 'running' ? (
+        <div className={styles.stack}>
+          <p role="status" className={styles.muted}>
+            {t.dialog.upscaleWorking}
+          </p>
+          <div role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={status.percent} aria-label={t.dialog.upscaleTitle} className={styles.progress}>
+            <div style={{ width: `${Math.max(4, status.percent)}%` }} />
+          </div>
+        </div>
+      ) : (
+        <div className={styles.stack}>
+          <p className={styles.muted}>
+            {t.dialog.upscaleSource}: {source.width} × {source.height} px
+          </p>
+          <Segmented label={t.dialog.upscaleScale} value={scaleId} options={SCALES} onChange={(value) => setScaleId(value)} />
+          <p className={styles.muted}>{target ? `${target.width} × ${target.height} px` : ''}</p>
+          {tooLarge ? (
+            <p role="alert" className={styles.error}>
+              {t.dialog.upscaleTooLarge}
+            </p>
+          ) : null}
+          <p className={styles.muted}>{t.dialog.upscaleNote}</p>
+          {status.kind === 'error' ? (
+            <p role="alert" className={styles.error}>
+              {status.message}
+            </p>
+          ) : null}
+        </div>
+      )}
+    </Dialog>
+  )
+}

@@ -427,7 +427,7 @@ export class InsertApi {
   }
 
   /** Replaces the selected image's source keeping its frame (size, position, mask, filters). */
-  async replaceSelectedImage(ref: AssetRef): Promise<void> {
+  async replaceSelectedImage(ref: AssetRef, label: string = t.history.replaceImage): Promise<void> {
     const view = this.engine.activeView()
     const obj = view?.selectedObjects()[0]
     if (!view || !obj) return
@@ -457,7 +457,7 @@ export class InsertApi {
     applyMask(img)
     img.setCoords()
     view.canvas.requestRenderAll()
-    this.engine.commit(this.engine.state.activePageId, { label: t.history.replaceImage })
+    this.engine.commit(this.engine.state.activePageId, { label })
   }
 
   async pickAndReplaceImage(): Promise<void> {

@@ -1,12 +1,13 @@
 /**
  * Property edits on the current selection: fill, stroke, opacity, text styling, effects, shape parameters,
- * image adjustments, masks, recolouring, links and QR content. Continuous controls (sliders, colour
+ * image adjustments, masks, upscaling, recolouring, links and QR content. Continuous controls (sliders, colour
  * scrubbing) pass a `key` so their steps coalesce into one undo step.
  */
 import { type FabricImage, type FabricObject, IText, Polygon, Rect, Shadow } from 'fabric'
 import type { ArrowHead, DocField, DocTextFit, ImageFilterSpec, MaskShape, ObjectEffects, ShadowSpec } from '@/types/document'
 import type { EditorEngine } from '../editor'
 import { removeBackground as runRemoval, type BgRemovalPhase } from '../bgRemoval'
+import { targetSize, upscaleImage as runUpscale, type CropRect, type UpscaleMethod, type UpscaleProgress } from '../upscale'
 import { DoryLine } from '../objects/DoryLine'
 import { asDory } from '../objects/dory'
 import { applyColorMap } from '../objects/elements'
@@ -278,6 +279,24 @@ export class StyleApi {
     return this.targets().filter((o): o is FabricImage => o.type === 'image')
   }
 
+  /** The selected photo's source rectangle in source pixels (its crop, if it has one). */
+  selectedImageSource(): { width: number; height: number; crop: CropRect } | null {
+    const img = this.images()[0]
+    if (!img) return null
+    const natural = img.getOriginalSize()
+    const naturalWidth = Math.max(1, Math.round(natural.width || img.width || 1))
+    const naturalHeight = Math.max(1, Math.round(natural.height || img.height || 1))
+    const rawX = Number.isFinite(img.cropX) ? img.cropX : 0
+    const rawY = Number.isFinite(img.cropY) ? img.cropY : 0
+    const rawWidth = Number.isFinite(img.width) && img.width > 0 ? img.width : naturalWidth
+    const rawHeight = Number.isFinite(img.height) && img.height > 0 ? img.height : naturalHeight
+    const x = Math.min(naturalWidth - 1, Math.max(0, Math.round(rawX)))
+    const y = Math.min(naturalHeight - 1, Math.max(0, Math.round(rawY)))
+    const width = Math.min(naturalWidth - x, Math.max(1, Math.round(rawWidth)))
+    const height = Math.min(naturalHeight - y, Math.max(1, Math.round(rawHeight)))
+    return { width, height, crop: { x, y, width, height } }
+  }
+
   setFilters(specs: readonly ImageFilterSpec[], key = 'filters'): void {
     const list = normalizeSpecs(specs)
     const imgs = this.images()
@@ -408,6 +427,35 @@ export class StyleApi {
     const ref = await this.engine.assets.upload(result, 'cutout.png')
     if (stale()) return false
     await this.engine.insert.replaceSelectedImage(ref)
+    return true
+  }
+
+  /**
+   * Increases the resolution of the selected photo with the pure-code upscaler and swaps the result
+   * in, keeping its frame. A cropped photo is scaled from its crop, so the design keeps exactly the
+   * part it was showing. Resolves `false` when cancelled or when the selection moved while it ran.
+   */
+  async upscale(options: { scale: number; method?: UpscaleMethod; detail?: number }, onProgress?: UpscaleProgress, signal?: AbortSignal): Promise<boolean> {
+    const img = this.images()[0]
+    if (!img || this.engine.readOnly || asDory(img).locked || signal?.aborted) return false
+    const source = this.selectedImageSource()
+    if (!source) return false
+    const stale = (): boolean => signal?.aborted === true || this.images()[0] !== img
+    let result: Blob
+    try {
+      const blob = await (await fetch(img.getSrc(), { signal })).blob()
+      result = await runUpscale(blob, { ...options, crop: source.crop }, onProgress, signal)
+    } catch (error) {
+      // Cancel is not a failure: the engine has stopped its work and the design stays as it was.
+      if (signal?.aborted) return false
+      throw error
+    }
+    if (stale()) return false
+    const target = targetSize(source.width, source.height, options.scale)
+    const ext = result.type === 'image/webp' ? 'webp' : 'png'
+    const ref = await this.engine.assets.upload(result, `upscaled-${target.width}x${target.height}.${ext}`)
+    if (stale()) return false
+    await this.engine.insert.replaceSelectedImage(ref, t.history.upscale)
     return true
   }
 
