@@ -2,6 +2,7 @@ import { Crop, Frame, Replace } from 'lucide-react'
 import { I } from '../../chrome/icons'
 import { useEditor, useSelection } from '../../context'
 import { isBackgroundRemovalAvailable } from '../../engine/bgRemoval'
+import { isUpscaleSupported } from '../../engine/upscale/support'
 import { FILTER_PRESETS, FILTER_RANGES, TOGGLE_FILTERS, specValue } from '../../engine/objects/filters'
 import { MASK_SHAPE_IDS, maskPath } from '../../engine/objects/shapeGeometry'
 import type { ImageFilterSpec, MaskShape } from '@/types/document'
@@ -106,10 +107,12 @@ export function ImageSection() {
           <Crop size={18} aria-hidden="true" />
         </ToolButton>
       )}
-      <ToolButton label={t.toolbar.upscale} featured testId="ed-upscale" onClick={() => editor.openDialog('upscale')}>
-        {I.upscale}
-        <span className={ed.toolText}>{t.toolbar.upscale}</span>
-      </ToolButton>
+      {isUpscaleSupported() ? (
+        <ToolButton label={t.toolbar.upscale} featured testId="ed-upscale" onClick={() => editor.openDialog('upscale')}>
+          {I.upscale}
+          <span className={ed.toolText}>{t.toolbar.upscale}</span>
+        </ToolButton>
+      ) : null}
       <ToolButton label={t.toolbar.replaceImage} testId="ed-replace-image" onClick={() => void editor.insert.pickAndReplaceImage()}>
         <Replace size={18} aria-hidden="true" />
       </ToolButton>

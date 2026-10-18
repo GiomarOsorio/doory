@@ -1,5 +1,5 @@
 /** Decoding to RGBA and encoding the result, using only the browser's own canvas APIs. */
-import { MAX_OUTPUT_PIXELS, UpscaleError, type CropRect } from './types'
+import { MAX_OUTPUT_PIXELS, UpscaleError } from './types'
 
 export interface DecodedImage {
   rgba: Uint8ClampedArray<ArrayBuffer>
@@ -8,15 +8,13 @@ export interface DecodedImage {
 }
 
 /**
- * Decodes `blob` (or just the `crop` rectangle) into straight RGBA bytes. The crop is applied by the
- * decoder, so a photo in a design whose visible part is small does not have to be decoded at full size.
+ * Decodes `blob` into straight RGBA bytes. The whole photo is decoded even when the design only
+ * shows a crop, because the upscaled asset keeps the uncropped source.
  */
-export async function decodeImage(blob: Blob, crop?: CropRect): Promise<DecodedImage> {
+export async function decodeImage(blob: Blob): Promise<DecodedImage> {
   let bitmap: ImageBitmap
   try {
-    bitmap = crop
-      ? await createImageBitmap(blob, crop.x, crop.y, crop.width, crop.height)
-      : await createImageBitmap(blob)
+    bitmap = await createImageBitmap(blob)
   } catch {
     throw new UpscaleError('This image cannot be decoded.')
   }
@@ -36,23 +34,34 @@ export async function decodeImage(blob: Blob, crop?: CropRect): Promise<DecodedI
   }
 }
 
-/** Keep the result under the editor's usual upload budget without giving up much quality. */
-const MAX_RESULT_BYTES = 9 * 1024 * 1024
+/** A photo this size still fits in a lossless PNG most of the time; larger ones start as WebP. */
+const LOSSLESS_LIMIT_PIXELS = 12_000_000
 
-export async function encodeResult(rgba: Uint8ClampedArray<ArrayBuffer>, width: number, height: number, method: 'photo' | 'pixel'): Promise<Blob> {
+export async function encodeResult(rgba: Uint8ClampedArray<ArrayBuffer>, width: number, height: number, method: 'photo' | 'pixel', maxBytes = Number.POSITIVE_INFINITY): Promise<Blob> {
   const canvas = new OffscreenCanvas(width, height)
   const context = canvas.getContext('2d')
   if (!context) throw new UpscaleError('A canvas could not be created for the result.')
   context.putImageData(new ImageData(rgba, width, height), 0, 0)
-  // Pixel art keeps exact colours in a PNG. Photographs go to WebP: visually near-lossless at this
-  // quality, and a fraction of the PNG size, which matters for a 48-megapixel result.
-  if (method === 'pixel') return canvas.convertToBlob({ type: 'image/png' })
+
+  // Pixel art keeps exact colours in a PNG. A small photograph gets the same lossless treatment; a
+  // large one would make a very big PNG, so it starts as WebP and only falls back to lower qualities
+  // when the upload limit requires it.
+  if (method === 'pixel' || width * height <= LOSSLESS_LIMIT_PIXELS) {
+    const png = await canvas.convertToBlob({ type: 'image/png' })
+    if (png.size <= maxBytes) return png
+    if (method === 'pixel') throw new UpscaleError('The result is too large to upload. Choose a smaller factor.')
+  }
+
   let blob = await canvas.convertToBlob({ type: 'image/webp', quality: 0.95 })
-  // A browser without a WebP encoder answers with a PNG; compressing it again would do nothing.
-  if (blob.type !== 'image/webp') return blob
+  // A browser without a WebP encoder answers with a PNG; there is nothing better to try.
+  if (blob.type !== 'image/webp') {
+    if (blob.size <= maxBytes) return blob
+    throw new UpscaleError('The result is too large to upload. Choose a smaller factor.')
+  }
   for (const quality of [0.88, 0.8, 0.7]) {
-    if (blob.size <= MAX_RESULT_BYTES) break
+    if (blob.size <= maxBytes) return blob
     blob = await canvas.convertToBlob({ type: 'image/webp', quality })
   }
+  if (blob.size > maxBytes) throw new UpscaleError('The result is too large to upload. Choose a smaller factor.')
   return blob
 }

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { fitsOutput, targetSize } from '../engine/upscale'
+import { fitsOutput, targetSize } from '../engine/upscale/types'
+import { isUpscaleSupported } from '../engine/upscale/support'
 import { useEditor } from '../context'
 import { t } from '../strings'
 import { Button } from '../ui/Button'
@@ -21,15 +22,17 @@ export function UpscaleDialog() {
   const [scaleId, setScaleId] = useState<'2' | '4'>('2')
   const [status, setStatus] = useState<Status>({ kind: 'idle' })
   const controller = useRef<AbortController | null>(null)
+  const supported = isUpscaleSupported()
 
   useEffect(() => () => controller.current?.abort(), [])
 
   const scale = Number(scaleId)
   const target = source ? targetSize(source.width, source.height, scale) : null
   const tooLarge = target ? !fitsOutput(target) : false
+  const large = target ? target.width * target.height > 24_000_000 : false
 
   const start = (): void => {
-    if (!source || tooLarge || controller.current) return
+    if (!supported || !source || tooLarge || controller.current) return
     const run = new AbortController()
     controller.current = run
     setStatus({ kind: 'running', percent: 0 })
@@ -66,14 +69,18 @@ export function UpscaleDialog() {
         ) : (
           <>
             <Button onClick={close}>{t.dialog.cancel}</Button>
-            <Button variant="primary" disabled={!source || tooLarge} onClick={start}>
+            <Button variant="primary" disabled={!supported || !source || tooLarge} onClick={start}>
               {status.kind === 'error' ? t.dialog.upscaleRetry : t.dialog.upscaleButton}
             </Button>
           </>
         )
       }
     >
-      {!source ? (
+      {!supported ? (
+        <p role="alert" className={styles.error}>
+          {t.errors.upscaleUnsupported}
+        </p>
+      ) : !source ? (
         <p role="alert" className={styles.error}>
           {t.errors.upscale}
         </p>
@@ -91,8 +98,16 @@ export function UpscaleDialog() {
           <p className={styles.muted}>
             {t.dialog.upscaleSource}: {source.width} × {source.height} px
           </p>
+          {source.crop ? (
+            <p className={styles.muted}>
+              {t.dialog.upscaleCrop}: {source.crop.width} × {source.crop.height} px
+            </p>
+          ) : null}
           <Segmented label={t.dialog.upscaleScale} value={scaleId} options={SCALES} onChange={(value) => setScaleId(value)} />
-          <p className={styles.muted}>{target ? `${target.width} × ${target.height} px` : ''}</p>
+          <p className={styles.muted}>
+            {t.dialog.upscaleTarget}: {target ? `${target.width} × ${target.height} px` : ''}
+          </p>
+          {large ? <p className={styles.muted}>{t.dialog.upscaleLarge}</p> : null}
           {tooLarge ? (
             <p role="alert" className={styles.error}>
               {t.dialog.upscaleTooLarge}

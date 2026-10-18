@@ -8,6 +8,7 @@ import type { ArrowHead, DocField, DocTextFit, ImageFilterSpec, MaskShape, Objec
 import type { EditorEngine } from '../editor'
 import { removeBackground as runRemoval, type BgRemovalPhase } from '../bgRemoval'
 import { targetSize, upscaleImage as runUpscale, type CropRect, type UpscaleMethod, type UpscaleProgress } from '../upscale'
+import { MAX_UPLOAD_BYTES } from '../assets'
 import { DoryLine } from '../objects/DoryLine'
 import { asDory } from '../objects/dory'
 import { applyColorMap } from '../objects/elements'
@@ -55,6 +56,20 @@ export function dashArray(style: DashStyle, width: number): number[] | null {
 export function dashStyleOf(arr: readonly number[] | null | undefined): DashStyle {
   if (!arr || arr.length === 0) return 'solid'
   return arr[0] < 0.5 ? 'dotted' : 'dashed'
+}
+
+/** The same visible crop in the pixels of an image enlarged by `scale` (clamped to its new size). */
+export function scaledCrop(crop: CropRect, width: number, height: number, scale: number): CropRect {
+  const targetWidth = Math.max(1, Math.round(width * scale))
+  const targetHeight = Math.max(1, Math.round(height * scale))
+  const x = Math.min(targetWidth - 1, Math.max(0, Math.round(crop.x * scale)))
+  const y = Math.min(targetHeight - 1, Math.max(0, Math.round(crop.y * scale)))
+  return {
+    x,
+    y,
+    width: Math.min(targetWidth - x, Math.max(1, Math.round(crop.width * scale))),
+    height: Math.min(targetHeight - y, Math.max(1, Math.round(crop.height * scale))),
+  }
 }
 
 export class StyleApi {
@@ -279,22 +294,23 @@ export class StyleApi {
     return this.targets().filter((o): o is FabricImage => o.type === 'image')
   }
 
-  /** The selected photo's source rectangle in source pixels (its crop, if it has one). */
-  selectedImageSource(): { width: number; height: number; crop: CropRect } | null {
+  /** The selected photo's full source size and the crop it currently shows, if any. */
+  selectedImageSource(): { width: number; height: number; crop: CropRect | null } | null {
     const img = this.images()[0]
     if (!img) return null
     const natural = img.getOriginalSize()
-    const naturalWidth = Math.max(1, Math.round(natural.width || img.width || 1))
-    const naturalHeight = Math.max(1, Math.round(natural.height || img.height || 1))
+    const width = Math.max(1, Math.round(natural.width || img.width || 1))
+    const height = Math.max(1, Math.round(natural.height || img.height || 1))
     const rawX = Number.isFinite(img.cropX) ? img.cropX : 0
     const rawY = Number.isFinite(img.cropY) ? img.cropY : 0
-    const rawWidth = Number.isFinite(img.width) && img.width > 0 ? img.width : naturalWidth
-    const rawHeight = Number.isFinite(img.height) && img.height > 0 ? img.height : naturalHeight
-    const x = Math.min(naturalWidth - 1, Math.max(0, Math.round(rawX)))
-    const y = Math.min(naturalHeight - 1, Math.max(0, Math.round(rawY)))
-    const width = Math.min(naturalWidth - x, Math.max(1, Math.round(rawWidth)))
-    const height = Math.min(naturalHeight - y, Math.max(1, Math.round(rawHeight)))
-    return { width, height, crop: { x, y, width, height } }
+    const rawWidth = Number.isFinite(img.width) && img.width > 0 ? img.width : width
+    const rawHeight = Number.isFinite(img.height) && img.height > 0 ? img.height : height
+    const x = Math.min(width - 1, Math.max(0, Math.round(rawX)))
+    const y = Math.min(height - 1, Math.max(0, Math.round(rawY)))
+    const cropWidth = Math.min(width - x, Math.max(1, Math.round(rawWidth)))
+    const cropHeight = Math.min(height - y, Math.max(1, Math.round(rawHeight)))
+    const cropped = x > 0 || y > 0 || cropWidth < width || cropHeight < height
+    return { width, height, crop: cropped ? { x, y, width: cropWidth, height: cropHeight } : null }
   }
 
   setFilters(specs: readonly ImageFilterSpec[], key = 'filters'): void {
@@ -431,9 +447,9 @@ export class StyleApi {
   }
 
   /**
-   * Increases the resolution of the selected photo with the pure-code upscaler and swaps the result
-   * in, keeping its frame. A cropped photo is scaled from its crop, so the design keeps exactly the
-   * part it was showing. Resolves `false` when cancelled or when the selection moved while it ran.
+   * Increases the resolution of the whole selected photo with the pure-code upscaler and swaps the
+   * result in, keeping the frame and the visible crop. Resolves `false` when cancelled or when the
+   * selection moved while it ran.
    */
   async upscale(options: { scale: number; method?: UpscaleMethod; detail?: number }, onProgress?: UpscaleProgress, signal?: AbortSignal): Promise<boolean> {
     const img = this.images()[0]
@@ -444,7 +460,7 @@ export class StyleApi {
     let result: Blob
     try {
       const blob = await (await fetch(img.getSrc(), { signal })).blob()
-      result = await runUpscale(blob, { ...options, crop: source.crop }, onProgress, signal)
+      result = await runUpscale(blob, { ...options, maxBytes: MAX_UPLOAD_BYTES }, onProgress, signal)
     } catch (error) {
       // Cancel is not a failure: the engine has stopped its work and the design stays as it was.
       if (signal?.aborted) return false
@@ -455,7 +471,8 @@ export class StyleApi {
     const ext = result.type === 'image/webp' ? 'webp' : 'png'
     const ref = await this.engine.assets.upload(result, `upscaled-${target.width}x${target.height}.${ext}`)
     if (stale()) return false
-    await this.engine.insert.replaceSelectedImage(ref, t.history.upscale)
+    const crop = source.crop ? scaledCrop(source.crop, source.width, source.height, options.scale) : null
+    await this.engine.insert.replaceSelectedImage(ref, t.history.upscale, crop ?? undefined)
     return true
   }
 

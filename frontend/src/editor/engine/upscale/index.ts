@@ -1,4 +1,5 @@
 export { upscaleImage, type UpscaleProgress } from './client'
+export { isUpscaleSupported } from './support'
 export {
   DEFAULT_DETAIL,
   MAX_OUTPUT_PIXELS,

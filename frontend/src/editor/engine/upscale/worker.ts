@@ -16,7 +16,7 @@ const scope = self as unknown as WorkerScope
 async function run(request: Extract<UpscaleWorkerRequest, { type: 'run' }>): Promise<void> {
   const { id } = request
   try {
-    const image = await decodeImage(request.image, request.options.crop)
+    const image = await decodeImage(request.image)
     scope.postMessage({ type: 'progress', id, percent: 1 })
     const result = upscaleImageData(image.rgba, image.width, image.height, {
       scale: request.options.scale,
@@ -25,7 +25,7 @@ async function run(request: Extract<UpscaleWorkerRequest, { type: 'run' }>): Pro
       // Encoding the result is the last few percent of the work.
       onProgress: (percent) => scope.postMessage({ type: 'progress', id, percent: Math.round(percent * 0.95) }),
     })
-    const encoded = await encodeResult(result.data, result.width, result.height, request.options.method ?? 'photo')
+    const encoded = await encodeResult(result.data, result.width, result.height, request.options.method ?? 'photo', request.options.maxBytes)
     scope.postMessage({ type: 'progress', id, percent: 100 })
     scope.postMessage({ type: 'done', id, result: encoded })
   } catch (error) {

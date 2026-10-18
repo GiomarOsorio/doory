@@ -29,8 +29,8 @@ export interface UpscaleRequestOptions {
   method?: UpscaleMethod
   /** Strength of the detail pass, 0..1. */
   detail?: number
-  /** Part of the source image to scale, in source pixels. */
-  crop?: CropRect
+  /** The largest encoded result the asset store accepts (PNG is used when it fits). */
+  maxBytes?: number
 }
 
 export interface UpscaleOptions extends UpscaleRequestOptions {
