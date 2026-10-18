@@ -601,6 +601,36 @@ def test_text_height_cannot_be_set():
         run(document, {"op": "update_object", "object_id": "t", "height": 10})
 
 
+def test_shrink_to_fit_steps_font_size_down_without_growing_the_box():
+    document = run(
+        make_doc(),
+        {"op": "add_text", "text": "Title", "preset": "heading", "width": 360, "font_size": 60, "id": "t"},
+        {"op": "add_shape", "shape": "rect", "id": "r"},
+    ).document
+    box_height = document["pages"][0]["objects"][0]["height"]
+    fitted = run(
+        document,
+        {"op": "update_object", "object_id": "t", "fit": {"mode": "shrink", "min_font_size": 24}},
+        {"op": "update_object", "object_id": "t", "text": "Summer Music Festival Live"},
+    ).document
+    text = fitted["pages"][0]["objects"][0]
+    assert text["height"] == box_height
+    assert text["fontSize"] == 60
+    assert text["fit"] == {"mode": "shrink", "minFontSize": 24}
+    assert 24 <= text["fitFontSize"] < 60
+    valid(fitted)
+    summary = summarize_document(fitted)["pages"][0]["objects"][0]
+    assert summary["fit"] == {"mode": "shrink", "minFontSize": 24}
+
+    cleared = run(fitted, {"op": "update_object", "object_id": "t", "fit": "none"}).document
+    unfitted = cleared["pages"][0]["objects"][0]
+    assert "fit" not in unfitted and "fitFontSize" not in unfitted
+    assert unfitted["height"] > box_height
+
+    with pytest.raises(EditError, match="Only text can shrink to fit"):
+        run(document, {"op": "update_object", "object_id": "r", "fit": {"mode": "shrink"}})
+
+
 def test_arranging_and_deleting():
     document = run(
         make_doc(),

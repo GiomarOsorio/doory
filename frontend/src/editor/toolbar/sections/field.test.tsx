@@ -1,11 +1,11 @@
 import { fireEvent, render, screen } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { createBlankDocument } from '@/lib/document'
 import { createMemoryAdapter } from '../../dev/memoryAdapter'
 import { EditorProvider } from '../../EditorProvider'
 import { EditorEngine } from '../../engine/editor'
 import { EMPTY_SELECTION } from '../../store/editorStore'
-import { FieldPanel } from './common'
+import { FieldPanel, OverflowSections } from './common'
 
 function mount() {
   const doc = createBlankDocument(800, 600)
@@ -33,6 +33,36 @@ describe('FieldPanel', () => {
     fireEvent.change(key, { target: { value: 'headline' } })
     expect(screen.getByRole('alert')).toHaveTextContent('already used')
     expect(apply).toBeDisabled()
+    engine.dispose()
+  })
+
+  it('toggles shrink-to-fit and updates the minimum font size in OverflowSections', () => {
+    const doc = createBlankDocument(800, 600)
+    const engine = new EditorEngine({ adapter: createMemoryAdapter().adapter, document: doc, meta: { id: 'd', title: 'T', mode: 'guest' }, ephemeral: true })
+    const spy = vi.spyOn(engine.style, 'setTextFit')
+    engine.store.setState({
+      selection: {
+        ...EMPTY_SELECTION,
+        pageId: doc.pages[0].id,
+        ids: ['t1'],
+        kinds: ['text'],
+        objects: [{ id: 't1', type: 'textbox', fontSize: 40, fit: { mode: 'shrink' } }],
+        version: 1,
+      },
+    })
+    render(
+      <EditorProvider engine={engine} portalRoot={document.body}>
+        <OverflowSections />
+      </EditorProvider>,
+    )
+    const toggle = screen.getByRole('switch', { name: 'Shrink to fit' })
+    expect(toggle).toBeChecked()
+    const minInput = screen.getByTestId('ed-fit-min-size')
+    expect(minInput).toHaveValue(20)
+    fireEvent.change(minInput, { target: { value: '16' } })
+    expect(spy).toHaveBeenCalledWith({ mode: 'shrink', minFontSize: 16 }, 'fit-min')
+    fireEvent.click(toggle)
+    expect(spy).toHaveBeenCalledWith(null)
     engine.dispose()
   })
 })

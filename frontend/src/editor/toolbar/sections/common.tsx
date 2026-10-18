@@ -3,13 +3,14 @@ import { useState } from 'react'
 import { I } from '../../chrome/icons'
 import { useEditor, useEditorState, useSelection } from '../../context'
 import { FIELD_KEY, FIELD_LABEL_MAX, fieldTypeFor, keyClashes, readField } from '../../engine/fields'
+import { MIN_FIT_FONT_SIZE, defaultMinFontSize, readTextFit } from '../../engine/objects/textStyle'
 import { pxToUnit, unitDecimals, unitToPx } from '../../engine/units'
 import { t } from '../../strings'
 import type { FieldType } from '@/types/document'
 import { NumberField } from '../../ui/NumberField'
 import { Switch } from '../../ui/Switch'
 import { EffectsPanel } from '../effects'
-import { Accordion, CenterTools, DeleteTool, DuplicateTool, FlipTools, LockTool, OverflowTool, RotateTool, ZOrderTools } from '../controls'
+import { Accordion, CenterTools, DeleteTool, DuplicateTool, FlipTools, LimitedNumber, LockTool, OverflowTool, RotateTool, ZOrderTools } from '../controls'
 import { onlyKind } from '../kinds'
 import { Field, PopoverStack, PopoverTool, ToolButton } from '../parts'
 import ed from '../../chrome/ed.module.css'
@@ -70,6 +71,9 @@ export function OverflowSections() {
   const image = onlyKind(sel.kinds, 'image')
   const placeholderCapable = sel.kinds.every((k) => k === 'shape' || k === 'image')
   const list = typeof o.listStyle === 'string' ? o.listStyle : 'none'
+  const fit = readTextFit(o.fit)
+  const fontSize = Math.max(MIN_FIT_FONT_SIZE, Math.round(Number(o.fontSize ?? sel.textStyle?.fontSize ?? 24)))
+  const minFontSize = fit?.minFontSize ?? defaultMinFontSize(fontSize)
   const isPlaceholder = o.isPlaceholder === true
   const fieldType = sel.ids.length === 1 ? fieldTypeFor(sel.kinds[0]) : null
   return (
@@ -79,6 +83,16 @@ export function OverflowSections() {
           <ToggleRow label={t.toolbar.strike} checked={!!o.linethrough} onChange={(on) => editor.style.text({ linethrough: on }, t.history.strikethrough)} />
           <ToggleRow label={t.toolbar.bullets} checked={list === 'bullet'} onChange={(on) => editor.style.text({ listStyle: on ? 'bullet' : 'none' }, t.history.changeList)} />
           <ToggleRow label={t.toolbar.numbers} checked={list === 'number'} onChange={(on) => editor.style.text({ listStyle: on ? 'number' : 'none' }, t.history.changeList)} />
+          <ToggleRow label={t.toolbar.shrinkToFit} checked={!!fit} onChange={(on) => editor.style.setTextFit(on ? { mode: 'shrink' } : null)} />
+          {fit ? (
+            <LimitedNumber
+              label={t.toolbar.minFontSize}
+              value={minFontSize}
+              limit={{ min: MIN_FIT_FONT_SIZE, max: fontSize, step: 1, decimals: 0 }}
+              onChange={(v) => editor.style.setTextFit({ mode: 'shrink', minFontSize: Math.round(v) }, 'fit-min')}
+              testId="ed-fit-min-size"
+            />
+          ) : null}
         </Accordion>
       ) : null}
       {text || image || sel.kinds.every((k) => k === 'element' || k === 'shape' || k === 'group') ? (

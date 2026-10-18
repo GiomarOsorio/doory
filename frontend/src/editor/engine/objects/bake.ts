@@ -5,6 +5,7 @@
 import { Ellipse, type FabricObject, IText, Rect, Triangle } from 'fabric'
 import { DoryLine } from './DoryLine'
 import { asDory } from './dory'
+import { MIN_FIT_FONT_SIZE, refitTextbox } from './textStyle'
 
 const EPS = 1e-6
 
@@ -43,8 +44,21 @@ export function bakeScale(obj: FabricObject): boolean {
   const keepFlipY = obj.scaleY < 0
 
   if (obj instanceof IText) {
-    if (asDory(obj).curveAmount) return false
+    const d = asDory(obj)
+    if (d.curveAmount) return false
     const k = sy
+    if (d.fit) {
+      d.userFontSize = (d.userFontSize ?? obj.fontSize) * k
+      d.fitBoxHeight = (d.fitBoxHeight ?? obj.height) * sy
+      if (d.fit.minFontSize !== undefined) {
+        d.fit = { ...d.fit, minFontSize: Math.max(MIN_FIT_FONT_SIZE, Math.round(d.fit.minFontSize * k)) }
+      }
+      obj.set({ width: obj.width * sx, scaleX: 1, scaleY: 1 })
+      if (obj.charSpacing && sx !== sy) obj.set('charSpacing', obj.charSpacing)
+      scaleEffects(obj, k)
+      refitTextbox(obj)
+      return true
+    }
     obj.set({ fontSize: obj.fontSize * k, width: obj.width * sx, scaleX: 1, scaleY: 1 })
     if (obj.charSpacing && sx !== sy) obj.set('charSpacing', obj.charSpacing)
     scaleEffects(obj, k)

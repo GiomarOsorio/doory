@@ -11,8 +11,9 @@ import re
 from collections.abc import Iterator
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, StringConstraints
 
+from . import builders
 from .kinds import object_kind
 
 FIELD_KEY = re.compile(r"[a-z][a-z0-9_]{0,39}")
@@ -40,6 +41,31 @@ class FieldTag(BaseModel):
         return {"key": self.key, "type": self.type, **({"label": self.label} if self.label else {})}
 
 
+class TextFit(BaseModel):
+    """Shrink-to-fit text: the box height stays fixed while the font steps down to fit."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    mode: Literal["shrink"] = "shrink"
+    min_font_size: (
+        Annotated[
+            float,
+            Field(
+                ge=builders.MIN_FONT_SIZE,
+                le=2000,
+                validation_alias=AliasChoices("min_font_size", "minFontSize"),
+            ),
+        ]
+        | None
+    ) = Field(None, description="Smallest font size to shrink to (px). Default: half the font size.")
+
+    def document(self) -> dict:
+        out: dict = {"mode": self.mode}
+        if self.min_font_size is not None:
+            out["minFontSize"] = builders._num(self.min_font_size)
+        return out
+
+
 def read_field(value: Any) -> dict | None:
     """The tag when it is well formed, else None (a malformed tag is ignored, like the editor does)."""
     if not isinstance(value, dict):
@@ -49,6 +75,45 @@ def read_field(value: Any) -> dict | None:
         return None
     label = value.get("label")
     return {"key": key, "type": kind, **({"label": label} if isinstance(label, str) and label else {})}
+
+
+def read_fit(value: Any) -> dict | None:
+    """The shrink-to-fit setting when it is well formed, else None."""
+    if not isinstance(value, dict) or value.get("mode") != "shrink":
+        return None
+    min_size = value.get("minFontSize")
+    if (
+        isinstance(min_size, int | float)
+        and not isinstance(min_size, bool)
+        and min_size >= builders.MIN_FONT_SIZE
+    ):
+        return {"mode": "shrink", "minFontSize": builders._num(float(min_size))}
+    return {"mode": "shrink"}
+
+
+def text_overflows(obj: dict) -> bool:
+    """True when a shrink-to-fit text still does not fit inside its box at `minFontSize`."""
+    fit = read_fit(obj.get("fit"))
+    if not fit:
+        return False
+    text = str(obj.get("text", ""))
+    width = float(obj.get("width") or 200.0)
+    size = float(obj.get("fontSize") or 40.0)
+    leading = float(obj.get("lineHeight") or 1.16)
+    height = float(obj.get("height") or builders.text_height(1, size, leading))
+    weight = int(float(obj.get("fontWeight") or 400))
+    min_size = fit.get("minFontSize")
+    fitted = builders.fit_font_size(
+        text,
+        width,
+        height,
+        size,
+        weight,
+        leading,
+        float(min_size) if isinstance(min_size, int | float) else None,
+    )
+    lines = builders.estimate_text_lines(text, width, fitted, weight)
+    return builders.text_height(lines, fitted, leading) > height + 1e-3
 
 
 def _walk(objects: Any) -> Iterator[dict]:
@@ -120,6 +185,11 @@ def list_fields(document: dict) -> list[dict]:
             elif entry["type"] == tag["type"] and number not in entry["pages"]:
                 entry["object_ids"].append(obj.get("id"))
                 entry["pages"].append(number)
+                if tag["type"] == "text":
+                    if entry["fit"] is None:
+                        entry["fit"] = read_fit(obj.get("fit"))
+                    if text_overflows(obj):
+                        entry["overflow"] = True
     return out
 
 
@@ -131,7 +201,6 @@ def _entry(key: str | None, field_type: str, label: str | None, obj: dict, page:
         "pages": [page],
         "object_ids": [obj.get("id")],
         "current": _current(obj, field_type),
-        # Set by shrink-to-fit text.
-        "fit": None,
-        "overflow": False,
+        "fit": read_fit(obj.get("fit")) if field_type == "text" else None,
+        "overflow": text_overflows(obj) if field_type == "text" else False,
     }

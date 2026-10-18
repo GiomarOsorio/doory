@@ -106,6 +106,32 @@ def test_clashing_keys_remain_savable_and_list_fields_drops_later_duplicates():
     ]
 
 
+def test_list_fields_reports_fit_and_overflow():
+    fits = {
+        **tagged(text_object("Short headline"), "headline", "text"),
+        "width": 360,
+        "height": 67.8,
+        "fontSize": 60,
+        "fit": {"mode": "shrink", "minFontSize": 24},
+        "fitFontSize": 60,
+    }
+    overflows = {
+        **tagged(
+            text_object("Registration for the annual neighbourhood summer block party is open all week"),
+            "subhead",
+            "text",
+        ),
+        "width": 200,
+        "height": 44.07,
+        "fontSize": 39,
+        "fit": {"mode": "shrink", "minFontSize": 24},
+        "fitFontSize": 24,
+    }
+    fields = list_fields(make_doc(objects=[fits, overflows]))
+    assert fields[0]["fit"] == {"mode": "shrink", "minFontSize": 24} and fields[0]["overflow"] is False
+    assert fields[1]["fit"] == {"mode": "shrink", "minFontSize": 24} and fields[1]["overflow"] is True
+
+
 @pytest.mark.django_db
 class TestRest:
     def test_lists_the_fields_of_an_own_design(self, api, other_api, user):

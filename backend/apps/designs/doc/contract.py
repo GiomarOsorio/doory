@@ -287,6 +287,32 @@ def _cases() -> list[dict]:
             "expect": {"path": True},
         },
         {
+            "name": "shrink-to-fit short text",
+            "kind": "text",
+            "object": _fitted(
+                builders.build_text(PAGE, text="Short headline", preset="heading", width=400),
+                {"mode": "shrink"},
+            ),
+        },
+        {
+            "name": "shrink-to-fit long text",
+            "kind": "text",
+            "object": _fitted(
+                builders.build_text(PAGE, text="Title", preset="heading", width=360, font_size=60),
+                {"mode": "shrink", "minFontSize": 24},
+                text="Summer Music Festival Live",
+            ),
+        },
+        {
+            "name": "shrink-to-fit overflowing text",
+            "kind": "text",
+            "object": _fitted(
+                builders.build_text(PAGE, text="Title", preset="heading", width=240),
+                {"mode": "shrink", "minFontSize": 24},
+                text="Registration for the annual neighbourhood summer block party is open all week",
+            ),
+        },
+        {
             "name": "shape with a shadow",
             "kind": "shape",
             "object": _with_effects(
@@ -338,6 +364,14 @@ def _masked(obj: dict, shape: str, radius: float | None = None) -> dict:
 
 def _curved(obj: dict, amount: float) -> dict:
     builders.apply_curve(obj, amount)
+    return obj
+
+
+def _fitted(obj: dict, fit: dict, *, text: str | None = None) -> dict:
+    builders.apply_fit(obj, fit)
+    if text is not None:
+        obj["text"] = text
+        builders.apply_fit(obj, fit)
     return obj
 
 

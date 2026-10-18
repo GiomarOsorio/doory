@@ -350,6 +350,8 @@ export const t = {
     caseTitle: 'Title case',
     bullets: 'Bulleted list',
     numbers: 'Numbered list',
+    shrinkToFit: 'Shrink to fit',
+    minFontSize: 'Minimum font size',
     spacing: 'Spacing',
     lineHeight: 'Line height',
     letterSpacing: 'Letter spacing',

@@ -144,6 +144,58 @@ def text_height(lines: int, font_size: float, line_height: float) -> float:
     return font_size * FONT_SIZE_MULT * (1 + (lines - 1) * line_height)
 
 
+MIN_FONT_SIZE = 4
+
+
+def default_min_font_size(font_size: float) -> int:
+    return max(MIN_FONT_SIZE, js_round(font_size * 0.5))
+
+
+def fit_font_size(
+    text: str,
+    width: float,
+    height: float,
+    font_size: float,
+    weight: int = 400,
+    line_height: float = 1.16,
+    min_font_size: float | None = None,
+) -> int | float:
+    """Step `font_size` down by 1 px until `text` wraps inside `width x height` or hits `min_font_size`."""
+    target = max(float(MIN_FONT_SIZE), float(font_size))
+    raw_min = float(min_font_size) if min_font_size is not None else float(default_min_font_size(target))
+    floor = min(target, max(float(MIN_FONT_SIZE), raw_min))
+    current = target
+    while True:
+        lines = estimate_text_lines(text, width, current, weight)
+        if text_height(lines, current, line_height) <= height + 1e-3 or current <= floor:
+            return _num(current)
+        current = max(floor, current - 1.0)
+
+
+def apply_fit(obj: dict, fit: dict | None) -> None:
+    """Set or clear shrink-to-fit (`fit`) on a text object, keeping its height and deriving `fitFontSize`."""
+    if not fit:
+        obj.pop("fit", None)
+        obj.pop("fitFontSize", None)
+        return
+    obj["fit"] = fit
+    size = float(obj.get("fontSize") or 40.0)
+    width = float(obj.get("width") or 200.0)
+    leading = float(obj.get("lineHeight") or 1.16)
+    height = float(obj.get("height") or text_height(1, size, leading))
+    weight = int(float(obj.get("fontWeight") or 400))
+    min_size = fit.get("minFontSize")
+    obj["fitFontSize"] = fit_font_size(
+        str(obj.get("text", "")),
+        width,
+        height,
+        size,
+        weight,
+        leading,
+        float(min_size) if isinstance(min_size, int | float) and not isinstance(min_size, bool) else None,
+    )
+
+
 def build_text(
     page: Page,
     *,

@@ -9,7 +9,7 @@ from __future__ import annotations
 from typing import Any
 
 from .builders import primary_family
-from .fields import read_field
+from .fields import read_field, read_fit
 from .kinds import object_kind
 from .ops import box
 
@@ -56,6 +56,9 @@ def summarize_object(obj: dict) -> dict:
         out["align"] = obj.get("textAlign")
         if obj.get("curveAmount"):
             out["curve"] = obj["curveAmount"]
+        fit = read_fit(obj.get("fit"))
+        if fit:
+            out["fit"] = fit
     elif kind == "shape":
         out["shape"] = obj.get("shapeId") or obj.get("shapeKind") or obj.get("type")
         out["fill"] = obj.get("fill")

@@ -53,6 +53,9 @@ export const EXTRA_PROPS: readonly string[] = [
   'link',
   /** Template field tag: a stable name for data to fill. */
   'field',
+  /** Shrink-to-fit rule and derived size for text boxes. */
+  'fit',
+  'fitFontSize',
   /** Regenerate-able QR code source. */
   'qr',
   /** Logical image src (the live element uses a resolved URL). */

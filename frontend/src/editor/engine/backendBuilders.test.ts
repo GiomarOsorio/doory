@@ -150,10 +150,15 @@ describe('objects built by the backend', () => {
     }
     const [saved] = save([live])
 
-    // The editor measures text itself; the backend's height is an estimate.
-    const skip = ['id', ...(c.kind === 'text' ? ['height'] : []), ...(c.ignore ?? [])]
+    // The editor measures text itself; the backend's height is an estimate, except when shrink-to-fit fixes the box height.
+    const hasFit = Boolean(c.object.fit)
+    const skip = ['id', ...(c.kind === 'text' && !hasFit ? ['height'] : []), ...(hasFit ? ['fitFontSize'] : []), ...(c.ignore ?? [])]
     for (const [key, value] of Object.entries(without(c.object, skip))) {
       expect({ key, value: saved[key] }).toSatisfy(() => covers(saved[key], value))
+    }
+    if (hasFit) {
+      expect(Math.abs(Number(saved.fitFontSize) - Number(c.object.fitFontSize))).toBeLessThanOrEqual(1)
+      expect((live as unknown as { fontSize: number }).fontSize).toBeCloseTo(Number(saved.fitFontSize), 3)
     }
 
     if (c.ungrouped) {

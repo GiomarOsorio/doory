@@ -12,6 +12,7 @@ import { applyMask } from './masks'
 import { asDory } from './dory'
 import { registerObjectKind, typeName as typeOf } from './kinds'
 import { validSlot } from './slot'
+import { readTextFit, refitTextbox } from './textStyle'
 import { qrDataUrl } from './qr'
 import { t } from '../../strings'
 
@@ -93,10 +94,42 @@ export function registerBuiltinKinds(): void {
     label: t.kinds.text,
     priority: 50,
     matches: (o) => TEXT_TYPES.has(typeOf(o)),
-    hydrate(obj) {
-      const amount = asDory(obj).curveAmount
+    hydrate(obj, json) {
+      const d = asDory(obj)
+      const amount = d.curveAmount
       if (obj instanceof IText && typeof amount === 'number' && amount !== 0) applyCurve(obj, amount)
-      if (asDory(obj).effects) applyEffects(obj, asDory(obj).effects)
+      if (d.effects) applyEffects(obj, d.effects)
+      if (obj instanceof IText) {
+        const fit = readTextFit(json.fit)
+        if (fit) {
+          if (typeof json.width === 'number' && json.width > 0) obj.width = json.width
+          d.fit = fit
+          d.userFontSize = typeof json.fontSize === 'number' && json.fontSize > 0 ? json.fontSize : obj.fontSize
+          d.fitBoxHeight = typeof json.height === 'number' && json.height > 0 ? json.height : obj.height
+          refitTextbox(obj)
+        } else {
+          delete d.fit
+          delete d.fitFontSize
+          delete d.userFontSize
+          delete d.fitBoxHeight
+        }
+      }
+    },
+    dehydrate(out, obj) {
+      const d = asDory(obj)
+      const fit = readTextFit(d.fit)
+      if (fit && obj instanceof IText) {
+        out.fit = fit
+        const userSize = d.userFontSize ?? obj.fontSize
+        out.fontSize = Number(userSize.toFixed(3))
+        if (typeof d.fitBoxHeight === 'number' && d.fitBoxHeight > 0) {
+          out.height = Number(d.fitBoxHeight.toFixed(3))
+        }
+        out.fitFontSize = Number((d.fitFontSize ?? obj.fontSize).toFixed(3))
+      } else {
+        delete out.fit
+        delete out.fitFontSize
+      }
     },
   })
 

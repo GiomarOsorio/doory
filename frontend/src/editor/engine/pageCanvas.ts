@@ -29,7 +29,7 @@ import { refitCurve } from './objects/curvedText'
 import { customizeControls } from './objects/controls'
 import { anchorFrames, carriedPictures, clampSlotImage, followFrames, type FrameAnchor, slotOf, strokeSlotOutline } from './objects/slot'
 import { applyLock, asDory, ensureId } from './objects/dory'
-import { reapplyCase, syncDirection } from './objects/textStyle'
+import { reapplyCase, refitTextbox, syncDirection } from './objects/textStyle'
 import { type CanvasTheme, applyThemeToCanvas, selectionStyle } from './objects/theme'
 import { type Deferred, mergeObject, planPage } from './remoteSync'
 import { type LoadContext, deserializeObjects, serializePage } from './serialization'
@@ -447,7 +447,10 @@ export class PageCanvas {
     }
     applyLock(obj)
     customizeControls(obj)
-    if (obj instanceof IText) obj.set('padding', TEXT_PADDING)
+    if (obj instanceof IText) {
+      obj.set('padding', TEXT_PADDING)
+      if (asDory(obj).fit) refitTextbox(obj)
+    }
     if (obj instanceof Group && !(obj instanceof ActiveSelection)) {
       obj.set({ subTargetCheck: false, interactive: false })
     }
@@ -587,8 +590,9 @@ export class PageCanvas {
       followFrames(this.frames)
       host.onSelectionLive(pid)
     })
-    on('object:resizing', () => {
+    on('object:resizing', (e) => {
       this.dragCache.ensure()
+      if (e.target instanceof IText && asDory(e.target).fit) refitTextbox(e.target)
       host.onSelectionLive(pid)
     })
 
@@ -626,7 +630,8 @@ export class PageCanvas {
         }
         label = strings.history.transformSelection
       } else {
-        bakeInPlace(target)
+        const baked = bakeInPlace(target)
+        if (!baked && target instanceof IText && asDory(target).fit) refitTextbox(target)
         label = target.angle !== 0 ? strings.history.transform : strings.history.move
       }
       this.canvas.requestRenderAll()
@@ -684,6 +689,7 @@ export class PageCanvas {
       }
       reapplyCase(t)
       if (asDory(t).curveAmount) refitCurve(t)
+      else if (asDory(t).fit) refitTextbox(t)
       this.canvas.requestRenderAll()
       host.onCommit(pid, { label: strings.history.editText })
     })
@@ -825,6 +831,7 @@ export class PageCanvas {
         t._updateTextarea()
       }
     }
+    if (d.fit && !d.curveAmount) refitTextbox(t)
   }
 
   /* ---------------------------------------------------------------- snapping */
