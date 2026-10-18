@@ -76,230 +76,15 @@ docker compose up -d --build
 docker compose exec api python manage.py createsuperuser   # your admin account; nothing creates one for you
 ```
 
-Open <http://localhost:8080> and start designing. The `web` container serves the app and forwards `/api`, `/ws`
-and `/mcp` to the backend, so the browser only ever talks to one address.
+Open <http://localhost:8080> and start designing. A new site starts empty, so next add the
+[starter content](docs/self-hosting/content.md) (templates, fonts, icons, audio).
 
-<details>
-<summary><b>The admin site</b> (templates, users, content)</summary>
+The [documentation](docs/README.md) covers the rest:
 
-<br />
-
-The admin site is at `/admin/` on your domain, e.g. <http://localhost:8080/admin/>. Log in with the account made
-by `createsuperuser`; accounts that only signed up on the site cannot open it. There you add and edit templates and
-their categories, manage users, designs and uploads, and look after fonts, element packs and audio.
-
-| To | Run |
-|----|-----|
-| Make an admin account | `docker compose exec api python manage.py createsuperuser` |
-| Reset an admin's password | `docker compose exec api python manage.py changepassword you@example.com` |
-| Make an existing account an admin | `docker compose exec api python manage.py shell -c "from django.contrib.auth import get_user_model as g; u = g().objects.get(email='you@example.com'); u.is_staff = u.is_superuser = True; u.save()"` |
-
-Without Docker, run the same `manage.py` commands with the `manage` helper from the guide below.
-
-</details>
-
-<details>
-<summary><b>Add the starter content</b> (templates, icons, fonts, audio)</summary>
-
-<br />
-
-A new site starts empty. Add what you want once it is running, or set the `DOORY_SYNC_*` and `DOORY_SEED_TEMPLATES` options in `.env` to `true` and the API container does it on start:
-
-```bash
-docker compose exec api python manage.py seed_gallery         # template categories
-docker compose exec api python manage.py sync_fonts --popular 100
-docker compose exec api python manage.py seed_templates       # the starter templates (add --update to refresh them)
-docker compose exec api python manage.py seed_elements        # shapes and graphics
-docker compose exec api python manage.py sync_element_packs   # icons, emoji and illustrations (download)
-docker compose exec api python manage.py sync_models          # background removal model
-docker compose exec api python manage.py sync_audio           # music and sound effects
-```
-
-</details>
-
-<details>
-<summary><b>Your own size presets</b> (sizes for creating and resizing designs)</summary>
-
-<br />
-
-The sizes offered in the Create and Resize dialogs come from the server. A new site has the built-in ones
-(social posts, presentations, paper and print sizes, video); add your own, or offer only yours, in any of three ways:
-
-| Way | How |
-|-----|-----|
-| Admin site | **Size presets** in the admin: groups (nested to any depth) and presets, drag to reorder, switch them on or off |
-| A JSON file, once | `docker compose exec api python manage.py import_size_presets sizes.json` (a folder imports every `.json` in it; `--dry-run` only checks) |
-| A JSON file, on every start | Mount the file into the API container and set `DOORY_SIZE_PRESETS_FILE` in `.env` (see `docker-compose.yml`). The file stays out of the image and the repository. |
-
-`--mode extend` (the default, and `DOORY_SIZE_PRESETS_MODE=extend`) adds to the built-in sizes; a preset with the
-same slug replaces the built-in one. `replace` offers only the file's sizes and switches the others off (they are
-kept, not deleted). Importing is idempotent on the slug, so the same file can be imported again after editing.
-
-```json
-{
-  "version": 1,
-  "groups": [
-    {
-      "slug": "social", "label": "Social media",
-      "children": [
-        {
-          "slug": "platform-a", "label": "Platform A",
-          "presets": [
-            { "slug": "platform-a-portrait", "label": "Portrait post", "width": 1000, "height": 1250, "unit": "px",
-              "tags": ["4:5"], "is_quick": true, "meta": { "safe_zone": { "top": 0.1, "bottom": 0.2 } } }
-          ]
-        }
-      ]
-    },
-    {
-      "slug": "print", "label": "Print",
-      "presets": [{ "slug": "flyer-a6", "label": "Flyer (A6)", "width": 105, "height": 148, "unit": "mm" }]
-    }
-  ]
-}
-```
-
-A preset needs `slug`, `label`, `width` and `height`; `unit` is `px` (default), `mm`, `cm` or `in`. Optional: `icon`
-(a [Lucide](https://lucide.dev/icons) name), `tags` (searchable, shown as filters), `aliases` (old slugs that still
-mean this preset), `is_quick` (a chip on the home page), `is_active`, `order` and `meta` (`safe_zone` holds the
-fractions of the page to keep clear on each side). Groups take `slug`, `label`, `icon`, `order`, `is_active`,
-`children` and `presets`. `GET /api/v1/size-presets/` returns the current catalogue in the same format, so it can be
-saved, edited and imported again. `manage.py seed_size_presets --update` resets the built-in sizes.
-
-</details>
-
-<details>
-<summary><b>Settings worth knowing</b> (<code>.env</code>)</summary>
-
-<br />
-
-| Setting | What it does |
-|---------|--------------|
-| `SITE_URL` | The public address of the site, e.g. `https://doory.example.com` (no trailing slash) |
-| `DJANGO_ALLOWED_HOSTS` | The host names the site answers to, comma separated |
-| `SECURE_SSL_REDIRECT`, `SECURE_COOKIES` | `true` behind HTTPS, `false` for plain `http://` |
-| `EMAIL_URL`, `DEFAULT_FROM_EMAIL` | SMTP, e.g. `smtp+tls://user:password@smtp.example.com:587` (without it, emails are printed to the API log) |
-| `WEB_PORT`, `WEB_BIND` | Where the site is published (default `0.0.0.0:8080`) |
-| `INSTALL_CHROMIUM` | `false` skips the headless browser that server-side PDF export needs |
-| `GOOGLE_CLIENT_ID` | Turns on "Sign in with Google" |
-| `UNSPLASH_ACCESS_KEY`, `PEXELS_API_KEY`, `PIXABAY_API_KEY` | Turn on stock photo search, one tab per provider plus an "All" tab |
-| `FREESOUND_API_KEY`, `FREESOUND_LICENSES` | Turn on the Audio tool's Freesound tab (music, effects, ambience). Only CC0 sounds by default; `cc0,by` also allows CC BY, and the editor then lists the credits to publish. Freesound's API terms cover non-commercial use: a commercial service needs an agreement with Freesound first |
-| `STOCK_PROVIDERS`, `STOCK_ALL_PROVIDERS`, `STOCK_DEFAULT_TAB` | Which providers are offered, in which order, and which the "All" tab searches |
-| `STOCK_<PROVIDER>_RATE`, `STOCK_<PROVIDER>_CACHE_SECONDS`, `STOCK_<PROVIDER>_SAFESEARCH` | An optional cap on calls per API key (all users together, e.g. `5000/h`; none by default, a provider is still paused when it answers 429), how long searches are cached, and safe search (Unsplash off, Pixabay on). Caps and cache times only hold across workers with a shared cache (the Docker setup uses the database cache; `locmem` is for development) |
-| `AI_PROVIDER_<n>_*`, `AI_ALLOWED_PRIVATE_HOSTS`, `AI_USER_PROVIDERS` | Remote AI servers for background removal (a model server you host or an external API; any API format through API styles, listed in `.env.example`). Also configurable in the admin under "AI providers". In-browser removal stays the default |
-| `USE_S3` and `AWS_*` | Store uploads in S3-compatible storage instead of a local volume |
-| `EXPORT_FILENAME_STYLE`, `EXPORT_FILENAME_TIMESTAMP` | Default export file names: `simple` (`summer-sale-02.png`, the default) or `structured` (`summer-sale_instagram_instagram-story_1080x1920_p02.png`), and whether structured names end in the Unix time of the export. The download dialog can switch both per browser |
-| `DOORY_SIZE_PRESETS_FILE`, `DOORY_SIZE_PRESETS_MODE` | Import your own size presets from a JSON file on every start (see above) |
-
-</details>
-
-<details>
-<summary><b>Run it without Docker</b> (a Linux server with nginx and systemd)</summary>
-
-<br />
-
-Doory is three pieces: the API (Django on gunicorn), the real-time server for live co-editing (the same code on
-uvicorn) and the web app, a folder of static files that nginx serves while it forwards `/api` and `/ws` to the other
-two. The files in [`deploy/`](deploy) set this up. These steps are for Debian 12 or Ubuntu 24.04 with the checkout in
-`/opt/doory`; the paths are easy to change. You need Python 3.12, Node.js 22 (only to build the web app) and
-PostgreSQL.
-
-**1. Packages, a user and the code**
-
-```bash
-sudo apt install python3 python3-venv postgresql nginx git
-curl -fsSL https://deb.nodesource.com/setup_22.x | sudo bash - && sudo apt install nodejs
-sudo useradd --system --create-home --home-dir /var/lib/doory --shell /usr/sbin/nologin doory
-sudo mkdir /opt/doory && sudo chown doory:doory /opt/doory
-sudo -u doory git clone https://github.com/shaongitbd/doory /opt/doory
-```
-
-**2. The database**
-
-```bash
-sudo -u postgres createuser doory --pwprompt     # pick a password of letters and digits
-sudo -u postgres createdb doory --owner doory
-```
-
-**3. The API**
-
-```bash
-cd /opt/doory/backend
-sudo -u doory python3 -m venv .venv
-sudo -u doory .venv/bin/pip install -r requirements.txt
-sudo -u doory nano .env                          # paste the settings below
-```
-
-```ini
-DJANGO_SECRET_KEY=           # openssl rand -base64 48
-SITE_URL=https://design.example.com
-DJANGO_ALLOWED_HOSTS=design.example.com    # add the server's IP to try it by address
-DATABASE_URL=postgres://doory:YOUR_PASSWORD@127.0.0.1:5432/doory
-CACHE_URL=dbcache://doory_cache
-MEDIA_ROOT=/opt/doory/media
-# Plain http:// while you try it out; remove both lines once HTTPS works.
-SECURE_SSL_REDIRECT=false
-SECURE_COOKIES=false
-```
-
-Then prepare the database and add an admin account:
-
-```bash
-manage() { sudo -u doory .venv/bin/python manage.py "$@" --settings=doory.settings.prod; }
-manage migrate
-manage createcachetable
-manage collectstatic --noinput
-manage createsuperuser
-```
-
-The starter content is added with the same commands as above, e.g. `manage seed_gallery`,
-`manage sync_fonts --popular 100` and `manage seed_templates`.
-
-**4. The web app**
-
-```bash
-cd /opt/doory/frontend
-sudo -u doory npm ci && sudo -u doory npm run build    # writes frontend/dist
-```
-
-**5. Start everything**
-
-```bash
-sudo cp /opt/doory/deploy/doory-api.service /opt/doory/deploy/doory-realtime.service /etc/systemd/system/
-sudo systemctl daemon-reload && sudo systemctl enable --now doory-api doory-realtime
-# Optional, for AI assistants (MCP_ENABLED=true in .env): the MCP server
-# sudo cp /opt/doory/deploy/doory-mcp.service /etc/systemd/system/ && sudo systemctl enable --now doory-mcp
-sudo cp /opt/doory/deploy/nginx.conf /etc/nginx/conf.d/doory.conf    # set server_name in it
-sudo rm -f /etc/nginx/sites-enabled/default
-sudo -u doory mkdir -p /opt/doory/media       # uploads; nginx serves them from here
-sudo nginx -t && sudo systemctl reload nginx
-```
-
-Open your domain. For HTTPS, `sudo apt install certbot python3-certbot-nginx && sudo certbot --nginx`, then remove the
-two `SECURE_` lines from `.env` and `sudo systemctl restart doory-api doory-realtime` (and `doory-mcp` if you run it).
-
-**Updating:** `sudo -u doory git pull`, then repeat `pip install`, `manage migrate`, `manage collectstatic --noinput` and
-`npm ci && npm run build`, and `sudo systemctl restart doory-api doory-realtime` (and `doory-mcp` if you run it).
-
-**Optional:** server-side PDF export needs a headless Chromium: `sudo .venv/bin/playwright install-deps chromium`, then
-`sudo -u doory .venv/bin/playwright install chromium`. Without it, set `SERVER_PDF_ENABLED=false` in `.env`.
-
-</details>
-
-<details>
-<summary><b>Develop locally</b></summary>
-
-<br />
-
-```bash
-make setup     # virtualenv, dependencies, local database
-make dev-api   # API on http://localhost:8000
-make dev-web   # app on http://localhost:5173 (second terminal)
-```
-
-`make help` lists the other targets (tests, lint, content).
-
-</details>
+- [Install with Docker](docs/self-hosting/docker.md) or [without Docker](docs/self-hosting/manual.md) (nginx and systemd)
+- [Every setting](docs/self-hosting/configuration.md), [upgrading](docs/self-hosting/upgrading.md), [backups](docs/self-hosting/backup.md) and [troubleshooting](docs/self-hosting/troubleshooting.md)
+- Optional: [email](docs/integrations/email.md), [Google sign-in](docs/integrations/google-sign-in.md), [S3-compatible storage](docs/integrations/object-storage.md), [stock photos](docs/integrations/stock-media.md), [server-side export](docs/self-hosting/image-export.md)
+- [Develop locally](docs/development/README.md): `make setup`, `make dev-api`, `make dev-web`
 
 ## Use it from an AI assistant (MCP)
 
@@ -307,46 +92,8 @@ Doory runs a [Model Context Protocol](https://modelcontextprotocol.io) server at
 Cursor and other MCP clients can create and edit your designs: "make a 1080 x 1350 poster for our summer sale with
 the brand colours", "translate the headlines on every page", "move the logo to the bottom right".
 
-The server is off by default. To turn it on, add `MCP_ENABLED=true` to `.env`; with Docker also add
-`COMPOSE_PROFILES=mcp` (it starts the `mcp` service), then `docker compose up -d`. Without Docker, install
-`deploy/doory-mcp.service` too (see step 5 above) and restart `doory-api`.
-
-1. In Doory, open **Settings → AI assistants (MCP)** and create a token. Choose what it may do (read designs, edit
-   them, trash them, add images, comment, manage comments, change brand kits, manage share links) and when it
-   expires (at most a year), and confirm with your password. The token is shown once. Each permission is listed
-   with what it allows; a token never gains a permission it was not given, even when new tools are added.
-2. Add the server to your client with the URL `https://your-domain/mcp` and the header
-   `Authorization: Bearer <token>`. For Claude Code:
-
-   ```bash
-   claude mcp add --transport http doory https://your-domain/mcp --header "Authorization: Bearer doory_…"
-   ```
-
-   In a JSON configuration (Claude Code's `.mcp.json`, Cursor and others) that is
-   `{"type": "http", "url": "https://your-domain/mcp", "headers": {"Authorization": "Bearer doory_…"}}`.
-
-The assistant can list, read, create, rename, duplicate and edit designs; star them, organise them in folders,
-trash and restore them; add text (curved, with shadows, outlines, glows or highlights), shapes (including the
-catalogue's hearts, arrows, speech bubbles…), lines, pictures (cropped to a shape if wanted), QR codes and
-pages; group and ungroup objects; set backgrounds and speaker notes; search templates, the element catalogue,
-fonts and stock photos, and copy images from public https URLs; list available AI models (`list_ai_models`)
-and remove backgrounds from pictures (`remove_background` in `edit_design`, or when importing stock photos);
-read, add, edit, resolve and delete comments;
-create and change brand kits; create and revoke share links; restore earlier versions; and look at a page as a
-PNG, JPG or WebP image (`export_design`), drawn on the server exactly as the editor draws it. Designs are also MCP
-resources (`doory://designs/{id}`), and two prompts, "Make a design from a brief" and "Review a design", show up in
-clients that offer prompts. Creating or changing a share link is marked as destructive, so clients ask you before
-an assistant does it, and comment text reaches the assistant labelled as untrusted. The state before every edit is
-kept in the design's version history, so anything an assistant did can be undone from there. If the design is open
-in your editor, the change appears live, like a co-editor's; with Redis it arrives at once, otherwise within a few
-seconds.
-
-Text heights reported to the assistant are estimates until the design is opened in the editor, which measures
-text exactly. `export_design` is off by default (`SERVER_IMAGE_EXPORT_ENABLED=true` in `.env` turns it on; it
-needs `INSTALL_CHROMIUM=true`, the default, and reaches the web container's `render.html` at
-`EXPORT_RENDER_PAGE_URL`); images over 1 MB come back as a download link that expires after ten minutes. The
-same render is available to signed-in users at `POST /api/v1/designs/{id}/export/image/`. Revoke a token in
-the same settings page. Changing or resetting your password revokes all your tokens.
+It's off by default. To turn it on, connect a client and see what assistants can do, read
+[docs/self-hosting/mcp.md](docs/self-hosting/mcp.md).
 
 Templates can be filled by field key, from an assistant (`fill_design`, `bulk_fill`) or from the REST API
 (`POST /api/v1/designs/{id}/fill/` and `/bulk-fill/`, one new design per row, at most `BULK_FILL_MAX_ROWS`).
@@ -395,7 +142,8 @@ Channels and PostgreSQL on the server; Docker Compose with nginx, optional Redis
 
 Bug reports, ideas and pull requests are welcome. Open an [issue](https://github.com/shaongitbd/doory/issues) to
 report a bug or suggest a feature. For a security problem, please report it privately through the repository's
-**Security** tab instead.
+**Security** tab instead. Before opening a pull request, read [CONTRIBUTING.md](CONTRIBUTING.md), including the
+rule for updating the docs.
 
 ## License and credit
 
