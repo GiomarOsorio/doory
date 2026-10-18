@@ -30,7 +30,7 @@ export function AiProviderEditor({ provider, onSaved, onClose }: { provider: AiP
       <ConnectionForm provider={provider} onSaved={onSaved} onClose={onClose} />
       {provider ? (
         <>
-          <ModelsEditor key={`${provider.updated_at}:${provider.models.map((model) => model.id).join(',')}`} provider={provider} onSaved={onSaved} />
+          <ModelsEditor key={provider.id} provider={provider} onSaved={onSaved} />
           <ConnectionTest provider={provider} />
         </>
       ) : null}
@@ -135,7 +135,7 @@ function ConnectionForm({ provider, onSaved, onClose }: { provider: AiProvider |
         hint={provider?.has_secret ? 'A key is stored. Leave this empty to keep it.' : 'The header’s value, e.g. “Bearer …”. It is stored encrypted and never shown again.'}
         placeholder={provider?.has_secret ? 'Stored' : ''}
         name="ai-provider-key"
-        autoComplete="off"
+        autoComplete="new-password"
         value={secret}
         onChange={(event) => {
           setSecret(event.target.value)
@@ -182,7 +182,9 @@ function ModelsEditor({ provider, onSaved }: { provider: AiProvider; onSaved(pro
     setBusy('load')
     setError('')
     try {
-      onSaved(await aiApi.providers.loadModels(provider.id))
+      const updated = await aiApi.providers.loadModels(provider.id)
+      setRows(updated.models.map(({ task, remote_name, label, enabled }) => ({ task, remote_name, label, enabled })))
+      onSaved(updated)
     } catch (failure) {
       setError(errorText(failure, 'The server’s models could not be loaded.'))
     } finally {
@@ -199,7 +201,9 @@ function ModelsEditor({ provider, onSaved }: { provider: AiProvider; onSaved(pro
     setBusy('save')
     setError('')
     try {
-      onSaved(await aiApi.providers.setModels(provider.id, rows.map((row, order) => ({ ...row, remote_name: row.remote_name.trim(), label: row.label.trim(), sort_order: order }))))
+      const updated = await aiApi.providers.setModels(provider.id, rows.map((row, order) => ({ ...row, remote_name: row.remote_name.trim(), label: row.label.trim(), sort_order: order })))
+      setRows(updated.models.map(({ task, remote_name, label, enabled }) => ({ task, remote_name, label, enabled })))
+      onSaved(updated)
     } catch (failure) {
       setError(errorText(failure, 'The models could not be saved.'))
     } finally {

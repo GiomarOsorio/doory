@@ -402,10 +402,10 @@ export class StyleApi {
     if (option !== DEVICE_OPTION && !ai) throw new BackgroundRemovalError('No server option is available here.')
     let result: Blob | AssetRef
     try {
-      const blob = await (await fetch(img.getSrc(), { signal })).blob()
+      const getImage = async () => (await fetch(img.getSrc(), { signal })).blob()
       result = ai
-        ? await ai.run(BACKGROUND_REMOVAL_TASK, { model: option, image: blob, assetId: asDory(img).assetId, signal })
-        : await runRemoval(blob, onProgress, signal)
+        ? await ai.run(BACKGROUND_REMOVAL_TASK, { model: option, image: getImage, assetId: asDory(img).assetId, signal })
+        : await runRemoval(await getImage(), onProgress, signal)
     } catch (error) {
       // Cancel is not a failure: the engine has stopped its work and the design stays as it was.
       if (signal?.aborted) return false

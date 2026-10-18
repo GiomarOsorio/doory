@@ -62,9 +62,13 @@ function configOptions(config: AiConfig | undefined, task: string): AiTaskOption
  * AI image tasks for a signed-in user: their options (`GET /ai/models/`, which includes their own servers; the
  * public list from `/config/` when that fails), runs on the server, and the last choice per user and task.
  */
-export function createAiService({ config, userId }: { config?: AiConfig; userId?: string } = {}): AiService {
+export function createAiService({ config, userId }: { config?: AiConfig; userId?: string | (() => string | undefined) } = {}): AiService {
   const cached = new Map<string, { at: number; value: Promise<AiTaskOptions> }>()
-  const storageKey = (task: string): string => `doory.ai.choice.${userId ?? 'me'}.${task}`
+  const resolveUserId = (): string => {
+    const id = typeof userId === 'function' ? userId() : userId
+    return id ?? 'me'
+  }
+  const storageKey = (task: string): string => `doory.ai.choice.${resolveUserId()}.${task}`
   const upload = async (image: Blob, signal?: AbortSignal): Promise<string> => {
     const ext = image.type === 'image/jpeg' ? 'jpg' : (image.type.split('/')[1] ?? 'png').replace(/\W.*$/, '')
     return (await assetsApi.upload(image, { name: `image.${ext}`, signal })).id
@@ -91,10 +95,11 @@ export function createAiService({ config, userId }: { config?: AiConfig; userId?
           return assetToRef(await aiApi.run(task, { asset_id: assetId, model }, signal))
         } catch (error) {
           // Not this user's asset (a template's picture, say): upload the picture and run on that copy.
-          if (!isApiError(error) || error.status !== 404 || error.code === 'ai_model_not_found') throw error
+          if (!isApiError(error) || error.status !== 404 || error.code === 'ai_model_not_found' || error.code === 'unknown_task') throw error
         }
       }
-      return assetToRef(await aiApi.run(task, { asset_id: await upload(image, signal), model }, signal))
+      const blob = typeof image === 'function' ? await image() : image
+      return assetToRef(await aiApi.run(task, { asset_id: await upload(blob, signal), model }, signal))
     },
     remembered: (task) => safeGetItem(storageKey(task)),
     remember: (task, option) => {

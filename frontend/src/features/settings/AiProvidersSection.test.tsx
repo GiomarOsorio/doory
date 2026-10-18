@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from '@testing-library/react'
+import { act, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { renderApp } from '@/test/app'
@@ -286,5 +286,72 @@ describe('settings: AI providers', () => {
     await userEvent.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Remove' }))
     await waitFor(() => expect(deleted).toEqual(['/api/v1/ai/providers/p1/']))
     await waitFor(() => expect(screen.queryByRole('list', { name: 'Your AI servers' })).toBeNull())
+  })
+
+  it('preserves unsaved model labels when saving connection details', async () => {
+    const initialProvider = provider({
+      models: [{ id: 'm1', task: 'background-removal', remote_name: 'model-a', label: 'Initial Label', enabled: true }],
+    })
+    renderApp('/settings', {
+      user: makeUser(),
+      config: config(),
+      handlers: [
+        list([initialProvider]),
+        http.patch('*/api/v1/ai/providers/p1/', async () => {
+          return HttpResponse.json(provider({ ...initialProvider, name: 'Renamed Server', updated_at: '2026-10-02T12:00:00Z' }))
+        }),
+      ],
+    })
+    await openEditor()
+    const modelsRegion = screen.getByRole('region', { name: 'Models' })
+    const labelInput = within(modelsRegion).getByLabelText('Label')
+    await userEvent.clear(labelInput)
+    await userEvent.type(labelInput, 'Unsaved New Label')
+    expect(labelInput).toHaveValue('Unsaved New Label')
+
+    // Change connection name and save connection
+    const nameInput = screen.getByLabelText('Name')
+    await userEvent.clear(nameInput)
+    await userEvent.type(nameInput, 'Renamed Server')
+    await userEvent.click(screen.getByRole('button', { name: 'Save changes' }))
+
+    // After connection save completes, updated_at changed but the unsaved model row label must remain intact
+    await waitFor(() => expect(screen.getByLabelText('Name')).toHaveValue('Renamed Server'))
+    expect(within(screen.getByRole('region', { name: 'Models' })).getByLabelText('Label')).toHaveValue('Unsaved New Label')
+  })
+
+  it('does not reopen previous server when late save response arrives after switching servers', async () => {
+    let resolveSave!: (res: Response) => void
+    const savePromise = new Promise<Response>((resolve) => {
+      resolveSave = resolve
+    })
+    const p1 = provider({ id: 'p1', name: 'Server 1' })
+    const p2 = provider({ id: 'p2', name: 'Server 2' })
+    renderApp('/settings', {
+      user: makeUser(),
+      config: config(),
+      handlers: [
+        list([p1, p2]),
+        http.patch('*/api/v1/ai/providers/p1/', () => savePromise),
+      ],
+    })
+    await openEditor('Server 1')
+    await userEvent.click(screen.getByRole('button', { name: 'Save changes' }))
+
+    // Switch to editing Server 2 while p1 save is still in flight
+    const listEl = screen.getByRole('list', { name: 'Your AI servers' })
+    const row2 = within(listEl).getByText(/Server 2/).closest('li') as HTMLElement
+    await userEvent.click(within(row2).getByRole('button', { name: 'Edit Server 2' }))
+
+    expect(screen.getByLabelText('Name')).toHaveValue('Server 2')
+
+    // Now resolve p1 save
+    await act(async () => {
+      resolveSave(HttpResponse.json(provider({ ...p1, updated_at: '2026-10-03T00:00:00Z' })))
+      await new Promise((r) => setTimeout(r, 50))
+    })
+
+    // Active editor must still be Server 2
+    expect(screen.getByLabelText('Name')).toHaveValue('Server 2')
   })
 })

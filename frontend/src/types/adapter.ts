@@ -106,7 +106,7 @@ export interface AiService {
    * image's asset when it has one; otherwise (or when it is not this user's) `image` is uploaded first.
    * Rejects with the server's `ApiError` (`ai_timeout`, `ai_quota`, …).
    */
-  run(task: string, input: { model: string; image: Blob; assetId?: string; signal?: AbortSignal }): Promise<AssetRef>
+  run(task: string, input: { model: string; image: Blob | (() => Promise<Blob>); assetId?: string; signal?: AbortSignal }): Promise<AssetRef>
   /** The option this user last picked for `task`, if any. */
   remembered(task: string): string | null
   remember(task: string, option: string): void

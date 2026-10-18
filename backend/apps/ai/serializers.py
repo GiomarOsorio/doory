@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Any
+from urllib.parse import urlsplit
 
 from rest_framework import serializers
 
@@ -146,6 +147,15 @@ class ProviderSerializer(serializers.ModelSerializer):
             get_style(style).config(style_config)
         except ConfigError as exc:
             raise serializers.ValidationError({"style_config": [str(exc)]}) from None
+        if self.instance and self.instance.has_secret and not attrs.get("secret"):
+            new_url = attrs.get("base_url")
+            if new_url:
+                old_host = urlsplit(self.instance.base_url).netloc.lower()
+                new_host = urlsplit(new_url).netloc.lower()
+                if old_host != new_host:
+                    raise serializers.ValidationError(
+                        {"secret": "Enter the key again when changing the server address."}
+                    )
         return attrs
 
     def save(self, **kwargs) -> Provider:

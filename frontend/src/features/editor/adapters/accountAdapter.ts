@@ -10,7 +10,7 @@ export interface AccountAdapterOptions {
   onRevision?(revision: number): void
   config?: Pick<AppConfig, 'features' | 'exports' | 'ai'>
   /** The signed-in user, so the editor remembers choices (e.g. the background-removal option) per user. */
-  userId?: string
+  userId?: string | (() => string | undefined)
   /** Minimum gap between thumbnail uploads (ms). */
   thumbnailIntervalMs?: number
   /** Opens the shell's sign-in flow when the live room needs a session; resolves `true` once the user is signed in. */

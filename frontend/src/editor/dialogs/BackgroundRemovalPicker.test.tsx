@@ -24,7 +24,7 @@ function fakeAi(models: AiOption[], { remembered = null, defaultId = null, notic
     options: vi.fn(async () => ({ default: defaultId, models })),
     run: vi.fn(),
     remembered: vi.fn(() => remembered),
-    remember: vi.fn(),
+    remember: vi.fn<(task: string, option: string) => void>(),
     offsiteNotice: notice,
   }
   return ai
@@ -169,5 +169,32 @@ describe('BackgroundRemovalDialog: options', () => {
     await userEvent.click(await screen.findByRole('button', { name: t.bgRemoval.start }))
     await waitFor(() => expect(ctx.closeDialog).toHaveBeenCalledTimes(1))
     expect(ctx.toast).toHaveBeenCalledWith(t.errors.bgRemovalDone, 'success')
+  })
+
+  it('does not start background removal if cancelled while options are loading', async () => {
+    let resolveOptions!: (val: { default: string | null; models: AiOption[] }) => void
+    const optionsPromise = new Promise<{ default: string | null; models: AiOption[] }>((resolve) => {
+      resolveOptions = resolve
+    })
+    const ai: AiService & { remember: ReturnType<typeof vi.fn> } = {
+      options: vi.fn(() => optionsPromise),
+      run: vi.fn(),
+      remembered: vi.fn(() => null),
+      remember: vi.fn<(task: string, option: string) => void>(),
+      offsiteNotice: '',
+    }
+    const run = vi.fn<Run>().mockResolvedValue(true)
+    const ctx = setup(ai, run)
+    engine = ctx.engine
+
+    const closeBtn = screen.getByRole('button', { name: t.dialog.close })
+    await userEvent.click(closeBtn)
+    expect(ctx.closeDialog).toHaveBeenCalledTimes(1)
+
+    resolveOptions({ default: null, models: [BEST] })
+    await new Promise((r) => setTimeout(r, 50))
+
+    expect(run).not.toHaveBeenCalled()
+    expect(ctx.closeDialog).toHaveBeenCalledTimes(1)
   })
 })

@@ -62,7 +62,7 @@ export function AiProvidersSection() {
       rest.splice(at, 0, provider)
       return rest
     })
-    setEditing((current) => (current === null ? null : provider))
+    setEditing((current) => (current === null ? null : current === 'new' ? provider : current.id === provider.id ? provider : current))
   }
 
   async function remove(provider: AiProvider) {

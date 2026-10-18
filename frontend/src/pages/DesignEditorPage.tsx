@@ -62,7 +62,11 @@ export default function DesignEditorPage() {
   const exportsConfig = config.exports
   const aiProviders = config.features.ai_providers === true
   const aiConfig = config.ai
-  const userId = user?.id
+  // Keep the last known user id across dropped sessions so the adapter is not rebuilt while editing.
+  const [userId, setUserId] = useState(user?.id)
+  if (user?.id && user.id !== userId) {
+    setUserId(user.id)
+  }
   const adapter = useMemo(
     () =>
       createAccountAdapter(id, () => revision.get(), {

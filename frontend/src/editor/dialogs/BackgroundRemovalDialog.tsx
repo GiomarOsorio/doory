@@ -46,30 +46,32 @@ export function BackgroundRemovalDialog() {
   const [choices, setChoices] = useState<BgRemovalChoices | null>(ready)
   const [selected, setSelected] = useState<string | null>(ready?.initial ?? null)
   const [status, setStatus] = useState<Status>(() => (ready ? firstStatus(ready) : { kind: 'loading' }))
-  const controller = useRef<AbortController | null>(null)
+  const controller = useRef<AbortController>(new AbortController())
   const opened = useRef(false)
+  const closedRef = useRef(false)
 
   /** Runs `option`; the dialog shows its progress, closes when done or shows what went wrong. */
   const run = useCallback(
     (option: AiOption): void => {
-      controller.current?.abort()
+      if (closedRef.current) return
+      controller.current.abort()
       const current = new AbortController()
       controller.current = current
       editor.style
         .removeBackground(
           (phase, percent) => {
-            if (!current.signal.aborted) setStatus({ kind: 'running', option, phase, percent })
+            if (!current.signal.aborted && !closedRef.current) setStatus({ kind: 'running', option, phase, percent })
           },
           current.signal,
           option.id,
         )
         .then((applied) => {
-          if (current.signal.aborted) return
+          if (current.signal.aborted || closedRef.current) return
           editor.closeDialog()
           if (applied) editor.toast(t.errors.bgRemovalDone, 'success')
         })
         .catch((err: unknown) => {
-          if (current.signal.aborted) return
+          if (current.signal.aborted || closedRef.current) return
           setStatus({ kind: 'error', option, ...describeFailure(err, option) })
         })
     },
@@ -86,6 +88,7 @@ export function BackgroundRemovalDialog() {
 
   // Once; StrictMode's second effect run finds it opened already.
   useEffect(() => {
+    let cancelled = false
     if (opened.current) return
     opened.current = true
     if (ready) {
@@ -94,12 +97,18 @@ export function BackgroundRemovalDialog() {
       return
     }
     void loadBackgroundRemovalChoices(ai).then((next) => {
+      if (cancelled || closedRef.current || controller.current.signal.aborted) return
       setChoices(next)
       setSelected(next.initial)
       const first = firstStatus(next)
       setStatus(first)
       if (first.kind === 'running') run(first.option)
     })
+    return () => {
+      cancelled = true
+      closedRef.current = true
+      controller.current.abort()
+    }
   }, [ai, ready, run])
 
   const options = choices?.options ?? []
@@ -113,7 +122,8 @@ export function BackgroundRemovalDialog() {
   }
 
   const close = (): void => {
-    controller.current?.abort()
+    closedRef.current = true
+    controller.current.abort()
     editor.closeDialog()
   }
 

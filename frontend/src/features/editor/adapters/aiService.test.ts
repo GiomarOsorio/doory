@@ -94,6 +94,23 @@ describe('AI service of the account adapter', () => {
     const gone: unknown = await ai.run('background-removal', { model: 'p9:', image: new Blob(['x']), assetId: 'a1' }).catch((e: unknown) => e)
     expect(isApiError(gone) && gone.code).toBe('ai_model_not_found')
     expect(calls).toHaveLength(1) // an option that is gone is not retried on an uploaded copy
+
+    const unknownCalls = captureFetch(() => error(404, 'unknown_task'))
+    const unknownTask: unknown = await ai.run('unknown-task', { model: 'p9:', image: new Blob(['x']), assetId: 'a1' }).catch((e: unknown) => e)
+    expect(isApiError(unknownTask) && unknownTask.code).toBe('unknown_task')
+    expect(unknownCalls).toHaveLength(1) // an unknown task is not retried on an uploaded copy
+  })
+
+  it('resolves image lazily only when upload is actually needed', async () => {
+    captureFetch((request) => {
+      const body = JSON.parse(String(request.body)) as { asset_id: string }
+      return body.asset_id === 'a1' ? json(asset('cut'), 201) : error(404, 'not_found')
+    })
+    const ai = createAiService({ config: CONFIG })
+    const getImage = vi.fn(async () => new Blob(['x'], { type: 'image/png' }))
+    const ref = await ai.run('background-removal', { model: 'env-1:best', image: getImage, assetId: 'a1' })
+    expect(ref.id).toBe('cut')
+    expect(getImage).not.toHaveBeenCalled()
   })
 
   it('remembers the last choice per user and task', () => {
