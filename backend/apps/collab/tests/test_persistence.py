@@ -151,6 +151,24 @@ async def test_a_document_the_server_would_refuse_is_not_saved_and_the_writers_a
     await one.until(lambda: one.texts_of("saved"), timeout=5)
 
 
+async def test_a_room_with_clashing_field_keys_still_flushes(env, settings):
+    settings.REALTIME_FLUSH_INTERVAL_SECONDS = 0.1
+    one = await env.open(env.owner)
+    two = await env.open(env.owner)
+    await one.edit(
+        lambda doc: first_object(one).__setitem__("field", Map({"key": "title", "type": "color"}))
+    )
+    await two.edit(
+        lambda doc: page_map(two)[KEY_OBJECTS][page_map(two)[KEY_OBJECT_ORDER][1]].__setitem__(
+            "field", Map({"key": "title", "type": "text"})
+        )
+    )
+    await settle(one, two)
+    await one.until(lambda: one.texts_of("saved"), timeout=5)
+    assert not one.texts_of("warning")
+    assert await env.db(lambda: reload(env.design).revision) == 2
+
+
 async def test_a_too_deeply_nested_property_is_repaired_away_instead_of_blocking_saves(env, settings):
     settings.REALTIME_FLUSH_INTERVAL_SECONDS = 0.1
 

@@ -100,7 +100,8 @@ def _current(obj: dict, field_type: str) -> Any:
 
 def list_fields(document: dict) -> list[dict]:
     """The fields of a design, one entry per key, in first-use order. Photo placeholders without a tag are
-    listed too, as suggested image fields with `key: null` (one entry each)."""
+    listed too, as suggested image fields with `key: null` (one entry each). A later tag that clashes (same
+    key on the same page, or another type on a later page) is dropped."""
     fields: dict[str, dict] = {}
     out: list[dict] = []
     for number, page in enumerate(document.get("pages") or [], start=1):
@@ -116,10 +117,9 @@ def list_fields(document: dict) -> list[dict]:
             if entry is None:
                 entry = fields[tag["key"]] = _entry(tag["key"], tag["type"], tag.get("label"), obj, number)
                 out.append(entry)
-            else:
+            elif entry["type"] == tag["type"] and number not in entry["pages"]:
                 entry["object_ids"].append(obj.get("id"))
-                if number not in entry["pages"]:
-                    entry["pages"].append(number)
+                entry["pages"].append(number)
     return out
 
 

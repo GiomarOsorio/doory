@@ -9,7 +9,6 @@ import pytest
 from apps.designs.doc.fields import duplicate_keys, list_fields, read_field
 from apps.designs.validators import validate_document
 
-from ..exceptions import InvalidDocument
 from .helpers import make_design, make_doc, text_object
 
 URL = "/api/v1/designs/"
@@ -96,11 +95,15 @@ def test_list_fields_merges_pages_and_suggests_untagged_placeholders():
     assert all(f["fit"] is None and f["overflow"] is False for f in fields)
 
 
-def test_documents_with_clashing_keys_are_invalid():
-    validate_document(make_doc(objects=[tagged(text_object(), "title", "text")]), max_bytes=10**6)
-    clash = make_doc(objects=[tagged(text_object(), "title", "text"), tagged(text_object(), "title", "text")])
-    with pytest.raises(InvalidDocument, match="title"):
-        validate_document(clash, max_bytes=10**6)
+def test_clashing_keys_remain_savable_and_list_fields_drops_later_duplicates():
+    first = tagged(text_object("First"), "title", "text")
+    second = tagged(text_object("Second"), "title", "text")
+    clash = two_pages([first, second, tagged(picture("a1"), "logo", "image")], [tagged(shape(), "logo", "color")])
+    validate_document(clash, max_bytes=10**6)
+    assert [(f["key"], f["type"], f["pages"], f["object_ids"]) for f in list_fields(clash)] == [
+        ("title", "text", [1], [first["id"]]),
+        ("logo", "image", [1], [clash["pages"][0]["objects"][2]["id"]]),
+    ]
 
 
 @pytest.mark.django_db
@@ -112,13 +115,14 @@ class TestRest:
         assert [(f["key"], f["current"]) for f in res.json()] == [("title", "Hi")]
         assert other_api.get(f"{URL}{design.pk}/fields/").status_code == 404
 
-    def test_a_save_with_clashing_keys_is_refused(self, api, user):
+    def test_a_save_with_clashing_keys_is_accepted_and_list_fields_keeps_the_first(self, api, user):
         design = make_design(user)
-        doc = make_doc(
-            objects=[tagged(text_object(), "title", "text"), tagged(text_object(), "title", "text")]
-        )
+        first = tagged(text_object("First"), "title", "text")
+        doc = make_doc(objects=[first, tagged(text_object("Second"), "title", "text")])
         res = api.patch(f"{URL}{design.pk}/", {"document": doc, "base_revision": 1}, format="json")
-        assert res.status_code == 400 and res.json()["error"]["code"] == "invalid_document"
+        assert res.status_code == 200
+        fields = api.get(f"{URL}{design.pk}/fields/").json()
+        assert [(f["key"], f["current"], f["object_ids"]) for f in fields] == [("title", "First", [first["id"]])]
 
     def test_tags_survive_duplicate_and_version_restore(self, api, user):
         doc = make_doc(objects=[tagged(text_object("Hi"), "title", "text", "Title")])
