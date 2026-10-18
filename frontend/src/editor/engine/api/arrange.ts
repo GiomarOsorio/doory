@@ -104,7 +104,7 @@ export class ArrangeApi {
     // taken there would land around the page's top-left corner (#39). Copying does the same.
     view.canvas.discardActiveObject()
     // Not `field`: Fabric would revive the tag (it has a `type`) as an object, and copies drop it anyway.
-    const props = getExtraProps().filter((p) => p !== 'field')
+    const props = [...getExtraProps().filter((p) => p !== 'field'), 'userFontSize', 'fitBoxHeight']
     const clones = await Promise.all(objs.map((o) => o.clone(props)))
     for (const c of clones) {
       reidTree(c)

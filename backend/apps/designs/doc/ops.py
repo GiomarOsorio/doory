@@ -17,7 +17,7 @@ from pydantic import ValidationError as PydanticValidationError
 
 from . import builders, groups
 from .builders import Page
-from .fields import KIND_TYPES, FieldTag, duplicate_keys
+from .fields import KIND_TYPES, FieldTag, TextFit, duplicate_keys, read_fit
 from .kinds import object_kind
 
 MAX_OPS = 200
@@ -278,6 +278,11 @@ class UpdateObject(_Op):
         None,
         description="Tag the object as a template field (text boxes: text, pictures and placeholders: image, "
         "shapes: color), so it can be found with list_fields and filled with data. `none` removes the tag.",
+    )
+    fit: TextFit | Literal["none"] | None = Field(
+        None,
+        description="Text only. Shrink the font size down to `min_font_size` (default: half the font size) "
+        "so the text fits inside the box's fixed height. `none` turns it off.",
     )
     props: dict[str, Any] | None = Field(
         None,
@@ -699,6 +704,10 @@ class _Editor:
             if kind != "text":
                 raise self.fail("Only text can be curved.")
             builders.apply_curve(obj, op.curve)
+        if op.fit is not None:
+            if kind != "text":
+                raise self.fail("Only text can shrink to fit.")
+            builders.apply_fit(obj, None if op.fit == "none" else op.fit.document())
         if op.field is not None:
             self.set_field(obj, kind, op.field)
         if op.props:
@@ -718,6 +727,7 @@ class _Editor:
             or op.font_family is not None
             or op.font_size is not None
             or op.font_weight is not None
+            or op.fit is not None
             or bool(TEXT_LAYOUT_PROPS & set(op.props or ()))
         )
         if kind == "text" and reflows:
@@ -973,6 +983,10 @@ def place(obj: dict, x: float, y: float) -> None:
 
 def refit_text_height(obj: dict) -> None:
     """Re-estimate a textbox's height after its text, width or size changed, keeping its centre."""
+    fit = read_fit(obj.get("fit"))
+    if fit:
+        builders.apply_fit(obj, fit)
+        return
     size = _float(obj.get("fontSize"), 40.0)
     lines = builders.estimate_text_lines(
         str(obj.get("text", "")),

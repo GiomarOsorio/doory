@@ -76,6 +76,11 @@ function scaleObjectBy(o: DocObject, k: number): void {
     o.fontSize = num(o, 'fontSize', 16) * k
     o.width = num(o, 'width', 0) * k
     if (typeof o.height === 'number') o.height = o.height * k
+    if (typeof o.fitFontSize === 'number') o.fitFontSize = o.fitFontSize * k
+    if (o.fit && typeof o.fit === 'object') {
+      const f = o.fit as Record<string, unknown>
+      if (typeof f.minFontSize === 'number') o.fit = { ...f, minFontSize: Math.max(4, Math.round(f.minFontSize * k)) }
+    }
   } else {
     o.scaleX = num(o, 'scaleX', 1) * k
     o.scaleY = num(o, 'scaleY', 1) * k

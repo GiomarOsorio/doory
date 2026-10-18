@@ -4,7 +4,7 @@
  * scrubbing) pass a `key` so their steps coalesce into one undo step.
  */
 import { type FabricImage, type FabricObject, IText, Polygon, Rect, Shadow } from 'fabric'
-import type { ArrowHead, DocField, ImageFilterSpec, MaskShape, ObjectEffects, ShadowSpec } from '@/types/document'
+import type { ArrowHead, DocField, DocTextFit, ImageFilterSpec, MaskShape, ObjectEffects, ShadowSpec } from '@/types/document'
 import type { EditorEngine } from '../editor'
 import { removeBackground as runRemoval, type BgRemovalPhase } from '../bgRemoval'
 import { DoryLine } from '../objects/DoryLine'
@@ -17,7 +17,7 @@ import { FILTER_PRESETS, applyImageFilters, normalizeSpecs, withSpec } from '../
 import { applyMask } from '../objects/masks'
 import { hasSlot } from '../objects/slot'
 import { createPlaceholder, createPolygon, createStar } from '../objects/factories'
-import { type TextPatch, applyTextPatch, sanitizeTextPatch } from '../objects/textStyle'
+import { type TextPatch, applyTextFit, applyTextPatch, refitTextbox, sanitizeTextPatch } from '../objects/textStyle'
 import { CORNER_RADIUS_MAX, STROKE_WIDTH_MAX, clampOrUndefined } from '../numbers'
 import { qrDataUrl } from '../objects/qr'
 import type { QrSpec } from '../objects/dory'
@@ -184,7 +184,10 @@ export class StyleApi {
       }
     }
     applyEffects(obj, next)
-    if (obj instanceof IText) obj.initDimensions()
+    if (obj instanceof IText) {
+      if (asDory(obj).fit && !asDory(obj).curveAmount) refitTextbox(obj)
+      else obj.initDimensions()
+    }
   }
 
   /** Sets (or removes with `undefined`) individual text effects. */
@@ -194,6 +197,14 @@ export class StyleApi {
 
   setCurve(amount: number): void {
     this.text({ curveAmount: amount }, t.history.curveText, 'curve')
+  }
+
+  /** Enables, updates or clears (`null`) shrink-to-fit on the selected text boxes. */
+  setTextFit(fit: DocTextFit | null, key?: string): void {
+    const objs = this.targets().filter((o): o is IText => o instanceof IText)
+    if (objs.length === 0) return
+    for (const t0 of objs) applyTextFit(t0, fit)
+    this.finish(t.history.formatText, key)
   }
 
   /* ----------------------------------------------------------------- shapes */

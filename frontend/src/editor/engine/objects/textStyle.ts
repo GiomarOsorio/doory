@@ -4,7 +4,7 @@
  * stale per-character overrides of the same props, so the change is visible everywhere).
  */
 import type { IText, TextStyleDeclaration } from 'fabric'
-import type { ListStyle, TextCase } from '@/types/document'
+import type { DocTextFit, ListStyle, TextCase } from '@/types/document'
 import { CHAR_SPACING_RANGE, FONT_SIZE_RANGE, LINE_HEIGHT_RANGE, clampOrUndefined, isFiniteNumber } from '../numbers'
 import { applyCase, toggleCase } from '../text/case'
 import { type TextDirection, alignmentForDirection, detectDirection } from '../text/direction'
@@ -12,6 +12,106 @@ import { applyListStyle, detectListStyle } from '../text/lists'
 import { asDory } from './dory'
 import { applyCurve, refitCurve } from './curvedText'
 import { type FillSpec, buildFill } from './fills'
+
+export const MIN_FIT_FONT_SIZE = 4
+
+export function defaultMinFontSize(fontSize: number): number {
+  return Math.max(MIN_FIT_FONT_SIZE, Math.round(fontSize * 0.5))
+}
+
+export function validFitFontSize(value: unknown): number | null {
+  return isFiniteNumber(value) && value >= FONT_SIZE_RANGE[0] && value <= FONT_SIZE_RANGE[1] ? value : null
+}
+
+/** Reads an untrusted `fit` value from a document object; returns null if absent or malformed. */
+export function readTextFit(raw: unknown): DocTextFit | null {
+  if (!raw || typeof raw !== 'object') return null
+  const r = raw as Record<string, unknown>
+  if (r.mode !== 'shrink') return null
+  const minRaw = r.minFontSize ?? r.min_font_size
+  if (minRaw === undefined || minRaw === null) return { mode: 'shrink' }
+  if (typeof minRaw !== 'number' || !Number.isFinite(minRaw)) return null
+  return {
+    mode: 'shrink',
+    minFontSize: Math.min(FONT_SIZE_RANGE[1], Math.max(MIN_FIT_FONT_SIZE, Math.round(minRaw))),
+  }
+}
+
+/**
+ * Finds the largest integer-stepped `fontSize` (from `userFontSize` down to `minFontSize`, both clamped to
+ * `FONT_SIZE_RANGE`) at which the wrapped lines of `t` fit inside `fitBoxHeight`, using binary search, then restores
+ * the fixed box height on `t`. Ignores `fit` when `fontSize` is non-finite or outside `FONT_SIZE_RANGE`.
+ */
+export function refitTextbox(t: IText): void {
+  const d = asDory(t)
+  const fit = readTextFit(d.fit)
+  if (!fit) return
+  const rawTarget = validFitFontSize(d.userFontSize) ?? validFitFontSize(t.fontSize)
+  if (rawTarget === null) return
+  const target = Math.min(FONT_SIZE_RANGE[1], Math.max(MIN_FIT_FONT_SIZE, rawTarget))
+  const boxH = isFiniteNumber(d.fitBoxHeight) && d.fitBoxHeight > 0 ? d.fitBoxHeight : t.height
+  const boxW = t.width
+  if (!isFiniteNumber(boxH) || boxH <= 0 || !isFiniteNumber(boxW) || boxW <= 0) return
+  d.userFontSize = target
+  d.fitBoxHeight = boxH
+  if (d.curveAmount) {
+    t.set('fontSize', target)
+    d.fitFontSize = Number(target.toFixed(3))
+    return
+  }
+  const minRequested = fit.minFontSize ?? defaultMinFontSize(target)
+  const floor = Math.min(target, Math.max(MIN_FIT_FONT_SIZE, Math.min(FONT_SIZE_RANGE[1], minRequested)))
+  const fitsAt = (size: number): boolean => {
+    t.fontSize = size
+    t.width = boxW
+    t.initDimensions()
+    return t.height <= boxH + 1e-3
+  }
+  let current = target
+  if (!fitsAt(target) && target > floor) {
+    let low = 1
+    let high = Math.ceil(target - floor)
+    while (low < high) {
+      const mid = (low + high) >> 1
+      if (fitsAt(Math.max(floor, target - mid))) high = mid
+      else low = mid + 1
+    }
+    current = Math.max(floor, target - low)
+    fitsAt(current)
+  }
+  d.fitFontSize = Number(current.toFixed(3))
+  t.width = boxW
+  t.height = boxH
+  t.setCoords()
+  t.set('dirty', true)
+}
+
+/** Enables, updates or clears (`null`) shrink-to-fit on `t`. */
+export function applyTextFit(t: IText, fit: DocTextFit | null): void {
+  const d = asDory(t)
+  const parsed = fit ? readTextFit(fit) : null
+  if (!parsed) {
+    if (isFiniteNumber(d.userFontSize) && d.userFontSize > 0) t.set('fontSize', d.userFontSize)
+    delete d.fit
+    delete d.fitFontSize
+    delete d.userFontSize
+    delete d.fitBoxHeight
+    t.initDimensions()
+    t.setCoords()
+    t.set('dirty', true)
+    return
+  }
+  if (!d.fit) {
+    d.userFontSize = t.fontSize
+    d.fitBoxHeight = t.height
+  }
+  const userSize = d.userFontSize ?? t.fontSize
+  if (parsed.minFontSize !== undefined) {
+    parsed.minFontSize = Math.min(Math.round(userSize), Math.max(MIN_FIT_FONT_SIZE, Math.round(parsed.minFontSize)))
+  }
+  d.fit = parsed
+  refitTextbox(t)
+}
 
 export interface TextPatch {
   fontFamily?: string
@@ -80,6 +180,14 @@ function clearStyleKeys(t: IText, keys: readonly string[]): void {
 /** Applies `patch` to `t`. Returns true when the text content changed (case / list). */
 export function applyTextPatch(t: IText, patch: TextPatch): boolean {
   let textChanged = false
+  const d = asDory(t)
+  const range = hasRange(t)
+  if (!range && patch.fontSize !== undefined && d.fit) {
+    d.userFontSize = patch.fontSize
+    if (d.fit.minFontSize !== undefined && d.fit.minFontSize > patch.fontSize) {
+      d.fit = { ...d.fit, minFontSize: Math.max(MIN_FIT_FONT_SIZE, Math.round(patch.fontSize)) }
+    }
+  }
   const charPatch: Partial<Record<CharKey, unknown>> = {}
   for (const key of CHAR_LEVEL) {
     if (key === 'fill') {
@@ -90,7 +198,7 @@ export function applyTextPatch(t: IText, patch: TextPatch): boolean {
   }
 
   if (Object.keys(charPatch).length > 0) {
-    if (hasRange(t)) {
+    if (range) {
       t.setSelectionStyles(charPatch as TextStyleDeclaration, t.selectionStart, t.selectionEnd)
     } else {
       clearStyleKeys(t, Object.keys(charPatch))
@@ -99,7 +207,6 @@ export function applyTextPatch(t: IText, patch: TextPatch): boolean {
   }
 
   if (patch.direction !== undefined) {
-    const d = asDory(t)
     if (patch.direction === 'auto') delete d.textDir
     else d.textDir = patch.direction
     syncDirection(t)
@@ -108,7 +215,6 @@ export function applyTextPatch(t: IText, patch: TextPatch): boolean {
   if (patch.lineHeight !== undefined) t.set('lineHeight', patch.lineHeight)
   if (patch.charSpacing !== undefined) t.set('charSpacing', patch.charSpacing)
 
-  const d = asDory(t)
   if (patch.textCase !== undefined) {
     const next = toggleCase({ text: t.text, textCase: d.textCase ?? 'none', caseSource: d.caseSource }, patch.textCase)
     if (next.text !== t.text) {
@@ -129,13 +235,17 @@ export function applyTextPatch(t: IText, patch: TextPatch): boolean {
   }
 
   if (patch.curveAmount !== undefined) applyCurve(t, patch.curveAmount)
-  else if (asDory(t).curveAmount && (patch.fontSize !== undefined || patch.fontFamily !== undefined || patch.fontWeight !== undefined || patch.charSpacing !== undefined || textChanged)) {
+  else if (d.curveAmount && (patch.fontSize !== undefined || patch.fontFamily !== undefined || patch.fontWeight !== undefined || patch.charSpacing !== undefined || textChanged)) {
     refitCurve(t)
   }
 
-  t.initDimensions()
-  t.setCoords()
-  t.set('dirty', true)
+  if (d.fit && !d.curveAmount) {
+    refitTextbox(t)
+  } else {
+    t.initDimensions()
+    t.setCoords()
+    t.set('dirty', true)
+  }
   return textChanged
 }
 
@@ -149,9 +259,12 @@ export function syncDirection(t: IText): boolean {
   const to = asDory(t).textDir ?? detectDirection(t.text) ?? from
   if (to === from) return false
   t.set({ direction: to, textAlign: alignmentForDirection(t.textAlign, from, to) })
-  t.initDimensions()
-  t.setCoords()
-  t.set('dirty', true)
+  if (asDory(t).fit && !asDory(t).curveAmount) refitTextbox(t)
+  else {
+    t.initDimensions()
+    t.setCoords()
+    t.set('dirty', true)
+  }
   return true
 }
 
@@ -166,9 +279,10 @@ export function reapplyCase(t: IText): void {
 
 /** The effective character style at the caret/selection (for toolbar state). */
 export function currentTextStyle(t: IText): Record<string, unknown> {
+  const d = asDory(t)
   const base: Record<string, unknown> = {
     fontFamily: t.fontFamily,
-    fontSize: t.fontSize,
+    fontSize: d.fit ? (d.userFontSize ?? t.fontSize) : t.fontSize,
     fontWeight: t.fontWeight,
     fontStyle: t.fontStyle,
     underline: t.underline,

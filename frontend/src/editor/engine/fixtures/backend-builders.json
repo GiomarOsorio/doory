@@ -1977,10 +1977,93 @@
     }
   },
   {
+    "name": "shrink-to-fit short text",
+    "kind": "text",
+    "object": {
+      "id": "case-37",
+      "type": "textbox",
+      "text": "Short headline",
+      "originX": "center",
+      "originY": "center",
+      "left": 400,
+      "top": 300,
+      "width": 400,
+      "height": 44.07,
+      "fontFamily": "\"Plus Jakarta Sans\", sans-serif",
+      "fontSize": 39,
+      "fontWeight": 700,
+      "fill": "#1a1a2e",
+      "textAlign": "center",
+      "lineHeight": 1.16,
+      "splitByGrapheme": false,
+      "strokeUniform": true,
+      "fit": {
+        "mode": "shrink"
+      },
+      "fitFontSize": 39
+    }
+  },
+  {
+    "name": "shrink-to-fit long text",
+    "kind": "text",
+    "object": {
+      "id": "case-38",
+      "type": "textbox",
+      "text": "Summer Music Festival Live",
+      "originX": "center",
+      "originY": "center",
+      "left": 400,
+      "top": 300,
+      "width": 360,
+      "height": 67.8,
+      "fontFamily": "\"Plus Jakarta Sans\", sans-serif",
+      "fontSize": 60,
+      "fontWeight": 700,
+      "fill": "#1a1a2e",
+      "textAlign": "center",
+      "lineHeight": 1.16,
+      "splitByGrapheme": false,
+      "strokeUniform": true,
+      "fit": {
+        "mode": "shrink",
+        "minFontSize": 24
+      },
+      "fitFontSize": 27
+    }
+  },
+  {
+    "name": "shrink-to-fit overflowing text",
+    "kind": "text",
+    "object": {
+      "id": "case-39",
+      "type": "textbox",
+      "text": "Registration for the annual neighbourhood summer block party is open all week",
+      "originX": "center",
+      "originY": "center",
+      "left": 400,
+      "top": 300,
+      "width": 240,
+      "height": 44.07,
+      "fontFamily": "\"Plus Jakarta Sans\", sans-serif",
+      "fontSize": 39,
+      "fontWeight": 700,
+      "fill": "#1a1a2e",
+      "textAlign": "center",
+      "lineHeight": 1.16,
+      "splitByGrapheme": false,
+      "strokeUniform": true,
+      "fit": {
+        "mode": "shrink",
+        "minFontSize": 24
+      },
+      "fitFontSize": 24
+    }
+  },
+  {
     "name": "shape with a shadow",
     "kind": "shape",
     "object": {
-      "id": "case-37",
+      "id": "case-40",
       "type": "rect",
       "originX": "center",
       "originY": "center",

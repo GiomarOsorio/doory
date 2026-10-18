@@ -7,6 +7,7 @@ import { newId } from '@/lib/document'
 import type {
   ArrowHead,
   DocField,
+  DocTextFit,
   ImageFilterSpec,
   ListStyle,
   MaskShape,
@@ -42,6 +43,11 @@ export interface DoryProps {
   slot?: SlotSpec
   link?: { url: string }
   field?: DocField
+  /** Shrink-to-fit rule on a text box, plus the derived size and the user's preferred size/box height. */
+  fit?: DocTextFit
+  fitFontSize?: number
+  userFontSize?: number
+  fitBoxHeight?: number
   qr?: QrSpec
   /** The logical `src` stored in the document (may be `idb://…`); the live element uses a resolved URL. */
   docSrc?: string

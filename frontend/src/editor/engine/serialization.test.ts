@@ -134,6 +134,39 @@ describe('serialization', () => {
     c.dispose()
   })
 
+  it('shrink-to-fit text steps live fontSize down, keeps fixed height and serialises user fontSize + fitFontSize', async () => {
+    const doc: DocObject = {
+      id: 'fit1',
+      type: 'textbox',
+      text: 'Summer Music Festival Live',
+      left: 400,
+      top: 300,
+      width: 360,
+      height: 67.8,
+      fontFamily: '"Plus Jakarta Sans", sans-serif',
+      fontSize: 60,
+      fontWeight: 700,
+      lineHeight: 1.16,
+      fit: { mode: 'shrink', minFontSize: 24 },
+    }
+    const [live] = await deserializeObjects([doc], ctx)
+    const tb = live as IText
+    expect(tb.fontSize).toBeLessThan(60)
+    expect(tb.fontSize).toBeGreaterThanOrEqual(24)
+    expect(tb.height).toBeCloseTo(67.8, 3)
+    expect(tb.width).toBeCloseTo(360, 3)
+    const c = newCanvas()
+    c.add(tb)
+    const [out] = serializeObjects(c)
+    expect(out.fontSize).toBe(60)
+    expect(out.height).toBeCloseTo(67.8, 3)
+    expect(out.fit).toEqual({ mode: 'shrink', minFontSize: 24 })
+    expect(out.fitFontSize).toBe(tb.fontSize)
+    const [outOfRange] = await deserializeObjects([{ ...doc, id: 'fit-huge', fontSize: 200_000 }], ctx)
+    expect(asDory(outOfRange).fit).toBeUndefined()
+    c.dispose()
+  })
+
   it('image: stores the logical src, filters as specs and drops derived clipPath', async () => {
     const dataUrl = 'data:image/svg+xml;utf8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><rect width="10" height="10"/></svg>')
     const doc: DocObject = {

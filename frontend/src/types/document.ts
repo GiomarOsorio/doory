@@ -159,6 +159,16 @@ export interface DocField {
   label?: string
 }
 
+/**
+ * Shrink-to-fit setting on a text box (`fit` on a text object): the box height stays fixed while the font size steps
+ * down from the user's `fontSize` until the wrapped lines fit or reach `minFontSize` (default `round(fontSize * 0.5)`).
+ * The derived size is stored in `fitFontSize`.
+ */
+export interface DocTextFit {
+  mode: 'shrink'
+  minFontSize?: number
+}
+
 /* ------------------------------------------------------------------------------------------------
  * Animation. Optional everywhere: a document without any of it means
  * exactly what it always did. Preset ids are open strings; an id the editor does not know plays as "none".
