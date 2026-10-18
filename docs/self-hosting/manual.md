@@ -78,6 +78,7 @@ sudo nginx -t && sudo systemctl reload nginx
 ```
 
 To use the MCP server as well, see [mcp.md](mcp.md).
+For the reference AI server (self-hosted background removal), see [ai-providers.md](ai-providers.md).
 
 ## 6. HTTPS
 
@@ -86,7 +87,7 @@ sudo apt install certbot python3-certbot-nginx && sudo certbot --nginx
 ```
 
 Then remove the two `SECURE_` lines from `.env` and run `sudo systemctl restart doory-api doory-realtime`
-(and `doory-mcp` if you use it).
+(and `doory-mcp` or `doory-ai-server` if you use them).
 
 ## Optional: server-side export
 

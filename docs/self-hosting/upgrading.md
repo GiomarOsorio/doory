@@ -23,7 +23,7 @@ manage migrate
 manage collectstatic --noinput
 cd ../frontend
 sudo -u doory npm ci && sudo -u doory npm run build
-sudo systemctl restart doory-api doory-realtime    # and doory-mcp if you use it
+sudo systemctl restart doory-api doory-realtime    # and doory-mcp, doory-ai-server if you use them
 ```
 
 (`manage` is the helper from [manual.md](manual.md#3-the-api).)

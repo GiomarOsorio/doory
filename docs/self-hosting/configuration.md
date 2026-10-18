@@ -199,6 +199,19 @@ admin under "AI providers".
 | `AI_MAX_IMAGE_BYTES` | `26214400` (25 MB) | Largest image sent to or read back from a provider |
 | `AI_CACHE_SECONDS` | `604800` (7 days) | Identical requests reuse the result this long |
 
+### The reference AI server (Docker)
+
+Read by `docker-compose.yml` for the `ai-server` service (profile `ai`). See [ai-providers.md](ai-providers.md).
+
+| Setting | Default | What it does |
+|---------|---------|--------------|
+| `AI_SERVER_API_KEY` | | Key the server asks for. Always set it, and use the same value in `AI_PROVIDER_<n>_AUTH_VALUE` |
+| `AI_SERVER_MODELS` | `isnet-general-use,u2netp` | Models built into the image and offered. Rebuild the image after changing it |
+| `AI_SERVER_DEFAULT_MODEL` | `isnet-general-use` | Model used when a request names none |
+| `AI_SERVER_WORKERS` | `1` | Images processed at once; more requests are answered "busy" (429) |
+| `AI_SERVER_THREADS` | `4` | CPU threads per image |
+| `AI_SERVER_MEM_LIMIT` | `2g` | Memory limit of the container |
+
 ## Realtime co-editing
 
 See [realtime.md](realtime.md). The defaults suit most sites.

@@ -193,6 +193,32 @@ services:
       start_period: 60s
       retries: 5
 
+  # Optional: the reference AI server for background removal (models with open licences, CPU only). Opt-in:
+  # add `ai` to COMPOSE_PROFILES. Reached by the api only, on the internal network (not published on the host).
+  ai-server:
+    profiles: [ai]
+    build:
+      context: ./deploy/ai-server
+      args:
+        MODELS: ${AI_SERVER_MODELS:-isnet-general-use,u2netp}  # baked into the image at build time
+    restart: unless-stopped
+    init: true
+    # Each loaded model stays in memory; the limit stops this service (and `restart` brings it back) instead of
+    # starving the host.
+    mem_limit: ${AI_SERVER_MEM_LIMIT:-2g}
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      AVAILABLE_MODELS: ${AI_SERVER_MODELS:-isnet-general-use,u2netp}
+      DEFAULT_MODEL: ${AI_SERVER_DEFAULT_MODEL:-isnet-general-use}
+      API_KEY: ${AI_SERVER_API_KEY:-}
+      WORKERS: ${AI_SERVER_WORKERS:-1}
+      OMP_NUM_THREADS: ${AI_SERVER_THREADS:-4}
+
   # Optional: shares live rooms between several realtime workers or replicas. Nothing is stored in it.
   redis:
     image: redis:7.2-alpine

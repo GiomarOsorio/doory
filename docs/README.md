@@ -15,6 +15,7 @@ These docs are for people who install, run or develop Doory. The editor's featur
 | Run live co-editing on several workers        | [self-hosting/realtime.md](self-hosting/realtime.md)         |
 | Let AI assistants edit designs (MCP)          | [self-hosting/mcp.md](self-hosting/mcp.md)                   |
 | Export images and PDFs on the server          | [self-hosting/image-export.md](self-hosting/image-export.md) |
+| Remove backgrounds on a server                | [self-hosting/ai-providers.md](self-hosting/ai-providers.md) |
 | Upgrade to a newer version                    | [self-hosting/upgrading.md](self-hosting/upgrading.md)       |
 | Back up and restore                           | [self-hosting/backup.md](self-hosting/backup.md)             |
 | Fix a problem                                 | [self-hosting/troubleshooting.md](self-hosting/troubleshooting.md) |
