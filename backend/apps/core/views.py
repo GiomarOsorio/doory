@@ -9,6 +9,8 @@ from rest_framework.decorators import api_view, authentication_classes, permissi
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
+from apps.ai.catalog import ai_config, has_server_options
+from apps.ai.serializers import TaskOptionsSerializer
 from apps.assets.providers import configured_providers as configured_stock_providers
 from apps.collab.availability import max_participants, realtime_enabled
 
@@ -41,6 +43,7 @@ _CONFIG_SCHEMA = inline_serializer(
                 "background_removal": serializers.BooleanField(),
                 "realtime": serializers.BooleanField(),
                 "mcp": serializers.BooleanField(),
+                "ai_providers": serializers.BooleanField(),
             },
         ),
         "exports": inline_serializer(
@@ -86,6 +89,16 @@ _CONFIG_SCHEMA = inline_serializer(
                 ),
             },
         ),
+        "ai": inline_serializer(
+            "AppConfigAI",
+            {
+                "user_providers": serializers.ChoiceField(choices=["off", "staff", "everyone"]),
+                "background_removal": TaskOptionsSerializer(
+                    help_text="The options every signed-in user has; "
+                    "GET /api/v1/ai/models/ lists those of the signed-in user."
+                ),
+            },
+        ),
     },
 )
 
@@ -120,6 +133,7 @@ def config(request):
                 "background_removal": background_removal is not None,
                 "realtime": realtime_enabled(),
                 "mcp": settings.MCP_ENABLED,
+                "ai_providers": has_server_options(),
             },
             "exports": {
                 "filename_style": settings.EXPORT_FILENAME_STYLE,
@@ -132,6 +146,7 @@ def config(request):
                 "realtime_max_participants": max_participants(),
             },
             "assets": {"background_removal_model": background_removal},
+            "ai": ai_config(),
         }
     )
 
