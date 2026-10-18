@@ -231,6 +231,8 @@ See [mcp.md](mcp.md).
 | `MCP_ENABLED` | `false` | Turn on the MCP server at `/mcp`. Docker also needs `COMPOSE_PROFILES=mcp` |
 | `MCP_CALLS_PER_MINUTE` | `120` | Tool calls per user per minute. `0` means no limit |
 | `MCP_MAX_REQUEST_BYTES` | `4194304` | Largest request |
-| `MCP_URL_UPLOADS` | `true` | Let assistants copy images from public https URLs |
-| `MCP_EXPORT_INLINE_MAX_BYTES` | `1048576` | `export_design` returns larger images as a download link instead |
+| `URL_IMAGE_UPLOADS` | `true` | Let the server copy images from public https URLs: `upload_image_from_url` and image links in template fills and bulk create (REST and MCP) |
+| `MCP_URL_UPLOADS` | `true` | Old name of `URL_IMAGE_UPLOADS`, still read when that one isn't set |
+| `BULK_FILL_MAX_ROWS` | `100` | Rows per bulk create (REST and MCP). Lower it if long runs hit the worker timeout |
+| `MCP_EXPORT_INLINE_MAX_BYTES` | `1048576` | `export_design` and bulk create return larger images as a download link instead |
 | `MCP_EXPORT_URL_TTL_SECONDS` | `600` | How long those download links work |

@@ -48,7 +48,7 @@ reports are very welcome.
 | **Elements** | Shapes, lines and arrows, about 27,500 icons, emoji and illustrations, stickers, QR codes |
 | **Photos** | Upload, crop, masks and filters, background removal that runs in the browser, stock photo search with an Unsplash or Pexels key |
 | **Layout** | Layers, groups, alignment guides, snapping, rulers, several pages per design (each its own size), resize to another format |
-| **Motion and sound** | 27 enter and exit animations, 12 emphasis animations, 16 page transitions, 24 music loops and 88 sound effects (CC0), voiceover recording |
+| **Motion and sound** | 27 enter and exit animations, 12 emphasis animations, 16 page transitions, 24 music loops and 88 sound effects (CC0), Freesound search with a key (CC0 by default), voiceover recording |
 | **Present** | Present mode with speaker notes, timing, auto-advance and a second presenter window |
 | **Together** | Share links that view, comment or edit (with an optional password), pinned comments, version history, real-time co-editing |
 | **Brand** | Brand kits with your colours, fonts and logos |
@@ -142,7 +142,14 @@ Doory is released under the [Attribution Assurance License](LICENSE). You may us
 including commercially, but **you must credit the author**: keep the licence and [NOTICE](NOTICE) with it, and
 display this credit prominently in the running app:
 
-> Doory by Siam, creator and maintainer of Doory — https://github.com/shaongitbd/doory
+> Doory by Siam, creator and maintainer of Doory, https://github.com/shaongitbd/doory
+
+The copyright is held by Siam and the contributors listed in [AUTHORS.md](AUTHORS.md).
+
+The licence text is GPG-signed by Siam, as the licence asks. To check it:
+`gpg --import licenses/siam-gpg.asc && gpg --verify LICENSE`. The key's fingerprint is
+`3255 3D6C 37CF 387A 36FF D6BB FEB1 0669 1898 A504`, and the same key is published at
+https://github.com/shaongitbd.gpg.
 
 Third-party software, fonts and content keep their own licences; see [THIRD_PARTY.md](THIRD_PARTY.md).
 
