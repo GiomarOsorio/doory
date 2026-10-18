@@ -21,6 +21,9 @@ import type {
   ShareLinkInput,
   ShareRole,
   StockPage,
+  AudioStockInfo,
+  SoundCredit,
+  StockSoundPage,
   StockPhoto,
   StockProviders,
   TemplateCategory,
@@ -32,6 +35,14 @@ import type {
   VersionSummary,
 } from './api'
 import type { DoryDocument } from './document'
+
+export interface AudioStockQuery {
+  type?: string
+  subcategory?: string
+  length?: string
+  sort?: string
+  page?: number
+}
 
 export type EditorMode = 'guest' | 'account' | 'shared-view' | 'shared-comment' | 'shared-edit'
 
@@ -127,6 +138,16 @@ export interface EditorServices {
     /** `page` is a page number, or the cursor an `all` search returned; `provider` is a name or `all`. */
     search(q: string, page: number | string, provider?: string): Promise<StockPage>
     importPhoto(photo: StockPhoto): Promise<AssetRef>
+  } | null
+  /**
+   * Freesound sounds for the Audio tool, through the server. Optional: absent or null (guests, adapters without it)
+   * hides the Freesound tab, and so does `info()` answering `configured: false`.
+   */
+  audioStock?: {
+    info(): Promise<AudioStockInfo>
+    search(q: string, options: AudioStockQuery): Promise<StockSoundPage>
+    previewUrl(id: string): string
+    importSound(id: string): Promise<{ ref: AssetRef; credit: SoundCredit | null; durationMs: number | null }>
   } | null
   versions: {
     list(): Promise<VersionSummary[]>

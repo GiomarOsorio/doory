@@ -1,6 +1,12 @@
 from django.urls import path
 from rest_framework.routers import SimpleRouter
 
+from .audio_stock import (
+    AudioStockImportView,
+    AudioStockInfoView,
+    AudioStockPreviewView,
+    AudioStockSearchView,
+)
 from .stock import StockImportView, StockProvidersView, StockSearchView
 from .views import AssetViewSet
 
@@ -12,4 +18,8 @@ urlpatterns = [
     path("stock/photos/", StockSearchView.as_view(), name="stock-photos"),
     path("stock/providers/", StockProvidersView.as_view(), name="stock-providers"),
     path("stock/photos/import/", StockImportView.as_view(), name="stock-photo-import"),
+    path("stock/audio/", AudioStockSearchView.as_view(), name="stock-audio"),
+    path("stock/audio/info/", AudioStockInfoView.as_view(), name="stock-audio-info"),
+    path("stock/audio/import/", AudioStockImportView.as_view(), name="stock-audio-import"),
+    path("stock/audio/<str:sound_id>/preview/", AudioStockPreviewView.as_view(), name="stock-audio-preview"),
 ]

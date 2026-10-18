@@ -1,4 +1,4 @@
-"""Pictures: the caller's uploads and stock photos (Unsplash / Pexels, when the server has a key)."""
+"""Pictures and sounds: the caller's uploads, stock photos and Freesound sounds (when there is a key)."""
 
 from __future__ import annotations
 
@@ -10,12 +10,13 @@ from mcp.server.mcpserver.exceptions import ToolError
 from pydantic import Field
 
 from apps.apitokens.scopes import ASSETS_WRITE, DESIGNS_READ
-from apps.assets import remote, stock
+from apps.assets import audio_stock, credits, remote, stock
 from apps.assets.audio import looks_like_audio
 from apps.assets.models import Asset
 from apps.assets.services import create_asset
 from apps.assets.throttling import StockRateThrottle, UploadRateThrottle
 from apps.assets.uploads import clean_name
+from apps.designs.edits import read_current
 
 from ..context import current
 from ..registry import throttle, tool
@@ -102,3 +103,45 @@ def upload_image_from_url(
     """Copy an image from a public https URL into your uploads; it is checked like any upload. Only use
     images the user has the right to use."""
     return _asset(import_url_asset(current().user, url, name))
+
+
+@tool(scope=DESIGNS_READ, title="Search sounds", read_only=True)
+def search_audio(
+    query: Annotated[str, Field(max_length=100, description="Words to search; may be empty.")] = "",
+    type: Literal["all", "music", "effects", "ambience"] = "all",
+    length: Literal["any", "short", "medium", "long", "extended"] = "any",
+    sort: Literal["relevance", "rating", "downloads", "newest", "shortest"] = "relevance",
+    page: Annotated[int, Field(ge=1, le=audio_stock.MAX_PAGE)] = 1,
+    per_page: Annotated[int, Field(ge=1, le=30)] = 12,
+) -> dict[str, Any]:
+    """Search free sounds on Freesound (music, sound effects, ambience), when the server has a key. Only
+    the licences the server allows are returned (CC0 by default). A result with `credit_required: true`
+    (CC BY) must be credited wherever the design is published; get_design_credits gives the text. Use
+    import_audio to add one to your uploads."""
+    throttle(StockRateThrottle())
+    return audio_stock.search(query, type, "", length, sort, page, per_page)
+
+
+@tool(scope=ASSETS_WRITE, title="Import a sound", idempotent=True)
+def import_audio(
+    sound_id: Annotated[str, Field(min_length=1, max_length=12, description="`id` from search_audio.")],
+) -> dict[str, Any]:
+    """Copy a Freesound sound into your audio uploads (once; importing it again returns the same asset). The
+    answer includes its `credit`."""
+    throttle(UploadRateThrottle())
+    asset, _ = audio_stock.import_sound(current().user, sound_id)
+    return {**_asset(asset), "credit": audio_stock.credit_of(asset)}
+
+
+@tool(scope=DESIGNS_READ, title="Get a design's credits", read_only=True)
+def get_design_credits(
+    design_id: Annotated[str, Field(description="A design id from list_designs.")],
+) -> dict[str, Any]:
+    """The credits a design owes for the sounds it uses. `credits_text` lists the ones that must be
+    credited (CC BY), one line each, ready to paste into a post's caption or a video description; it is
+    empty when nothing needs credit."""
+    from .designs import _design
+
+    design = _design(design_id)
+    document, _ = read_current(design)
+    return credits.design_credits(document, design.owner)
