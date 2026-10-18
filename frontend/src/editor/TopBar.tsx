@@ -240,6 +240,7 @@ export function TopBar({ start, end, onTitle, onPresent }: TopBarProps) {
     : [
         cmd('file.rename'),
         cmd('file.resize'),
+        cmd('file.bulkCreate'),
         cmd('file.history'),
         cmd('file.save'),
         { id: 'f1', separator: true },

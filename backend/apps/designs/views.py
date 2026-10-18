@@ -1,8 +1,10 @@
 from uuid import UUID
 
+from django.conf import settings
 from django.db.models import F
 from django.db.models.functions import Lower
 from django.shortcuts import get_object_or_404
+from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
 from rest_framework import generics, serializers, status, viewsets
 from rest_framework.decorators import action
@@ -13,6 +15,7 @@ from rest_framework.views import APIView
 from apps.assets.ordering import order_queryset
 from apps.assets.uploads import reject_oversize_request
 
+from . import fill as filling
 from . import services
 from .doc.fields import list_fields
 from .edits import read_current
@@ -21,6 +24,7 @@ from .models import Design, DesignVersion
 from .parsers import DesignJSONParser
 from .serializers import (
     DEFAULT_VERSION_LABEL,
+    BulkFillSerializer,
     BulkSerializer,
     DesignCreateSerializer,
     DesignQuerySerializer,
@@ -28,19 +32,27 @@ from .serializers import (
     DesignSummarySerializer,
     DesignUpdateSerializer,
     FieldSerializer,
+    FillSerializer,
     VersionCreateSerializer,
     VersionDetailSerializer,
     VersionSummarySerializer,
 )
 from .services import THUMBNAIL_MAX_BYTES
+from .throttling import BulkFillImageRateThrottle, BulkFillRateThrottle
 
 UUID_REGEX = "[0-9a-fA-F-]{36}"
-FULL_DOCUMENT_ACTIONS = {"retrieve", "restore", "duplicate", "fields"}
+FULL_DOCUMENT_ACTIONS = {"retrieve", "restore", "duplicate", "fields", "fill", "bulk_fill"}
 ORDERING = {
     "updated_at": F("updated_at"),
     "created_at": F("created_at"),
     "title": Lower("title"),
 }
+
+
+def _resolver(user, url_throttle=None):
+    from apps.mcp.resolver import DjangoResolver  # the same picture lookups as the MCP tools
+
+    return DjangoResolver(user, allow_urls=settings.URL_IMAGE_UPLOADS, url_throttle=url_throttle)
 
 
 def conflict_response(conflict: RevisionConflict) -> Response:
@@ -170,6 +182,58 @@ class DesignViewSet(viewsets.GenericViewSet):
     def fields(self, request, pk=None):
         document, _live = read_current(self.get_object())
         return Response(list_fields(document))
+
+    @extend_schema(
+        request=FillSerializer,
+        responses={200: OpenApiTypes.OBJECT, 201: OpenApiTypes.OBJECT},
+        description="Fill the template fields by key ({key: value}); by default into a new copy (201). "
+        "All or nothing: a bad value is a 400 naming its key. Image values may be public https URLs when "
+        "URL_IMAGE_UPLOADS is on (the server copies them into your uploads).",
+    )
+    @action(detail=True, methods=["post"])
+    def fill(self, request, pk=None):
+        body = FillSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        data = body.validated_data
+        result = filling.fill_design(
+            self.get_object(),
+            request.user,
+            data["values"],
+            resolver=_resolver(request.user),
+            as_copy=data["as_copy"],
+            name=data.get("name"),
+            label="Before filling fields",
+        )
+        return Response(
+            result.summary(), status=status.HTTP_201_CREATED if data["as_copy"] else status.HTTP_200_OK
+        )
+
+    @extend_schema(
+        request=BulkFillSerializer,
+        responses=OpenApiTypes.OBJECT,
+        description="One new design per row, filled like `fill`; each row reports its design or its error. "
+        "Each row counts against the `bulk_fill` rate, each new image URL against `bulk_fill_images` and "
+        "each exported image against `export`; a row over a limit reports its error. Image URLs are "
+        "fetched only when URL_IMAGE_UPLOADS is on. Many URL images or exports make a long request: keep "
+        "it under the worker timeout with fewer rows.",
+    )
+    @action(detail=True, methods=["post"], url_path="bulk-fill")
+    def bulk_fill(self, request, pk=None):
+        body = BulkFillSerializer(data=request.data, context={"request": request})
+        body.is_valid(raise_exception=True)
+        data = body.validated_data
+        rows = filling.bulk_fill(
+            self.get_object(),
+            request.user,
+            data["rows"],
+            row_numbers=data.get("row_numbers"),
+            resolver=_resolver(request.user, BulkFillImageRateThrottle),
+            name_pattern=data.get("name_pattern"),
+            folder=data.get("folder"),
+            before_row=lambda: filling.charge(BulkFillRateThrottle(), request.user),
+            after_row=filling.image_exporter(data.get("export"), request.user),
+        )
+        return Response({"created": sum(row["ok"] for row in rows), "rows": rows})
 
     @extend_schema(
         request={

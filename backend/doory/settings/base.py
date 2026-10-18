@@ -127,6 +127,7 @@ USER_STORAGE_QUOTA_BYTES = env.int("USER_STORAGE_QUOTA_BYTES", default=2 * 1024*
 MAX_DESIGNS_PER_USER = env.int("MAX_DESIGNS_PER_USER", default=5000)
 MAX_API_TOKENS_PER_USER = env.int("MAX_API_TOKENS_PER_USER", default=20)
 MAX_DESIGN_PAGES = 100
+BULK_FILL_MAX_ROWS = env.int("BULK_FILL_MAX_ROWS", default=100)  # rows per bulk fill (MCP and REST)
 MAX_AVATAR_BYTES = 5 * 1024 * 1024
 
 # ---- Security headers (Permissions-Policy comes from apps.core.middleware) ----
@@ -222,6 +223,8 @@ REST_FRAMEWORK = {
         "upload": "60/min",
         "stock": "60/min",
         "stock_preview": "300/min",  # listening to Freesound previews; searches keep the `stock` budget
+        "bulk_fill": "120/min",  # rows created via bulk-fill (REST)
+        "bulk_fill_images": "300/min",  # image URLs fetched by bulk-fill (REST and MCP)
         "export": "30/min",  # server-side image renders (REST and MCP)
         "ai": "30/min",  # calls to AI image providers (REST and MCP)
     },
@@ -403,7 +406,9 @@ MCP_ENABLED = env.bool("MCP_ENABLED", default=False)  # opt-in; Docker also need
 MCP_PATH = "/mcp"
 MCP_CALLS_PER_MINUTE = env.int("MCP_CALLS_PER_MINUTE", default=120)  # per user; 0 = unlimited
 MCP_MAX_REQUEST_BYTES = env.int("MCP_MAX_REQUEST_BYTES", default=4 * 1024 * 1024)
-MCP_URL_UPLOADS = env.bool("MCP_URL_UPLOADS", default=True)  # upload_image_from_url (public https only)
+# Copy images from public https URLs: the upload_image_from_url tool, and image values of fill and bulk fill
+# (MCP and REST). MCP_URL_UPLOADS is the old name, still read.
+URL_IMAGE_UPLOADS = env.bool("URL_IMAGE_UPLOADS", default=env.bool("MCP_URL_UPLOADS", default=True))
 # export_design: larger images are sent as a download link instead of inline; links expire after the TTL.
 # Stored outside MEDIA_ROOT so `/media/` never serves them directly; `ImageDownloadView` is the only way in.
 MCP_EXPORT_INLINE_MAX_BYTES = env.int("MCP_EXPORT_INLINE_MAX_BYTES", default=1024 * 1024)

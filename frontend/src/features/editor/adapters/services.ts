@@ -1,4 +1,4 @@
-import { aiApi, assetsApi, audioStockApi, authApi, brandApi, commentsApi, designsApi, elementsApi, fontsApi, isApiError, shareApi, stockApi, templatesApi } from '@/lib/api'
+import { aiApi, assetsApi, audioStockApi, authApi, brandApi, commentsApi, designsApi, elementsApi, foldersApi, fontsApi, isApiError, shareApi, stockApi, templatesApi } from '@/lib/api'
 import { safeGetItem, safeSetItem } from '@/lib/storage'
 import type { AiConfig, AiTaskOptions, Asset, BrandKit, BrandKitInput, Page } from '@/types/api'
 import type { AiService, AssetRef, CommentViewer, EditorServices, UserFontsService } from '@/types/adapter'
@@ -174,6 +174,17 @@ export function createAccountServices(designId: string | null, beforeVersion: ()
             await beforeVersion()
             return (await designsApi.versions.restore(designId, versionId)).document
           },
+        }
+      : null,
+    bulkFill: designId
+      ? {
+          fields: async () => {
+            await beforeVersion()
+            return designsApi.fields(designId)
+          },
+          createFolder: (name) => foldersApi.create({ name }),
+          removeFolder: (id) => foldersApi.remove(id),
+          run: (input) => designsApi.bulkFill(designId, input),
         }
       : null,
   }

@@ -36,7 +36,7 @@ export interface AppConfig {
   google_client_id: string
   /** `background_removal` (and `ai_providers`, …) are absent on servers that predate them. */
   features: { stock_photos: boolean; server_pdf: boolean; google_login: boolean; email_verification: boolean; background_removal?: boolean; realtime?: boolean; mcp?: boolean; ai_providers?: boolean }
-  limits: { max_upload_bytes: number; max_pages: number; max_document_bytes: number; realtime_max_participants?: number }
+  limits: { max_upload_bytes: number; max_pages: number; max_document_bytes: number; realtime_max_participants?: number; bulk_fill_max_rows?: number }
   /** Files the browser downloads at run time; absent on servers that predate it. */
   assets?: { background_removal_model: BackgroundRemovalModel | null }
   /** The instance's default export file names; absent on servers that predate them (simple, no timestamp). */
@@ -597,4 +597,34 @@ export interface AiProviderTestResult {
   /** `data:` URL of the result (PNG, at most 256 px) when it worked. */
   preview: string
   error: { code: string; message: string } | null
+}
+
+/** A template field of a design (`GET /designs/{id}/fields/`). `key: null`: a photo placeholder without a tag. */
+export interface TemplateField {
+  key: string | null
+  type: 'text' | 'image' | 'color'
+  label: string | null
+  pages: number[]
+  object_ids: string[]
+  current: unknown
+  fit: { mode: 'shrink'; minFontSize?: number } | null
+  overflow: boolean
+}
+
+export type FieldValue = string | { asset_id?: string; element_id?: string; url?: string; focal?: [number, number] } | null
+
+export interface BulkFillInput {
+  rows: Record<string, FieldValue>[]
+  row_numbers?: number[]
+  name_pattern?: string
+  folder?: string | null
+}
+
+export type BulkFillRow =
+  | { row: number; ok: true; design_id: string; title: string; filled: string[]; skipped: string[]; overflow: string[] }
+  | { row: number; ok: false; error: string }
+
+export interface BulkFillResult {
+  created: number
+  rows: BulkFillRow[]
 }

@@ -72,6 +72,7 @@ export function registerBuiltinCommands(): void {
   registerCommand({ id: 'file.shortcuts', label: t.cmd.fileShortcuts, shortcut: '?', group: t.cmdGroup.file, icon: <Keyboard size={18} />, run: (e) => e.openDialog('shortcuts') })
   registerCommand({ id: 'file.share', label: t.cmd.fileShare, group: t.cmdGroup.file, icon: <Share2 size={18} />, enabled: ({ state }) => !state.readOnly, run: (e) => openAccountDialog(e, 'share', 'share', (x) => !!x.adapter.services.sharing, t.share.unavailable) })
   registerCommand({ id: 'file.history', label: t.cmd.fileHistory, group: t.cmdGroup.file, icon: <History size={18} />, enabled: ({ state }) => !state.readOnly, run: (e) => openAccountDialog(e, 'version-history', 'versions', (x) => !!x.adapter.services.versions, t.versions.unavailable) })
+  registerCommand({ id: 'file.bulkCreate', label: t.cmd.fileBulkCreate, group: t.cmdGroup.file, enabled: ({ state }) => !state.readOnly, run: (e) => openAccountDialog(e, 'save', 'bulk-create', (x) => !!x.adapter.services.bulkFill, t.bulk.unavailable) })
   registerCommand({ id: 'file.resize', label: t.cmd.fileResize, group: t.cmdGroup.file, run: (e) => e.openDialog('resize') })
   registerCommand({ id: 'file.reset', label: t.cmd.fileReset, group: t.cmdGroup.file, run: (e) => e.resetDesign(), enabled: ({ editor }) => editor.canResetDesign })
   registerCommand({ id: 'file.rename', label: t.cmd.fileRename, group: t.cmdGroup.file, run: (e) => e.openDialog('rename') })
