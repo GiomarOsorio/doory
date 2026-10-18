@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { isApiError } from '@/lib/api'
 import { safeGetItem, safeSetItem } from '@/lib/storage'
+import type { AssetRef } from '@/types/adapter'
 import type { StockPhoto, StockProviders, StockSkipped } from '@/types/api'
 import { I } from '../chrome/icons'
 import { useEditor } from '../context'
@@ -29,8 +30,9 @@ function stockFailure(error: unknown, label: string | null): string {
   return t.imageDrawer.stockFailed
 }
 
-/** Stock tab: search free photos, add one (the server imports it with its attribution). */
-export function StockTab({ close }: PanelProps) {
+/** Stock tab: search free photos, add one (the server imports it with its attribution). `onPick` uses the
+ *  imported photo another way (e.g. as the page background) instead of adding it to the page. */
+export function StockTab({ close, onPick }: PanelProps & { onPick?: (ref: AssetRef) => void }) {
   const editor = useEditor()
   const stock = editor.adapter.services.stock
   const [info, setInfo] = useState<StockProviders | null>(null)
@@ -115,8 +117,11 @@ export function StockTab({ close }: PanelProps) {
     setError(null)
     try {
       const ref = await stock.importPhoto(photo)
-      await editor.insert.imageFromAsset(ref)
-      close()
+      if (onPick) onPick(ref)
+      else {
+        await editor.insert.imageFromAsset(ref)
+        close()
+      }
     } catch (err) {
       setError(isApiError(err) && err.isRateLimited ? t.imageDrawer.stockBusy(label(photo.provider), err.retryAfter) : t.imageDrawer.importFailed)
     } finally {

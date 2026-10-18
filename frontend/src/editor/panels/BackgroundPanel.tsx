@@ -1,4 +1,4 @@
-import { Check, ImagePlus } from 'lucide-react'
+import { Check, ImagePlus, Search } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import type { PageBackground } from '@/types/document'
 import { useDocument, useEditor, useEditorState, useEditorStateShallow } from '../context'
@@ -9,11 +9,14 @@ import { Button } from '../ui/Button'
 import { ColorButton } from '../ui/ColorButton'
 import { Segmented } from '../ui/Segmented'
 import { GRADIENT_PRESETS, palettes } from '../ui/swatches'
+import { loadable } from '../ui/loadable'
 import { useResolvedSrc } from '../hooks/useResolvedSrc'
 import ed from '../chrome/ed.module.css'
 import { backgroundFill, fillToBackground } from './backgroundFill'
 import { PATTERN_IDS, type PatternId, patternUrl, tileSize } from './patterns'
 import styles from './Panel.module.css'
+
+const StockTab = loadable(() => import('../drawers/StockTab').then((m) => m.StockTab))
 
 function UploadSwatch({ src, active, onPick }: { src: string; active: boolean; onPick: () => void }) {
   const url = useResolvedSrc(src)
@@ -38,6 +41,8 @@ export function BackgroundPanel() {
   const set = (b: PageBackground, key?: string): void => editor.pages.setBackground(page.id, b, key)
   const [ink, setInk] = useState('#7a64e0')
   const [paper, setPaper] = useState('#ffffff')
+  const hasStock = editor.adapter.services.stock !== null
+  const [stockOpen, setStockOpen] = useState(false)
   const size = editor.pageSizeOf(page.id)
   const tile = tileSize(size.width, size.height)
   const setPattern = (id: PatternId, fg = ink, bgc = paper): void => set({ type: 'image', src: patternUrl(id, fg, bgc, tile), fit: 'tile' })
@@ -96,6 +101,14 @@ export function BackgroundPanel() {
         <Button icon={<ImagePlus size={18} />} onClick={() => void editor.insert.pickAndUpload()}>
           {t.panels.uploadImage}
         </Button>
+        {hasStock ? (
+          <Button variant="soft" icon={<Search size={18} />} aria-expanded={stockOpen} data-testid="bg-stock-toggle" onClick={() => setStockOpen((v) => !v)}>
+            {t.imageDrawer.stock}
+          </Button>
+        ) : null}
+        {hasStock && stockOpen ? (
+          <StockTab close={() => setStockOpen(false)} onPick={(ref) => set({ type: 'image', src: ref.url, fit: bg.type === 'image' ? bg.fit : 'cover' })} />
+        ) : null}
         {uploads.length > 0 ? (
           <div className={`${styles.grid} ${styles.grid2}`}>
             {uploads.map((u) => (
