@@ -468,8 +468,17 @@ def test_replace_image_through_edit_design_with_asset_element_and_url(
     doc["pages"][0]["objects"][2]["isPlaceholder"] = True
     Design.objects.filter(pk=design.pk).update(document=doc)
 
-    # Replace with element_id, then replace placeholder with url (uploading into caller's assets).
-    monkeypatch.setattr(remote, "fetch_image", lambda url, max_bytes: image_bytes())
+    # Replace with element_id, then replace placeholder with url (uploading into caller's assets before locking).
+    from apps.designs import edits
+
+    events: list[str] = []
+    real_apply_saved = edits._apply_saved
+    monkeypatch.setattr(remote, "fetch_image", lambda url, max_bytes: (events.append("fetch"), image_bytes())[1])
+    monkeypatch.setattr(
+        edits,
+        "_apply_saved",
+        lambda *args, **kwargs: (events.append("lock"), real_apply_saved(*args, **kwargs))[1],
+    )
     designs.edit_design(
         str(design.pk),
         [
@@ -482,6 +491,7 @@ def test_replace_image_through_edit_design_with_asset_element_and_url(
             },
         ],
     )
+    assert events == ["fetch", "lock"]
     objs = Design.objects.get(pk=design.pk).document["pages"][0]["objects"]
     assert objs[1]["src"] == element.svg.url and "assetId" not in objs[1]
     assert objs[2]["slot"]["mask"] == "circle" and objs[2]["assetId"]

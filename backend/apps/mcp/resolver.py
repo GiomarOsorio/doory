@@ -32,11 +32,14 @@ class DjangoResolver:
 
     def __init__(self, user) -> None:
         self.user = user
+        self._urls: dict[str, ImageSource] = {}
 
     def image(
         self, *, asset_id: str | None = None, element_id: str | None = None, url: str | None = None
     ) -> ImageSource:
         if url is not None:
+            if url in self._urls:
+                return self._urls[url]
             caller = context.current()
             if caller is None or not caller.has(ASSETS_WRITE):
                 raise LookupError(
@@ -47,13 +50,15 @@ class DjangoResolver:
                 asset = import_url_asset(self.user, url)
             except (ToolError, APIException) as exc:
                 raise LookupError(str(getattr(exc, "detail", exc))) from exc
-            return ImageSource(
+            source = ImageSource(
                 asset.file.url,
                 asset.width or 1,
                 asset.height or 1,
                 asset_id=str(asset.pk),
                 name=asset.name or None,
             )
+            self._urls[url] = source
+            return source
         if asset_id is not None:
             asset = (
                 Asset.objects.filter(pk=_uuid(asset_id), owner=self.user).first() if _uuid(asset_id) else None

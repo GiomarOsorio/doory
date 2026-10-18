@@ -433,7 +433,7 @@ export class InsertApi {
     if (!view || !obj) return
     const d = asDory(obj)
     if (d.isPlaceholder) {
-      await this.fillPlaceholderWith(this.engine.state.activePageId, d.id, ref)
+      if (d.id) await this.fillPlaceholderWith(this.engine.state.activePageId, d.id, ref)
       return
     }
     if (obj.type !== 'image') return
