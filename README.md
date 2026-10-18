@@ -269,6 +269,8 @@ sudo cp /opt/doory/deploy/doory-api.service /opt/doory/deploy/doory-realtime.ser
 sudo systemctl daemon-reload && sudo systemctl enable --now doory-api doory-realtime
 # Optional, for AI assistants (MCP_ENABLED=true in .env): the MCP server
 # sudo cp /opt/doory/deploy/doory-mcp.service /etc/systemd/system/ && sudo systemctl enable --now doory-mcp
+# Optional, for self-hosted AI background removal: the reference AI server
+# sudo cp /opt/doory/deploy/doory-ai-server.service /etc/systemd/system/ && sudo systemctl enable --now doory-ai-server
 sudo cp /opt/doory/deploy/nginx.conf /etc/nginx/conf.d/doory.conf    # set server_name in it
 sudo rm -f /etc/nginx/sites-enabled/default
 sudo -u doory mkdir -p /opt/doory/media       # uploads; nginx serves them from here
@@ -276,10 +278,10 @@ sudo nginx -t && sudo systemctl reload nginx
 ```
 
 Open your domain. For HTTPS, `sudo apt install certbot python3-certbot-nginx && sudo certbot --nginx`, then remove the
-two `SECURE_` lines from `.env` and `sudo systemctl restart doory-api doory-realtime` (and `doory-mcp` if you run it).
+two `SECURE_` lines from `.env` and `sudo systemctl restart doory-api doory-realtime` (and `doory-mcp` or `doory-ai-server` if you run them).
 
 **Updating:** `sudo -u doory git pull`, then repeat `pip install`, `manage migrate`, `manage collectstatic --noinput` and
-`npm ci && npm run build`, and `sudo systemctl restart doory-api doory-realtime` (and `doory-mcp` if you run it).
+`npm ci && npm run build`, and `sudo systemctl restart doory-api doory-realtime` (and `doory-mcp` or `doory-ai-server` if you run them).
 
 **Optional:** server-side PDF export needs a headless Chromium: `sudo .venv/bin/playwright install-deps chromium`, then
 `sudo -u doory .venv/bin/playwright install chromium`. Without it, set `SERVER_PDF_ENABLED=false` in `.env`.
@@ -356,6 +358,98 @@ exported image against the export rate. A row over the limit reports its error a
 Image values may be public https URLs, which the server copies into your uploads while `URL_IMAGE_UPLOADS` is on
 (the default; set it to `false` to turn off URL images for the assistant and the API alike). Many URL images or
 exports make one long request, so lower `BULK_FILL_MAX_ROWS` if requests hit the worker timeout.
+
+## AI image providers and self-hosted reference server
+
+Doory removes backgrounds in two ways:
+1. **In the browser (client-side, default):** using an in-browser ONNX model (`u2netp`, ~4.6 MB) that downloads once per browser and processes pictures locally on device with zero server overhead and full privacy.
+2. **Server-side (remote AI providers):** using self-hosted model servers or external APIs. This gives higher precision (e.g. hair and fine spokes), offloads processing from low-powered mobile devices, and powers headless operations like MCP tools (`list_ai_models`, `edit_design(remove_background)`, `import_stock_photo(remove_background=True)`).
+
+### Run the self-hosted reference server
+
+Doory includes a minimal reference AI server in [`deploy/ai-server`](deploy/ai-server). It implements Doory's open contract (`GET /v1/models`, `POST /v1/{task}`), runs open-source models only (Apache-2.0 / MIT, default `isnet-general-use`), and operates smoothly on standard CPU (~1.4 GB RAM, ~1.4s per 2K image).
+
+#### With Docker Compose
+
+In your `.env` file, uncomment or set:
+
+```ini
+COMPOSE_PROFILES=ai
+AI_PROVIDERS_ENABLED=true
+AI_ALLOWED_PRIVATE_HOSTS=ai-server,doory-ai-server
+AI_PROVIDER_1_URL=http://ai-server:7000
+AI_PROVIDER_1_STYLE=doory
+AI_PROVIDER_1_LABEL="High quality (server)"
+AI_PROVIDER_1_SENDS_OFFSITE=false
+```
+
+Then start the stack: `docker compose up -d`. Doory's editor quality picker and MCP tools will automatically detect the server and offer its models.
+
+#### Without Docker (Linux systemd)
+
+1. Set up a Python virtual environment in `/opt/doory/deploy/ai-server`:
+   ```bash
+   cd /opt/doory/deploy/ai-server
+   sudo -u doory python3 -m venv .venv
+   sudo -u doory .venv/bin/pip install -r requirements.txt
+   ```
+2. Enable and start the systemd unit:
+   ```bash
+   sudo cp /opt/doory/deploy/doory-ai-server.service /etc/systemd/system/
+   sudo systemctl daemon-reload && sudo systemctl enable --now doory-ai-server
+   ```
+3. In `/opt/doory/backend/.env`, set:
+   ```ini
+   AI_PROVIDERS_ENABLED=true
+   AI_ALLOWED_PRIVATE_HOSTS=localhost,127.0.0.1
+   AI_PROVIDER_1_URL=http://127.0.0.1:7000
+   AI_PROVIDER_1_STYLE=doory
+   AI_PROVIDER_1_LABEL="High quality (server)"
+   ```
+   and restart `doory-api`: `sudo systemctl restart doory-api`.
+
+---
+
+### Connecting external commercial providers
+
+Doory speaks five API styles, so you can connect any third-party background removal service without writing backend code:
+
+| Style | Description | Example Target |
+|---|---|---|
+| **`doory`** | Doory's open contract (`GET /v1/models`, `POST /v1/{task}`) returning raw PNG bytes or JSON base64. | Self-hosted reference server, or custom microservice. |
+| **`multipart`** | Standard multipart form file upload returning a PNG stream. | [remove.bg](https://www.remove.bg) API or standard HTTP upload endpoints. |
+| **`json`** | JSON payload with base64 encoded input and output images. | [Replicate](https://replicate.com), serverless Lambdas, or custom cloud endpoints. |
+| **`mask`** | Server returns a black-and-white silhouette mask; Doory applies it to the original image. | Model endpoints outputting matte/alpha masks. |
+| **`custom`** | Fully customizable HTTP verb, endpoint path, headers, and request/response field mappings. | Bespoke internal APIs. |
+
+#### Example: remove.bg in `.env`
+
+```ini
+AI_PROVIDER_2_URL=https://api.remove.bg
+AI_PROVIDER_2_STYLE=multipart
+AI_PROVIDER_2_STYLE_CONFIG={"path": "/v1.0/removebg", "file_field": "image_file"}
+AI_PROVIDER_2_AUTH_HEADER=X-Api-Key
+AI_PROVIDER_2_AUTH_VALUE=your_removebg_api_key
+AI_PROVIDER_2_LABEL="remove.bg (Cloud)"
+AI_PROVIDER_2_SENDS_OFFSITE=true
+```
+
+---
+
+### Operator controls (Django Admin & Settings)
+
+- **Provider Management:** Staff can create and configure providers in Django Admin under **AI → Providers**, including setting priority fallback order, daily user quotas (`daily_quota`), request timeouts, and max file sizes.
+- **Privacy Disclosures (`SENDS_OFFSITE`):** When `sends_offsite=true`, the editor quality picker and MCP assistants display an informative disclosure notice to users before sending photos to external services.
+- **SSRF Protection:** Outgoing requests to private network addresses (e.g. internal Docker container names or VPC IPs) are blocked unless explicitly allowed in `AI_ALLOWED_PRIVATE_HOSTS`.
+- **Bring Your Own Server:** Set `AI_USER_PROVIDERS=staff` or `everyone` to let users connect their own external providers in **Settings → AI providers** using encrypted credentials.
+
+---
+
+### The Doory OpenAPI Contract
+
+To build your own Doory-compatible server in Go, Rust, Python, or Node.js, follow the OpenAPI 3.1 specification:
+- Live endpoint on your installation: `GET /api/v1/ai/contract.yaml`
+- Repository contract: [`backend/apps/ai/contract/openapi.yaml`](backend/apps/ai/contract/openapi.yaml)
 
 ## FAQ
 

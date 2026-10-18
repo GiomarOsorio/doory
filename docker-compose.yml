@@ -193,6 +193,29 @@ services:
       start_period: 60s
       retries: 5
 
+  # Optional: reference AI server for background removal (FastAPI + rembg, Apache-2.0 / MIT models).
+  # CPU-friendly (~1.4 GB RAM, ~1.4s per 2K image). Opt-in: set `COMPOSE_PROFILES=ai` in .env.
+  ai-server:
+    profiles: [ai, ai-server]
+    build:
+      context: ./deploy/ai-server
+    restart: unless-stopped
+    environment:
+      PORT: "7000"
+      DEFAULT_MODEL: ${AI_SERVER_DEFAULT_MODEL:-isnet-general-use}
+      OMP_NUM_THREADS: ${AI_SERVER_THREADS:-4}
+    volumes:
+      - ai-models:/models
+    networks:
+      default:
+        aliases: [doory-ai-server, ai-server]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:7000/health')"]
+      interval: 15s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+
   # Optional: shares live rooms between several realtime workers or replicas. Nothing is stored in it.
   redis:
     image: redis:7.2-alpine
@@ -229,3 +252,4 @@ volumes:
   pgdata:
   media:
   exports:
+  ai-models:
