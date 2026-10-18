@@ -32,8 +32,8 @@ describe('checkRows', () => {
   it('turns cells into values by field type and reports problems per row', () => {
     const table = parseTable('name,photo,accent\nAda,https://x.example/a.jpg,#7a64e0\nGrace,http://x.example/b.jpg,red\n,My upload,')
     const checks = checkRows(table, { name: 0, photo: 1, accent: 2 }, FIELDS)
-    expect(checks[0]).toEqual({ values: { name: 'Ada', photo: { url: 'https://x.example/a.jpg' }, accent: '#7a64e0' }, errors: {} })
+    expect(checks[0]).toEqual({ index: 1, values: { name: 'Ada', photo: { url: 'https://x.example/a.jpg' }, accent: '#7a64e0' }, errors: {} })
     expect(checks[1].errors).toEqual({ photo: 'https', accent: 'color' })
-    expect(checks[2]).toEqual({ values: { photo: 'My upload' }, errors: {} })
+    expect(checks[2]).toEqual({ index: 3, values: { photo: 'My upload' }, errors: {} })
   })
 })

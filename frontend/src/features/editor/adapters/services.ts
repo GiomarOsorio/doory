@@ -183,6 +183,7 @@ export function createAccountServices(designId: string | null, beforeVersion: ()
             return designsApi.fields(designId)
           },
           createFolder: (name) => foldersApi.create({ name }),
+          removeFolder: (id) => foldersApi.remove(id),
           run: (input) => designsApi.bulkFill(designId, input),
         }
       : null,

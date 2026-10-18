@@ -49,7 +49,7 @@ describe('Bulk create dialog', () => {
     await userEvent.click(screen.getByRole('button', { name: t.bulk.create(1) }))
     await waitFor(() => expect(ctx.run).toHaveBeenCalledOnce())
     expect(ctx.createFolder).toHaveBeenCalledWith(t.bulk.folderDefault('Badge'))
-    expect(ctx.run).toHaveBeenCalledWith({ rows: [{ name: 'Ada', accent: '#ff0000' }], name_pattern: '{title} - {n}', folder: 'folder-1' })
+    expect(ctx.run).toHaveBeenCalledWith({ rows: [{ name: 'Ada', accent: '#ff0000' }], row_numbers: [1], name_pattern: '{title} - {n}', folder: 'folder-1' })
     expect(await screen.findByRole('status')).toHaveTextContent(t.bulk.done(1))
     expect(screen.getByRole('link', { name: t.bulk.open })).toHaveAttribute('href', '/design/d0')
   })

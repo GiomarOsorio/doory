@@ -5,6 +5,7 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
+from django.conf import settings
 from django.db.models import Q
 from mcp.server.mcpserver.exceptions import ToolError
 from rest_framework.exceptions import APIException
@@ -73,6 +74,8 @@ class DjangoResolver:
         if url is not None:
             if url in self._urls:
                 return self._urls[url]
+            if self.allow_urls is False or not getattr(settings, "URL_IMAGE_UPLOADS", True):
+                raise LookupError("URL image uploads are switched off on this server.")
             caller = context.current()
             allowed = self.allow_urls
             if allowed is None:

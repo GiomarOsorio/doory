@@ -43,6 +43,7 @@ def test_config_is_public_and_has_the_documented_shape(api):
         "max_pages",
         "max_document_bytes",
         "realtime_max_participants",
+        "bulk_fill_max_rows",
     }
 
 
@@ -63,11 +64,13 @@ def test_limits_mirror_settings(api, settings):
     settings.MAX_UPLOAD_BYTES = 123
     settings.MAX_DESIGN_DOCUMENT_BYTES = 456
     settings.MAX_DESIGN_PAGES = 7
+    settings.BULK_FILL_MAX_ROWS = 50
     assert api.get(URL).json()["limits"] == {
         "max_upload_bytes": 123,
         "max_pages": 7,
         "max_document_bytes": 456,
         "realtime_max_participants": 25,
+        "bulk_fill_max_rows": 50,
     }
 
 

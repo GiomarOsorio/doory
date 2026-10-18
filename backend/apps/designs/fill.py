@@ -236,6 +236,7 @@ def bulk_fill(
     owner,
     rows: list[dict[str, Any]],
     *,
+    row_numbers: list[int] | None = None,
     resolver: Resolver,
     name_pattern: str | None = None,
     folder: Folder | None = None,
@@ -252,7 +253,8 @@ def bulk_fill(
         raise DesignTrashed()
     pattern = name_pattern or DEFAULT_NAME_PATTERN
     out: list[dict[str, Any]] = []
-    for number, values in enumerate(rows, start=1):
+    for i, values in enumerate(rows):
+        number = row_numbers[i] if row_numbers and i < len(row_numbers) else i + 1
         try:
             if before_row is not None:
                 before_row()
@@ -290,6 +292,7 @@ def image_exporter(export: str | None, user) -> Callable[[Design], dict[str, Any
     if export is None:
         return None
     try:
+        from apps.exports.delivery import store_image
         from apps.exports.services import export_image
         from apps.exports.throttling import ExportRateThrottle
     except ImportError as exc:
@@ -300,7 +303,23 @@ def image_exporter(export: str | None, user) -> Callable[[Design], dict[str, Any
         image = export_image(
             Design.objects.get(pk=design.pk), page=1, format=export, quality=90, scale=1, transparent=False
         )
-        return {"image": {"mime": image.mime, "data_base64": base64.b64encode(image.data).decode()}}
+        inline_limit = getattr(settings, "MCP_EXPORT_INLINE_MAX_BYTES", 500_000)
+        if len(image.data) > inline_limit:
+            return {
+                "image": {
+                    "mime": image.mime,
+                    "url": store_image(image.data, image.mime),
+                    "bytes": len(image.data),
+                    "expires_in_seconds": getattr(settings, "MCP_EXPORT_URL_TTL_SECONDS", 900),
+                }
+            }
+        return {
+            "image": {
+                "mime": image.mime,
+                "data_base64": base64.b64encode(image.data).decode(),
+                "bytes": len(image.data),
+            }
+        }
 
     return run
 

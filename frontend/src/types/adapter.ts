@@ -212,6 +212,8 @@ export interface EditorServices {
     fields(): Promise<TemplateField[]>
     /** A new folder for the created designs. */
     createFolder(name: string): Promise<{ id: string; name: string }>
+    /** Remove a created empty folder if creation fails. */
+    removeFolder?(id: string): Promise<void>
     run(input: BulkFillInput): Promise<BulkFillResult>
   } | null
 }

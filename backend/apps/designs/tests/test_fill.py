@@ -171,18 +171,31 @@ class TestRest:
         res = api.post(f"{URL}{template.pk}/bulk-fill/", body, format="json")
         assert res.status_code == 400
 
-    def test_bulk_fill_rows_count_against_the_upload_rate(self, api, template, monkeypatch):
+    def test_bulk_fill_rows_count_against_the_bulk_fill_rate(self, api, template, monkeypatch):
         from django.core.cache import cache
 
-        from apps.assets.throttling import UploadRateThrottle
+        from apps.designs.throttling import BulkFillRateThrottle
 
         cache.clear()
-        monkeypatch.setattr(UploadRateThrottle, "THROTTLE_RATES", {"upload": "2/min"})
+        monkeypatch.setattr(BulkFillRateThrottle, "THROTTLE_RATES", {"bulk_fill": "2/min"})
         body = {"rows": [{"name": str(n)} for n in range(3)]}
         res = api.post(f"{URL}{template.pk}/bulk-fill/", body, format="json")
         rows = res.json()["rows"]
         assert res.json()["created"] == 2 and not rows[2]["ok"] and "throttled" in rows[2]["error"]
         cache.clear()
+
+    def test_bulk_fill_respects_row_numbers(self, api, template):
+        body = {"rows": [{"name": "A"}, {"name": "C"}], "row_numbers": [1, 3]}
+        res = api.post(f"{URL}{template.pk}/bulk-fill/", body, format="json")
+        rows = res.json()["rows"]
+        assert [r["row"] for r in rows] == [1, 3]
+        assert rows[0]["title"] == "Badge - 1" and rows[1]["title"] == "Badge - 3"
+
+    def test_url_images_switched_off_reports_clear_error(self, api, template, settings):
+        settings.URL_IMAGE_UPLOADS = False
+        res = api.post(f"{URL}{template.pk}/fill/", {"values": {"photo": "https://img.example/a.png"}}, format="json")
+        assert res.status_code == 400
+        assert "switched off" in str(res.json())
 
 
 def test_image_exporter_counts_each_render_against_the_export_rate(user, template, monkeypatch):
@@ -205,3 +218,20 @@ def test_image_exporter_counts_each_render_against_the_export_rate(user, templat
     )
     assert "image" in rows[0] and "throttled" in rows[1]["export_error"]
     cache.clear()
+
+
+def test_image_exporter_returns_url_when_above_inline_limit(user, template, monkeypatch, settings):
+    pytest.importorskip("apps.exports.services")
+    from apps.exports import services as exports
+
+    settings.MCP_EXPORT_INLINE_MAX_BYTES = 5
+    image = type("Image", (), {"mime": "image/png", "data": b"1234567890"})()
+    monkeypatch.setattr(exports, "export_image", lambda *a, **k: image)
+    rows = fill.bulk_fill(
+        template,
+        user,
+        [{"name": "A"}],
+        resolver=DjangoResolver(user),
+        after_row=fill.image_exporter("png", user),
+    )
+    assert "url" in rows[0]["image"] and "data_base64" not in rows[0]["image"]

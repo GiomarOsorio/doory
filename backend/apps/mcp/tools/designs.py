@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import json
 import uuid
 from typing import Annotated, Any, Literal
 
 from django.conf import settings
 from django.http import Http404
+from mcp_types import ImageContent, TextContent
 from pydantic import Field, TypeAdapter
 
 from apps.apitokens.scopes import DESIGNS_READ, DESIGNS_WRITE
@@ -293,7 +295,7 @@ def bulk_fill(
     export: Annotated[
         Literal["png", "jpg"] | None, Field(description="Also return the first page of each as an image.")
     ] = None,
-) -> dict[str, Any]:
+) -> list[ImageContent | TextContent] | dict[str, Any]:
     """Make one new design per row from a template, filled like fill_design. Each row reports its new design
     or its own error, so one bad row doesn't stop the others. Each row counts as one call against the rate
     limit; the number of rows per call is limited by the server."""
@@ -319,4 +321,14 @@ def bulk_fill(
         before_row=before_row,
         after_row=after_row,
     )
+    if export is not None:
+        content: list[ImageContent | TextContent] = []
+        for row in results:
+            img = row.get("image")
+            if img and "data_base64" in img:
+                content.append(ImageContent(data=img["data_base64"], mime_type=img["mime"]))
+                row["image"] = {"mime": img["mime"], "bytes": img.get("bytes", len(img["data_base64"]))}
+        summary = {"created": sum(row["ok"] for row in results), "rows": results}
+        content.append(TextContent(text=json.dumps(summary)))
+        return content
     return {"created": sum(row["ok"] for row in results), "rows": results}

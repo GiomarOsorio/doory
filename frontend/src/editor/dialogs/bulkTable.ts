@@ -10,6 +10,7 @@ export interface Table {
 export type Mapping = Record<string, number>
 
 export interface RowCheck {
+  index: number
   values: Record<string, FieldValue>
   /** Problems by field key, shown before anything is created. */
   errors: Record<string, string>
@@ -79,7 +80,7 @@ function imageValue(cell: string): FieldValue {
 
 /** The values of each row by field key, with the problems the browser can see (the server checks again). */
 export function checkRows(table: Table, mapping: Mapping, fields: TemplateField[]): RowCheck[] {
-  return table.rows.map((row) => {
+  return table.rows.map((row, idx) => {
     const values: Record<string, FieldValue> = {}
     const errors: Record<string, string> = {}
     for (const field of fields) {
@@ -96,6 +97,6 @@ export function checkRows(table: Table, mapping: Mapping, fields: TemplateField[
         else values[field.key] = imageValue(cell)
       } else values[field.key] = cell
     }
-    return { values, errors }
+    return { index: idx + 1, values, errors }
   })
 }

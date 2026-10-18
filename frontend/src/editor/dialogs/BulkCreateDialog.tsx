@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { configApi, isApiError } from '@/lib/api'
 import type { BulkFillResult, TemplateField } from '@/types/api'
 import { useEditor, useEditorState } from '../context'
 import { t } from '../strings'
@@ -21,6 +22,7 @@ export function BulkCreateDialog() {
   const [fields, setFields] = useState<TemplateField[] | null>(null)
   const [loadError, setLoadError] = useState(false)
   const [step, setStep] = useState<Step>('data')
+  const [maxRows, setMaxRows] = useState(MAX_ROWS)
   const [text, setText] = useState('')
   const [dataError, setDataError] = useState<string | null>(null)
   const [table, setTable] = useState<Table>({ headers: [], rows: [] })
@@ -30,6 +32,21 @@ export function BulkCreateDialog() {
   const [busy, setBusy] = useState(false)
   const [createError, setCreateError] = useState<string | null>(null)
   const [result, setResult] = useState<BulkFillResult | null>(null)
+
+  useEffect(() => {
+    let live = true
+    configApi
+      .get()
+      .then((cfg) => {
+        if (live && cfg.limits?.bulk_fill_max_rows) {
+          setMaxRows(cfg.limits.bulk_fill_max_rows)
+        }
+      })
+      .catch(() => {})
+    return () => {
+      live = false
+    }
+  }, [])
 
   useEffect(() => {
     let live = true
@@ -58,7 +75,7 @@ export function BulkCreateDialog() {
   const next = (): void => {
     const parsed = parseTable(text)
     if (parsed.rows.length === 0) return setDataError(t.bulk.noRows)
-    if (parsed.rows.length > MAX_ROWS) return setDataError(t.bulk.tooManyRows(MAX_ROWS))
+    if (parsed.rows.length > maxRows) return setDataError(t.bulk.tooManyRows(maxRows))
     setDataError(null)
     setTable(parsed)
     setMapping(autoMap(parsed.headers, fields ?? []))
@@ -69,12 +86,26 @@ export function BulkCreateDialog() {
     if (!service || good.length === 0) return
     setBusy(true)
     setCreateError(null)
+    let createdFolderId: string | null = null
     try {
-      const folder = folderName.trim() ? (await service.createFolder(folderName.trim().slice(0, 120))).id : null
-      setResult(await service.run({ rows: good.map((c) => c.values), name_pattern: namePattern, folder }))
+      if (folderName.trim()) {
+        const folder = await service.createFolder(folderName.trim().slice(0, 120))
+        createdFolderId = folder.id
+      }
+      setResult(
+        await service.run({
+          rows: good.map((c) => c.values),
+          row_numbers: good.map((c) => c.index),
+          name_pattern: namePattern,
+          folder: createdFolderId,
+        }),
+      )
       setStep('done')
-    } catch {
-      setCreateError(t.bulk.createFailed)
+    } catch (err: unknown) {
+      if (createdFolderId && service.removeFolder) {
+        await service.removeFolder(createdFolderId).catch(() => {})
+      }
+      setCreateError(isApiError(err) ? (err.message || t.bulk.createFailed) : t.bulk.createFailed)
     } finally {
       setBusy(false)
     }
@@ -167,8 +198,8 @@ export function BulkCreateDialog() {
           <div className={dlg.error} role="alert">
             <p>{t.bulk.rowErrors(badCount)}</p>
             <ul>
-              {checks.flatMap((c, i) =>
-                Object.entries(c.errors).map(([key, code]) => <li key={`${i}-${key}`}>{t.bulk.failedRow(i + 1, `${key}: ${ERRORS[code]}`)}</li>),
+              {checks.flatMap((c) =>
+                Object.entries(c.errors).map(([key, code]) => <li key={`${c.index}-${key}`}>{t.bulk.failedRow(c.index, `${key}: ${ERRORS[code]}`)}</li>),
               )}
             </ul>
           </div>

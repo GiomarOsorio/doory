@@ -60,6 +60,7 @@ _CONFIG_SCHEMA = inline_serializer(
                 "max_pages": serializers.IntegerField(),
                 "max_document_bytes": serializers.IntegerField(),
                 "realtime_max_participants": serializers.IntegerField(),
+                "bulk_fill_max_rows": serializers.IntegerField(),
             },
         ),
         "assets": inline_serializer(
@@ -148,6 +149,7 @@ def config(request):
                 "max_pages": settings.MAX_DESIGN_PAGES,
                 "max_document_bytes": settings.MAX_DESIGN_DOCUMENT_BYTES,
                 "realtime_max_participants": max_participants(),
+                "bulk_fill_max_rows": settings.BULK_FILL_MAX_ROWS,
             },
             "assets": {"background_removal_model": background_removal},
             "ai": ai_config(),

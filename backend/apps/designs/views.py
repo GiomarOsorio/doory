@@ -18,6 +18,7 @@ from apps.assets.uploads import reject_oversize_request
 
 from . import fill as filling
 from . import services
+from .throttling import BulkFillRateThrottle
 from .doc.fields import list_fields
 from .edits import read_current
 from .exceptions import RevisionConflict
@@ -212,7 +213,7 @@ class DesignViewSet(viewsets.GenericViewSet):
         request=BulkFillSerializer,
         responses=OpenApiTypes.OBJECT,
         description="One new design per row, filled like `fill`; each row reports its design or its error. "
-        "Each row counts against the `upload` rate and each exported image against the `export` rate; a row "
+        "Each row counts against the `bulk_fill` rate and each exported image against the `export` rate; a row "
         "over the limit reports its error. Image URLs are fetched only when URL_IMAGE_UPLOADS is on. Many "
         "URL images or exports make a long request: keep it under the worker timeout with fewer rows.",
     )
@@ -225,10 +226,11 @@ class DesignViewSet(viewsets.GenericViewSet):
             self.get_object(),
             request.user,
             data["rows"],
+            row_numbers=data.get("row_numbers"),
             resolver=_resolver(request.user),
             name_pattern=data.get("name_pattern"),
             folder=data.get("folder"),
-            before_row=lambda: filling.charge(UploadRateThrottle(), request.user),
+            before_row=lambda: filling.charge(BulkFillRateThrottle(), request.user),
             after_row=filling.image_exporter(data.get("export"), request.user),
         )
         return Response({"created": sum(row["ok"] for row in rows), "rows": rows})

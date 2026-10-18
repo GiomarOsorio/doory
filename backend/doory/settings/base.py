@@ -223,6 +223,7 @@ REST_FRAMEWORK = {
         "upload": "60/min",
         "stock": "60/min",
         "stock_preview": "300/min",  # listening to Freesound previews; searches keep the `stock` budget
+        "bulk_fill": "120/min",  # rows created via bulk-fill (REST)
         "export": "30/min",  # server-side image renders (REST and MCP)
         "ai": "30/min",  # calls to AI image providers (REST and MCP)
     },
