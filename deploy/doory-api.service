@@ -3,7 +3,7 @@
 #   sudo cp deploy/doory-api.service deploy/doory-realtime.service /etc/systemd/system/
 #   sudo systemctl daemon-reload && sudo systemctl enable --now doory-api doory-realtime
 #
-# Settings come from /opt/doory/backend/.env (see README.md, "Run it without Docker").
+# Settings come from /opt/doory/backend/.env (see docs/self-hosting/manual.md).
 [Unit]
 Description=Doory API
 After=network.target postgresql.service
