@@ -453,9 +453,8 @@ def _to_px(value: str | None) -> float | None:
     return float(m.group(1)) * _UNIT_PX[(m.group(2) or "").lower() or None]
 
 
-def svg_info(sanitized: bytes) -> SvgInfo:
-    """Intrinsic size of an (already sanitised) SVG from width/height or viewBox; falls back to 300x150."""
-    root = SafeET.fromstring(sanitized, forbid_dtd=True, forbid_entities=True, forbid_external=True)
+def _svg_info_from_root(root) -> SvgInfo:
+    """Intrinsic size from an already-parsed root element; falls back to 300x150."""
     w, h = _to_px(root.get("width")), _to_px(root.get("height"))
     vb = (root.get("viewBox") or "").replace(",", " ").split()
     if len(vb) == 4:
@@ -471,6 +470,12 @@ def svg_info(sanitized: bytes) -> SvgInfo:
         except ValueError:
             pass
     return SvgInfo(width=round(w or 300, 2), height=round(h or 150, 2))
+
+
+def svg_info(sanitized: bytes) -> SvgInfo:
+    """Intrinsic size of an (already sanitised) SVG from width/height or viewBox; falls back to 300x150."""
+    root = SafeET.fromstring(sanitized, forbid_dtd=True, forbid_entities=True, forbid_external=True)
+    return _svg_info_from_root(root)
 
 
 def _viewbox_size(value: str | None) -> tuple[float, float] | None:
@@ -491,7 +496,7 @@ def with_intrinsic_size(sanitized: bytes, width: int, height: int) -> bytes:
     its original size, so the drawing scales to the new size instead of being cut."""
     root = SafeET.fromstring(sanitized, forbid_dtd=True, forbid_entities=True, forbid_external=True)
     if _viewbox_size(root.get("viewBox")) is None:
-        info = svg_info(sanitized)
+        info = _svg_info_from_root(root)
         root.set("viewBox", f"0 0 {info.width:g} {info.height:g}")
     root.set("width", str(width))
     root.set("height", str(height))
