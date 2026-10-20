@@ -502,8 +502,6 @@ export const t = {
     resizePreviewAfter: 'After resizing',
     resizePreviewAlt: (when: string, width: number, height: number) => `${when}: the page at ${width} by ${height} px`,
     resizeCustom: 'Custom size',
-    resizeSearch: 'Search sizes',
-    resizeNoMatch: 'No size matches.',
     resizeContent: 'Content',
     renameTitle: 'Rename design',
     renameField: 'Name',

@@ -85,7 +85,8 @@ fields:
 - `icon`: a [Lucide](https://lucide.dev/icons) icon name
 - `tags`: searchable, and shown as filters
 - `aliases`: old slugs that still mean this preset
-- `is_quick`: show it as a chip on the home page
+- `is_quick`: one of the popular sizes. Until someone pins sizes of their own (the star on a size in the picker),
+  these are their sizes on the home page and at the top of the picker
 - `is_active` and `order`
 - `meta`: `safe_zone` holds the fraction of the page to keep clear on each side
 
