@@ -40,6 +40,15 @@ sudo systemctl daemon-reload && sudo nginx -t && sudo systemctl reload nginx
 
 Changes that need you to do something, newest first. Changes that need nothing aren't listed here.
 
+### 2026-10-20: more built-in size presets
+
+- The migration adds about 1,600 new sizes (print, documents, books, screens, app and web design, merch, logos,
+  social media, advertising, stores, video calls, web and email). Presets you edited keep your edits.
+- Some old built-in sizes changed with current guidance (for example the Facebook page cover, the X post and the
+  logo, now 512 × 512), and the old groups get new names and sub-groups. To move the built-ins to the new sizes,
+  names and groups, run `python manage.py seed_size_presets --update`. It resets only the built-in presets; your
+  own are left alone.
+
 ### 2026-10-18: separate storage for server-side image exports
 
 - **Docker:** a new `exports` volume and `EXPORT_STORAGE_ROOT=/app/exports`. `docker compose up -d` creates them.

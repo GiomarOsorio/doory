@@ -66,6 +66,6 @@ describe('Create a design dialog', () => {
     setSizePresetsForTests()
     renderWithProviders(<CreateDesignDialog open onClose={() => undefined} />)
     expect(screen.getByRole('button', { name: /Instagram Story/ })).toBeInTheDocument()
-    expect(screen.getByRole('region', { name: 'Print › Paper sizes' })).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'Print › Paper › ISO paper (A & B)' })).toBeInTheDocument()
   })
 })

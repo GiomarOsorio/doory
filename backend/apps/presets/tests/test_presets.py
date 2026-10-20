@@ -67,7 +67,7 @@ def served_presets() -> dict[str, dict]:
 def test_the_migration_adds_the_built_in_catalogue():
     names = {slug for slug, aliases in SizePreset.objects.values_list("slug", "aliases")}
     aliases = {alias for row in SizePreset.objects.values_list("aliases", flat=True) for alias in row}
-    assert names | aliases == LEGACY_SLUGS
+    assert names | aliases >= LEGACY_SLUGS  # designs and templates that name an old slug still find it
     assert SizePreset.objects.count() == len(builtin_catalogue().presets)
 
 
@@ -118,8 +118,8 @@ def test_the_catalogue_is_public_cacheable_and_nested():
     assert body["version"] == 1
     paths = {item["slug"]: path for path, item in flatten(body["groups"])}
     assert paths["instagram-story"] == ("social", "instagram")
-    assert paths["a4"] == ("print", "paper")
-    assert paths["presentation"] == ("presentation",)
+    assert paths["a4"] == ("print", "paper", "paper-iso-paper-a-b")
+    assert paths["presentation"] == ("presentation", "presentation-screen-slides")
 
 
 def test_preset_rows_carry_size_unit_pixels_and_extras():
@@ -127,11 +127,11 @@ def test_preset_rows_carry_size_unit_pixels_and_extras():
     assert item == {
         "slug": "x-post",
         "label": "X (Twitter) Post",
-        "width": 1600,
-        "height": 900,
+        "width": 1200,
+        "height": 675,
         "unit": "px",
-        "width_px": 1600,
-        "height_px": 900,
+        "width_px": 1200,
+        "height_px": 675,
         "icon": "rectangle-horizontal",
         "tags": ["16:9"],
         "is_quick": False,
@@ -142,7 +142,7 @@ def test_preset_rows_carry_size_unit_pixels_and_extras():
 
 
 def test_inactive_presets_and_groups_are_hidden_and_empty_groups_dropped():
-    SizePreset.objects.filter(slug="pinterest-pin").update(is_active=False)
+    SizePreset.objects.filter(group__slug="pinterest").update(is_active=False)
     SizePresetGroup.objects.filter(slug="print").update(is_active=False)
 
     body = served()

@@ -39,8 +39,11 @@ Staff add and edit templates in the admin site. `manage.py import_template` impo
 
 ## Size presets
 
-The sizes in the Create and Resize dialogs come from the server. A new site has the built-in sizes (social posts,
-presentations, paper and print, video). You can add your own, or offer only yours:
+The sizes in the Create and Resize dialogs come from the server. A new site has about 1,600 built-in sizes:
+presentations, print (paper, cards, flyers and posters, photo prints and labels), documents, books, video and screens,
+app and web design, web and email, merch, logos and icons, and sizes for social media, advertising, stores and video
+calls. [size-preset-sources.md](size-preset-sources.md) lists where each size comes from. You can add your own,
+or offer only yours:
 
 | Way | How |
 |-----|-----|
