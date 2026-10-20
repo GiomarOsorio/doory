@@ -75,3 +75,21 @@ class User(BaseModel, AbstractBaseUser, PermissionsMixin):
     @property
     def name(self) -> str:
         return self.display_name or self.email.split("@")[0]
+
+
+class OidcIdentity(BaseModel):
+    """An account at an OpenID Connect provider that signs in as `user`. The provider's `sub` is unique only
+    within its issuer, so the pair is the key."""
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="oidc_identities")
+    issuer = models.CharField(max_length=255)
+    subject = models.CharField(max_length=255)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["issuer", "subject"], name="accounts_oidc_issuer_subject_unique"),
+            models.UniqueConstraint(fields=["user", "issuer"], name="accounts_oidc_user_issuer_unique"),
+        ]
+
+    def __str__(self):
+        return f"{self.issuer} {self.subject}"

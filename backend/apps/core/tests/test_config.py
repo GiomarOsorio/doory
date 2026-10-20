@@ -25,11 +25,20 @@ def test_config_is_public_and_has_the_documented_shape(api):
     res = api.get(URL)
     assert res.status_code == 200
     body = res.json()
-    assert set(body) == {"google_client_id", "features", "limits", "assets", "exports", "ai"}
+    assert set(body) == {
+        "google_client_id",
+        "oidc_button_label",
+        "features",
+        "limits",
+        "assets",
+        "exports",
+        "ai",
+    }
     assert set(body["features"]) == {
         "stock_photos",
         "server_pdf",
         "google_login",
+        "oidc_login",
         "email_verification",
         "background_removal",
         "realtime",

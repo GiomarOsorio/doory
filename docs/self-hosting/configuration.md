@@ -143,6 +143,17 @@ See [google-sign-in.md](../integrations/google-sign-in.md).
 |---------|---------|--------------|
 | `GOOGLE_CLIENT_ID` | | OAuth web client ID. Setting it adds a "Sign in with Google" button |
 
+## OpenID Connect sign-in
+
+| Setting | Default | What it does |
+|---------|---------|--------------|
+| `OIDC_ISSUER` | | Issuer URL of your identity provider, e.g. `https://auth.example.com/application/o/doory/`. Sign-in is on when this, `OIDC_CLIENT_ID` and `OIDC_CLIENT_SECRET` are all set |
+| `OIDC_CLIENT_ID` | | Client ID of a confidential client registered at the provider, with `SITE_URL/api/v1/auth/oidc/callback/` as its redirect URI |
+| `OIDC_CLIENT_SECRET` | | That client's secret |
+| `OIDC_BUTTON_LABEL` | `Sign in with SSO` | Text of the sign-in button, e.g. `Sign in with Authentik` |
+| `OIDC_SCOPES` | `openid email profile` | Scopes to ask for. Must include `openid` |
+| `OIDC_TRUST_EMAIL` | `false` | Let a first sign-in use an existing account with the same email address, when the provider says it has verified it. Never applies to staff accounts. Off, people connect their existing account from Settings |
+
 ## Stock media
 
 See [stock-media.md](../integrations/stock-media.md).
