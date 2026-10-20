@@ -171,6 +171,8 @@ OIDC_ISSUER = env("OIDC_ISSUER", default="")
 OIDC_CLIENT_ID = env("OIDC_CLIENT_ID", default="")
 OIDC_CLIENT_SECRET = env("OIDC_CLIENT_SECRET", default="")
 OIDC_BUTTON_LABEL = env("OIDC_BUTTON_LABEL", default="Sign in with SSO")
+# Logo on the button, by name (e.g. "authentik"); the frontend has the icons. Empty or unknown: a key icon.
+OIDC_BUTTON_ICON = env("OIDC_BUTTON_ICON", default="")
 OIDC_SCOPES = env("OIDC_SCOPES", default="openid email profile")
 OIDC_TRUST_EMAIL = env.bool("OIDC_TRUST_EMAIL", default=False)
 UNSPLASH_ACCESS_KEY = env("UNSPLASH_ACCESS_KEY", default="")

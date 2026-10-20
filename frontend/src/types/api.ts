@@ -36,6 +36,8 @@ export interface AppConfig {
   google_client_id: string
   /** Text of the single sign-on button; absent on servers that predate it. */
   oidc_button_label?: string
+  /** Name of the button's logo in `src/assets/sso-icons/`; "" or absent: a key icon. */
+  oidc_button_icon?: string
   /** `background_removal` (and `ai_providers`, …) are absent on servers that predate them. */
   features: { stock_photos: boolean; server_pdf: boolean; google_login: boolean; oidc_login?: boolean; email_verification: boolean; background_removal?: boolean; realtime?: boolean; mcp?: boolean; ai_providers?: boolean }
   limits: { max_upload_bytes: number; max_pages: number; max_document_bytes: number; realtime_max_participants?: number; bulk_fill_max_rows?: number }
