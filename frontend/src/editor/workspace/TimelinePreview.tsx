@@ -163,6 +163,8 @@ function Preview({ scrollRef }: PreviewProps) {
         return
       }
       if (e.key === 'Enter' && inControls) return
+      // S splits the selected video clip at the playhead: what the preview is for.
+      if ((e.key === 's' || e.key === 'S') && !e.ctrlKey && !e.metaKey && !e.altKey) return
       if (e.key.length === 1 || e.key.startsWith('Arrow') || e.key === 'Delete' || e.key === 'Backspace' || e.key === 'Enter' || e.ctrlKey || e.metaKey) e.preventDefault()
     }
     document.addEventListener('keydown', onKey, true)

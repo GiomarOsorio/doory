@@ -3,8 +3,9 @@
  * loop, then the picture tools that apply to a clip as to any picture (crop, frame, opacity). Every setting goes through
  * `editor.videos.update`; a slider drag is one undo step.
  */
-import { Crop, Gauge, Pause, Play, Repeat, Scissors, Volume2, VolumeX } from 'lucide-react'
+import { Blend, Crop, Gauge, Pause, Play, Repeat, Replace, Scissors, SquareSplitHorizontal, Volume2, VolumeX } from 'lucide-react'
 import { playbackOf, usePlaybackValue } from '../../animation/playback'
+import { commands } from '../../commands'
 import { previewLengthMs } from '../../animation/timelineMath'
 import { Filmstrip } from '../../clips/Filmstrip'
 import { MAX_FADE_MS, MIN_CLIP_MS, SPEEDS, clipLengthMs, readClip } from '../../clips/model'
@@ -16,7 +17,7 @@ import { Slider } from '../../ui/Slider'
 import { Switch } from '../../ui/Switch'
 import { OpacityTool } from '../controls'
 import { PopoverStack, PopoverTool, ToolButton } from '../parts'
-import { FrameTool } from './image'
+import { AdjustPanel, FrameTool, SlidersIcon } from './image'
 import ed from '../../chrome/ed.module.css'
 
 const s = t.clips.toolbar
@@ -70,6 +71,9 @@ export function ClipSection() {
           <Slider label={s.startAt} value={clip.startMs} min={0} max={60_000} step={100} display={seconds(clip.startMs)} onChange={(v) => update({ startMs: v }, 'start', t.clips.history.move)} />
         </PopoverStack>
       </PopoverTool>
+      <ToolButton label={s.split} shortcut="S" testId="ed-clip-split" onClick={() => void commands.get('video.split')?.run(editor)}>
+        <SquareSplitHorizontal size={18} aria-hidden="true" />
+      </ToolButton>
       <ToolButton label={silent ? s.silent : clip.muted ? s.unmute : s.mute} pressed={clip.muted} disabled={silent} testId="ed-clip-mute" onClick={() => update({ muted: !clip.muted })}>
         {clip.muted || silent ? <VolumeX size={18} aria-hidden="true" /> : <Volume2 size={18} aria-hidden="true" />}
       </ToolButton>
@@ -97,11 +101,22 @@ export function ClipSection() {
       <ToolButton label={s.loop} pressed={clip.loop} testId="ed-clip-loop" onClick={() => update({ loop: !clip.loop })}>
         <Repeat size={18} aria-hidden="true" />
       </ToolButton>
+      <ToolButton label={s.replace} testId="ed-clip-replace" onClick={() => void editor.videos.startReplace(id)}>
+        <Replace size={18} aria-hidden="true" />
+      </ToolButton>
+      {clip.backdropOf || page?.objects.some((o) => o.videoBackdropOf === id) ? null : (
+        <ToolButton label={s.blurredBackgroundHint} testId="ed-clip-backdrop" onClick={() => void editor.videos.blurredBackground(id)}>
+          <Blend size={18} aria-hidden="true" />
+        </ToolButton>
+      )}
       {fillsPlaceholder ? null : (
         <ToolButton label={t.toolbar.crop} shortcut="Enter" testId="ed-crop" onClick={() => void editor.crop.start()}>
           <Crop size={18} aria-hidden="true" />
         </ToolButton>
       )}
+      <PopoverTool label={t.toolbar.filters} trigger={<SlidersIcon />} width={312} testId="ed-adjust">
+        <AdjustPanel />
+      </PopoverTool>
       {fillsPlaceholder ? null : <FrameTool />}
       <OpacityTool />
     </>

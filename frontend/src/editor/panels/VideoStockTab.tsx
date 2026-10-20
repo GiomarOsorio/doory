@@ -136,7 +136,7 @@ export function VideoStockTab({ close, service, info }: PanelProps & { service: 
     try {
       const ref = await whenProcessed(service, await service.importVideo(video), alive.current.signal)
       if (ref.video?.status !== 'ready') throw new Error(ref.video?.error || s.addFailed)
-      await editor.videos.fromAsset(ref)
+      await editor.videos.use(ref)
       close()
     } catch (err) {
       if (alive.current.signal.aborted) return

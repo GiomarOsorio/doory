@@ -13,12 +13,14 @@
  */
 import { type FabricImage, type FabricObject, StaticCanvas } from 'fabric'
 import type { DocObject, DocPage } from '@/types/document'
-import { type Clip, clipPlaysAt, clipTimeAt, readClip } from '../clips/model'
+import { type ClipLook, drawWithLook, lookOf } from '../clips/look'
+import { type Clip, clipPlaysAt, clipShownAt, clipTimeAt, readClip } from '../clips/model'
+import { asDory } from '../engine/objects/dory'
 import { type BuiltBackground, buildBackground } from '../engine/objects/background'
 import { renderableObjects } from '../engine/render'
 import { type LoadContext, deserializeObjects } from '../engine/serialization'
 import { type Surface, context2d, createCanvas, drawBlurred } from './canvasFx'
-import type { ClipFrameSource, ClipMediaFactory } from './clipSource'
+import { type ClipFrameSource, type ClipMediaFactory, sharedSources } from './clipSource'
 import { animationOf, type PageTiming, pageTiming } from './model'
 import { emphasisPresets, inOutPresets } from './presets'
 import { type Box, type PageDims, type Sample, type UnitPlan, isRest, isSplittableText, sampleObject, sampleUnit, unitFor } from './sampler'
@@ -115,6 +117,8 @@ interface ClipPart {
   holder: StaticCanvas
   image: FabricImage
   frame: HTMLCanvasElement
+  /** The clip's adjustments, drawn on each picture (Fabric's own filters stay on the still). */
+  look: ClipLook
   /** The source's `version` the tile shows. */
   drawn: number
 }
@@ -211,19 +215,22 @@ function holdTile(obj: FabricObject, region: Rect, m: number): { placed: Placed;
 
 /** Puts a clip's object over a bitmap of its poster's size, which the clip's pictures are drawn into. */
 function clipPart(obj: FabricObject, holder: StaticCanvas, spec: Clip, source: ClipFrameSource): ClipPart {
-  const image = obj as FabricImage
-  const element = image.getElement()
+  const image = obj as FabricImage & { _originalElement?: CanvasImageSource }
+  // The poster as it came, not as Fabric filtered it: the look is drawn on every picture instead.
+  const element = image._originalElement ?? image.getElement()
   const natural = image.getOriginalSize()
   const frame = createCanvas(Math.max(1, Math.round(natural.width)), Math.max(1, Math.round(natural.height)))
+  const look = lookOf(asDory(obj).filterSpecs)
   try {
-    context2d(frame).drawImage(element, 0, 0, frame.width, frame.height)
+    drawWithLook(context2d(frame), element, 0, 0, frame.width, frame.height, look)
   } catch {
     // A poster that did not load: the frame stays empty until the clip's first picture.
   }
+  image.filters = []
   image.setElement(frame, { width: image.width, height: image.height })
   image.dirty = true
   holder.renderAll()
-  return { spec, source, holder, image, frame, drawn: -1 }
+  return { spec, source, holder, image, frame, look, drawn: -1 }
 }
 
 /** Shows the clip's picture of `tMs` in its tile; true when the tile changed. */
@@ -236,7 +243,7 @@ function updateClip(layer: AnimatedLayer, tMs: number): boolean {
   part.drawn = part.source.version
   const ctx = context2d(part.frame)
   ctx.clearRect(0, 0, part.frame.width, part.frame.height)
-  ctx.drawImage(picture, 0, 0, part.frame.width, part.frame.height)
+  drawWithLook(ctx, picture, 0, 0, part.frame.width, part.frame.height, part.look)
   part.image.dirty = true
   part.holder.renderAll()
   return true
@@ -428,6 +435,7 @@ export async function createFrameRenderer(page: DocPage, size: PageDims, ctx: Lo
     deserializeObjects(docs, ctx),
     options.transparent ? Promise.resolve(null) : buildBackground(page.background, size.width, size.height, (s) => ctx.resolveSrc(s)),
   ])
+  const media = options.media ? sharedSources(options.media) : null
   // Clips are played from their resolved addresses (a stored `/media/…` path may live on another origin).
   const clipUrls = new Map<DocObject, string>()
   if (options.media) {
@@ -477,13 +485,15 @@ export async function createFrameRenderer(page: DocPage, size: PageDims, ctx: Lo
       const found = textUnitBoxes(obj, by, pad)
       if (found) boxes.set(by, found)
     }
-    if (clip && options.media) {
+    if (clip && media) {
       const held = region.w > 0 && region.h > 0 ? holdTile(obj, region, m) : null
       if (!held) {
         obj.dispose()
         return
       }
-      const source = options.media({ url: clipUrls.get(doc) ?? clip.src, speed: clip.speed }, () => options.onMediaFrame?.())
+      const url = clipUrls.get(doc) ?? clip.src
+      const share = [url, clip.speed, clip.startMs, clip.trimStartMs, clip.trimEndMs, clip.loop].join('|')
+      const source = media({ url, speed: clip.speed, share }, () => options.onMediaFrame?.())
       layers.push({ kind: 'animated', object: doc, box, tile: held.placed, units: new Map(), clip: clipPart(obj, held.holder, clip, source) })
       return
     }
@@ -519,7 +529,11 @@ export async function createFrameRenderer(page: DocPage, size: PageDims, ctx: Lo
       if (disposed) return canvas
       let moved = false
       for (const layer of clipLayers) moved = updateClip(layer, tMs) || moved
-      const samples = animated.map((layer) => sampleObject(layer.object, tMs, size, layer.box))
+      const samples = animated.map((layer) => {
+        const sample = sampleObject(layer.object, tMs, size, layer.box)
+        // A split part of a clip stands aside outside its own time, so the part before or after it shows.
+        return layer.clip && !clipShownAt(layer.clip.spec, tMs) ? { ...sample, visible: false } : sample
+      })
       if (!moved && last && samples.every((s, i) => sameSample(s, last![i]))) return canvas
       last = samples
       surface.setTransform(1, 0, 0, 1, 0, 0)

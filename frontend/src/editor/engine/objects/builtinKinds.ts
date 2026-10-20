@@ -89,10 +89,8 @@ export function registerBuiltinKinds(): void {
     matches: (o) => isClip(o),
     extraProps: [...CLIP_PROPS],
     prepare: prepareImage,
-    hydrate: (obj) => applyMask(obj),
-    dehydrate(out) {
-      delete out.filters
-    },
+    // Adjustments show on the poster here; the frame renderer draws them on every picture of the clip.
+    hydrate: hydrateImage,
   })
 
   registerObjectKind({

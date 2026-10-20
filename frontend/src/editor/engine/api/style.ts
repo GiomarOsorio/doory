@@ -276,14 +276,19 @@ export class StyleApi {
 
   /* ----------------------------------------------------------------- images */
 
-  /** The selected pictures; video clips are left out (filters and cut-outs would only change their poster). */
+  /** The selected pictures; video clips are left out (a cut-out or a new picture would only change their poster). */
   private images(): FabricImage[] {
     return this.targets().filter((o): o is FabricImage => o.type === 'image' && !isLiveClip(o))
   }
 
+  /** The selected pictures and video clips: what adjustments (filters, presets) apply to. */
+  private adjustable(): FabricImage[] {
+    return this.targets().filter((o): o is FabricImage => o.type === 'image')
+  }
+
   setFilters(specs: readonly ImageFilterSpec[], key = 'filters'): void {
     const list = normalizeSpecs(specs)
-    const imgs = this.images()
+    const imgs = this.adjustable()
     if (imgs.length === 0) return
     for (const img of imgs) {
       asDory(img).filterSpecs = list
@@ -293,7 +298,7 @@ export class StyleApi {
   }
 
   setFilter(type: ImageFilterType, value: number): void {
-    const imgs = this.images()
+    const imgs = this.adjustable()
     const current = asDory(imgs[0] ?? ({} as FabricObject)).filterSpecs
     this.setFilters(withSpec(current, type, value), `filter:${type}`)
   }

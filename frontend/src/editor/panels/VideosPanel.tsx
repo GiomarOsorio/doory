@@ -3,13 +3,14 @@
  * has a video provider. Guests are asked to sign up (clips are converted on the server, into an account's uploads);
  * a server without ffmpeg says it takes no videos.
  */
-import { useState } from 'react'
+import { useSyncExternalStore, useState } from 'react'
 import { useEditor } from '../context'
 import { useVideoInfo } from '../clips/assets'
 import type { PanelProps } from './registry'
 import { t } from '../strings'
 import { Button } from '../ui/Button'
 import { Skeleton } from '../ui/Skeleton'
+import ed from '../chrome/ed.module.css'
 import drawer from '../drawers/Drawers.module.css'
 import { VideoStockTab } from './VideoStockTab'
 import { VideoUploadsTab } from './VideoUploadsTab'
@@ -34,6 +35,21 @@ function VideoGate() {
         {t.clips.off.action}
       </Button>
     </div>
+  )
+}
+
+/** While "Replace video" waits for a pick: what the next pick does, and the way out. */
+function ReplacingNote() {
+  const editor = useEditor()
+  const replacing = useSyncExternalStore(editor.videos.subscribeReplacing, () => editor.videos.replacing)
+  if (!replacing) return null
+  return (
+    <p className={styles.replacing} role="status" data-testid="videos-replacing">
+      <span>{t.clips.replacing.title}</span>
+      <button type="button" className={`${ed.btn} ${ed.ghost}`} onClick={() => editor.videos.cancelReplace()}>
+        {t.clips.replacing.cancel}
+      </button>
+    </p>
   )
 }
 
@@ -62,6 +78,7 @@ export function VideosPanel(props: PanelProps) {
   const shown = hasStock ? tab : 'uploads'
   return (
     <div data-testid="videos-panel">
+      <ReplacingNote />
       {hasStock ? (
         <div className={drawer.tabs} role="tablist" aria-label={t.clips.tabs.label}>
           <button type="button" role="tab" className={drawer.tab} aria-selected={shown === 'uploads'} data-testid="video-tab-uploads" onClick={() => setTab('uploads')}>

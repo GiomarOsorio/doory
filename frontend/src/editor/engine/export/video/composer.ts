@@ -13,6 +13,7 @@ import type { ClipMediaFactory } from '../../../animation/clipSource'
 import { type FrameRenderer, createFrameRenderer } from '../../../animation/frameRenderer'
 import { sampleTransition } from '../../../animation/sampler'
 import { drawTransition } from '../../../animation/transitionRenderer'
+import { type ClipLook, drawWithLook } from '../../../clips/look'
 import { parseColor } from '../../colors'
 import type { LoadContext } from '../../serialization'
 import { type Rect, type Size, barColour, coversFrame, placePage } from './geometry'
@@ -62,6 +63,9 @@ export function isOpaquePage(page: Pick<DocPage, 'background'>): boolean {
   return false
 }
 
+/** The bars of `blur` fitting: the page scaled to cover the frame, strongly blurred and a little darker. */
+const BAR_LOOK: ClipLook = { css: 'brightness(0.85)', blur: 0.06, vignette: 0 }
+
 export class FrameComposer {
   private readonly out: HTMLCanvasElement
   private readonly outContext: CanvasRenderingContext2D
@@ -100,6 +104,12 @@ export class FrameComposer {
     ctx.globalCompositeOperation = 'source-over'
     ctx.fillStyle = entered.bars
     ctx.fillRect(0, 0, frame.width, frame.height)
+    if (this.options.fit === 'blur' && !entered.covers) {
+      const cover = Math.max(frame.width / bitmap.width, frame.height / bitmap.height)
+      const w = bitmap.width * cover
+      const h = bitmap.height * cover
+      drawWithLook(ctx, bitmap, (frame.width - w) / 2, (frame.height - h) / 2, w, h, BAR_LOOK)
+    }
     if (entered.covers) ctx.drawImage(bitmap, 0, 0, frame.width, frame.height)
     // Whole pixels: a bitmap drawn half a pixel off is blurred by the browser.
     else ctx.drawImage(bitmap, Math.round((frame.width - bitmap.width) / 2), Math.round((frame.height - bitmap.height) / 2))

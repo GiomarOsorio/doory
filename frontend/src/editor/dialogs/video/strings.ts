@@ -22,7 +22,7 @@ export const videoStrings = {
   quality: 'Quality',
   qualityOptions: { small: 'Smaller file', balanced: 'Balanced', high: 'Best' } as const,
   fit: 'Pages of another shape',
-  fitOptions: { fit: 'Fit, with bars', fill: 'Fill, crop' } as const,
+  fitOptions: { fit: 'Fit, with bars', blur: 'Fit, blurred bars', fill: 'Fill, crop' } as const,
   fitHint: 'Pages that are not the shape of the first page are fitted in the frame with bars, or fill it and are cropped.',
   pageTime: 'Time per page',
   pageTimeOptions: { own: 'As set on each page', same: 'The same for all' } as const,

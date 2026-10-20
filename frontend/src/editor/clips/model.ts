@@ -30,10 +30,16 @@ export const CLIP_PROPS = [
   'videoSpeed',
   'videoFadeInMs',
   'videoFadeOutMs',
+  'videoHideBefore',
+  'videoHideAfter',
+  'videoBackdropOf',
 ] as const
 
 /** The props that only time or mix the clip: changing one never needs the object rebuilt. */
-export const CLIP_TIMING_PROPS = CLIP_PROPS.filter((p) => p !== 'videoSrc' && p !== 'videoAudioSrc' && p !== 'videoFilmstrip')
+export const CLIP_TIMING_PROPS = CLIP_PROPS.filter((p) => p !== 'videoSrc' && p !== 'videoAudioSrc' && p !== 'videoFilmstrip' && p !== 'videoBackdropOf')
+
+/** The props a clip's blurred background follows: it shows the same picture at every moment. */
+export const BACKDROP_TIMING_PROPS = ['videoStartMs', 'videoTrimStartMs', 'videoTrimEndMs', 'videoLoop', 'videoSpeed', 'videoHideBefore', 'videoHideAfter'] as const
 
 /** The longest clip a design holds (the server's limit and the video export's). */
 export const MAX_CLIP_MS = 600_000
@@ -68,6 +74,14 @@ export interface Clip {
   speed: number
   fadeInMs: number
   fadeOutMs: number
+  /** Set on a clip's blurred background: the id of the clip it belongs to (it follows that clip's timing). */
+  backdropOf: string
+  /**
+   * The clip is not shown before it starts / after it ends (instead of standing on its first / last picture): the
+   * parts of a split clip, which take turns in the same place.
+   */
+  hideBefore: boolean
+  hideAfter: boolean
 }
 
 const isNumber = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v)
@@ -124,6 +138,9 @@ export function readClip(obj: Record<string, unknown>): Clip | null {
     speed: isNumber(obj.videoSpeed) ? clamp(obj.videoSpeed, MIN_SPEED, MAX_SPEED) : 1,
     fadeInMs: wholeMs(obj.videoFadeInMs, 0, MAX_FADE_MS, 0),
     fadeOutMs: wholeMs(obj.videoFadeOutMs, 0, MAX_FADE_MS, 0),
+    backdropOf: typeof obj.videoBackdropOf === 'string' && obj.videoBackdropOf.length <= 64 ? obj.videoBackdropOf : '',
+    hideBefore: obj.videoHideBefore === true,
+    hideAfter: obj.videoHideAfter === true,
   }
 }
 
@@ -147,6 +164,12 @@ export function clipTimeAt(clip: Pick<Clip, 'startMs' | 'trimStartMs' | 'trimEnd
   if (!(played > 0)) return clip.trimStartMs
   if (clip.loop) return clip.trimStartMs + (played % span)
   return clip.trimStartMs + Math.min(played, span)
+}
+
+/** True when the clip is shown at `pageMs`: always, unless it hides outside the time it plays (a split part). */
+export function clipShownAt(clip: Clip, pageMs: number): boolean {
+  if (clip.hideBefore && pageMs < clip.startMs) return false
+  return !(clip.hideAfter && pageMs >= clipEndMs(clip))
 }
 
 /** True while the clip moves at `pageMs` (between its start and its end). */

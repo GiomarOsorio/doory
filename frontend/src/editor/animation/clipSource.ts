@@ -9,6 +9,11 @@ export interface ClipMedia {
   url: string
   /** How fast it plays (1: its own speed). */
   speed: number
+  /**
+   * Clips with the same key show the same picture at every moment (one clip and its blurred background): they
+   * share one source, so the file is decoded once.
+   */
+  share?: string
 }
 
 export interface ClipFrameSource {
@@ -32,3 +37,44 @@ export interface ClipFrameSource {
 
 /** Makes the source of one clip; `onFrame` is called when a new picture arrived on its own (a seek landed). */
 export type ClipMediaFactory = (media: ClipMedia, onFrame: () => void) => ClipFrameSource
+
+/**
+ * Wraps a factory so that clips with the same `share` key get one source between them. Each clip still disposes
+ * its own handle; the source goes when the last one does.
+ */
+export function sharedSources(factory: ClipMediaFactory): ClipMediaFactory {
+  const shared = new Map<string, { source: ClipFrameSource; users: number }>()
+  return (media, onFrame) => {
+    const key = media.share
+    if (!key) return factory(media, onFrame)
+    let entry = shared.get(key)
+    if (!entry) {
+      entry = { source: factory(media, onFrame), users: 0 }
+      shared.set(key, entry)
+    }
+    entry.users++
+    const { source } = entry
+    let released = false
+    return {
+      get version() {
+        return source.version
+      },
+      want: (ms, moving) => source.want(ms, moving),
+      ready: (ms) => source.ready(ms),
+      frame: () => source.frame(),
+      setClock: (playing, rate) => source.setClock(playing, rate),
+      suspend: () => source.suspend(),
+      dispose: () => {
+        if (released) return
+        released = true
+        const current = shared.get(key)
+        if (!current) return
+        current.users--
+        if (current.users <= 0) {
+          shared.delete(key)
+          current.source.dispose()
+        }
+      },
+    }
+  }
+}

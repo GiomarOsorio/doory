@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { AssetRef } from '@/types/adapter'
-import { clipEndMs, clipLengthMs, clipPropsFromAsset, clipTimeAt, isClip, pageClipTiming, readClip } from './model'
+import { clipEndMs, clipLengthMs, clipPropsFromAsset, clipShownAt, clipTimeAt, isClip, pageClipTiming, readClip } from './model'
 
 const clipObject = (extra: Record<string, unknown> = {}) => ({ id: 'c', type: 'image', src: '/media/p.webp', videoSrc: '/media/c.mp4', videoDurationMs: 10_000, ...extra })
 
@@ -50,6 +50,17 @@ describe('clip time', () => {
     const fast = { ...clip, speed: 2 }
     expect(clipLengthMs(fast)).toBe(2000)
     expect(clipTimeAt(fast, 1500)).toBe(3000)
+  })
+})
+
+describe('when a clip shows', () => {
+  it('always, unless it is a split part that stands aside outside its own time', () => {
+    const clip = readClip(clipObject({ videoStartMs: 1000, videoTrimEndMs: 3000 }))!
+    expect([0, 2000, 9000].map((t) => clipShownAt(clip, t))).toEqual([true, true, true])
+    const later = { ...clip, hideBefore: true }
+    expect([0, 999, 1000, 9000].map((t) => clipShownAt(later, t))).toEqual([false, false, true, true])
+    const earlier = { ...clip, hideAfter: true }
+    expect([0, 3999, 4000].map((t) => clipShownAt(earlier, t))).toEqual([true, true, false])
   })
 })
 

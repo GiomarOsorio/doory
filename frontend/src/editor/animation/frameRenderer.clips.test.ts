@@ -84,7 +84,7 @@ describe('video clips in the frame renderer', () => {
     const media: ClipMediaFactory = vi.fn(() => fake.source)
     const renderer = await createFrameRenderer(page([clip()]), SIZE, ctx, { multiplier: 1, media })
     expect(renderer.hasClips).toBe(true)
-    expect(media).toHaveBeenCalledWith({ url: '/media/c.mp4', speed: 1 }, expect.any(Function))
+    expect(media).toHaveBeenCalledWith(expect.objectContaining({ url: '/media/c.mp4', speed: 1 }), expect.any(Function))
     // No picture yet: the poster (blank here).
     expect(pixelAt(renderer.render(0), 30, 20)).toEqual([255, 255, 255])
     fake.show('#0000ff')
@@ -124,6 +124,15 @@ describe('video clips in the frame renderer', () => {
     expect(fake.source.setClock).toHaveBeenCalledWith(true, 2)
     renderer.suspendMedia()
     expect(fake.source.suspend).toHaveBeenCalled()
+    renderer.dispose()
+    expect(fake.state.disposed).toBe(true)
+  })
+
+  it('decodes a clip once for itself and its blurred background', async () => {
+    const fake = fakeSource()
+    const media = vi.fn(() => fake.source)
+    const renderer = await createFrameRenderer(page([clip({ id: 'backdrop', videoBackdropOf: 'clip' }), clip()]), SIZE, ctx, { multiplier: 1, media })
+    expect(media).toHaveBeenCalledTimes(1)
     renderer.dispose()
     expect(fake.state.disposed).toBe(true)
   })

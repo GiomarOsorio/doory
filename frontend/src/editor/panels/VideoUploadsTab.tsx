@@ -101,7 +101,7 @@ export function VideoUploadsTab({ close, service, info }: PanelProps & { service
   }, [processing, service])
 
   const place = (clip: AssetRef): void => {
-    void editor.videos.fromAsset(clip)
+    void editor.videos.use(clip)
     close()
   }
 
@@ -124,7 +124,7 @@ export function VideoUploadsTab({ close, service, info }: PanelProps & { service
           onProgress: (fraction) => setSending((cur) => cur.map((x) => (x.key === key ? { ...x, fraction } : x))),
         })
         setAdded((cur) => [ref, ...cur.filter((a) => a.id !== ref.id)])
-        if (ref.video?.status === 'ready') await editor.videos.fromAsset(ref)
+        if (ref.video?.status === 'ready') await editor.videos.use(ref)
       } catch (err) {
         if (!alive.current.signal.aborted) setError(isApiError(err) && err.message ? err.message : s.uploadFailed(file.name))
       } finally {
