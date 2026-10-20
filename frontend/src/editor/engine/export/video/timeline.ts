@@ -14,7 +14,7 @@
 import type { DocPage, PageTransition } from '@/types/document'
 import { pageTiming } from '../../../animation/model'
 import { playableTransition } from '../../../animation/sampler'
-import { DEFAULT_DURATION_SEC, pageDuration } from '../../../presenter/timing'
+import { pageSeconds } from '../../../presenter/timing'
 import type { PageSize } from '../../docOps'
 
 export interface PageRef {
@@ -60,8 +60,8 @@ export interface TimelineOptions {
 /** Whole milliseconds, so that every boundary of the timeline is an integer and the scheduler needs no tolerance. */
 const whole = (ms: number): number => Math.max(0, Math.round(ms))
 
-export function holdSecondsOf(page: Pick<DocPage, 'durationSec'>, options: TimelineOptions): number {
-  return options.pageSeconds ?? pageDuration(page) ?? DEFAULT_DURATION_SEC
+export function holdSecondsOf(page: Pick<DocPage, 'durationSec' | 'objects'>, options: TimelineOptions): number {
+  return options.pageSeconds ?? pageSeconds(page)
 }
 
 /** Compiles the pages (in the order they play) into segments. The first page has no transition. */

@@ -26,6 +26,7 @@ import { normalizeColor } from '../colors'
 import type { ImageFilterType } from '@/types/document'
 import { coverFrame } from './insert'
 import { t } from '../../strings'
+import { isLiveClip } from './videos'
 
 /** The normalised URL when `raw` is an absolute http(s) address, otherwise null. */
 export function safeLinkUrl(raw: string): string | null {
@@ -275,8 +276,9 @@ export class StyleApi {
 
   /* ----------------------------------------------------------------- images */
 
+  /** The selected pictures; video clips are left out (filters and cut-outs would only change their poster). */
   private images(): FabricImage[] {
-    return this.targets().filter((o): o is FabricImage => o.type === 'image')
+    return this.targets().filter((o): o is FabricImage => o.type === 'image' && !isLiveClip(o))
   }
 
   setFilters(specs: readonly ImageFilterSpec[], key = 'filters'): void {
@@ -320,7 +322,7 @@ export class StyleApi {
    * fills it with the placeholder's own shape as the frame) or clears the mark. Lines cannot be placeholders.
    */
   setPlaceholder(on: boolean): void {
-    const objs = this.targets().filter((o) => !(o instanceof DoryLine))
+    const objs = this.targets().filter((o) => !(o instanceof DoryLine) && !isLiveClip(o))
     if (objs.length === 0) return
     for (const o of objs) {
       asDory(o).isPlaceholder = on ? true : undefined

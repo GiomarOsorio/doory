@@ -15,6 +15,7 @@ import { validSlot } from './slot'
 import { readTextFit, refitTextbox, validFitFontSize } from './textStyle'
 import { qrDataUrl } from './qr'
 import { t } from '../../strings'
+import { CLIP_PROPS, isClip } from '../../clips/model'
 
 
 const TEXT_TYPES = new Set(['textbox', 'itext', 'text'])
@@ -77,6 +78,20 @@ export function registerBuiltinKinds(): void {
     hydrate(obj) {
       const map = asDory(obj).colorMap
       if (map) applyColorMap(obj, map)
+    },
+  })
+
+  // A video clip is a picture (its poster) that names a clip; it ranks above `image` so picture tools leave it alone.
+  registerObjectKind({
+    id: 'video',
+    label: t.kinds.video,
+    priority: 60,
+    matches: (o) => isClip(o),
+    extraProps: [...CLIP_PROPS],
+    prepare: prepareImage,
+    hydrate: (obj) => applyMask(obj),
+    dehydrate(out) {
+      delete out.filters
     },
   })
 
