@@ -34,8 +34,10 @@ export interface BackgroundRemovalModel {
 
 export interface AppConfig {
   google_client_id: string
+  /** Text of the single sign-on button; absent on servers that predate it. */
+  oidc_button_label?: string
   /** `background_removal` (and `ai_providers`, …) are absent on servers that predate them. */
-  features: { stock_photos: boolean; server_pdf: boolean; google_login: boolean; email_verification: boolean; background_removal?: boolean; realtime?: boolean; mcp?: boolean; ai_providers?: boolean }
+  features: { stock_photos: boolean; server_pdf: boolean; google_login: boolean; oidc_login?: boolean; email_verification: boolean; background_removal?: boolean; realtime?: boolean; mcp?: boolean; ai_providers?: boolean }
   limits: { max_upload_bytes: number; max_pages: number; max_document_bytes: number; realtime_max_participants?: number; bulk_fill_max_rows?: number }
   /** Files the browser downloads at run time; absent on servers that predate it. */
   assets?: { background_removal_model: BackgroundRemovalModel | null }
@@ -84,6 +86,7 @@ export interface ApiUser {
   is_email_verified: boolean
   has_password: boolean
   google_linked: boolean
+  oidc_linked: boolean
   created_at: string
 }
 

@@ -4,9 +4,10 @@ import type { ApiUser } from '@/types/api'
 import { useAuth } from './AuthProvider'
 import { describeFormError } from './errors'
 import { GoogleButton } from './GoogleButton'
-import { GoogleDivider } from './LoginForm'
+import { SignInDivider } from './LoginForm'
 import { evaluatePassword } from './password'
 import { PasswordInput } from './PasswordInput'
+import { SsoButton } from './SsoButton'
 import styles from './AuthForms.module.css'
 
 export interface SignupFormProps {
@@ -14,11 +15,13 @@ export interface SignupFormProps {
   autoFocus?: boolean
   /** The optional name field is left out of the compact modal version. */
   showName?: boolean
+  /** Where single sign-on comes back to (by default, this page). */
+  ssoNext?: string
 }
 
 const FIELDS = ['email', 'password', 'display_name'] as const
 
-export function SignupForm({ onSuccess, autoFocus = true, showName = true }: SignupFormProps) {
+export function SignupForm({ onSuccess, autoFocus = true, showName = true, ssoNext }: SignupFormProps) {
   const { signup, google } = useAuth()
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
@@ -72,7 +75,8 @@ export function SignupForm({ onSuccess, autoFocus = true, showName = true }: Sig
           Create free account
         </Button>
       </form>
-      <GoogleDivider />
+      <SignInDivider />
+      <SsoButton next={ssoNext} />
       <GoogleButton onCredential={handleGoogle} text="signup_with" />
     </div>
   )
