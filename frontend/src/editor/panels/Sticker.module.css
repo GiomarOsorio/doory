@@ -14,7 +14,7 @@
 }
 .search:focus-within {
   border-color: var(--ed-accent);
-  box-shadow: 0 0 0 3px var(--ed-accent-glow);
+  box-shadow: var(--ed-focus-glow);
 }
 .searchIcon {
   position: absolute;
@@ -57,6 +57,10 @@
   background: var(--ed-border);
   color: var(--ed-text);
 }
+/* High contrast: the border colour is a mid-tone there, too dark to put the icon on. */
+:global(:root[data-contrast='more']) .clear:hover {
+  background: var(--color-brand-soft-hover);
+}
 .clear:focus-visible {
   outline: none;
   box-shadow: var(--focus-ring);
@@ -90,7 +94,7 @@
 .categoryBtn.open {
   outline: none;
   border-color: var(--ed-accent);
-  box-shadow: 0 0 0 3px var(--ed-accent-glow);
+  box-shadow: var(--ed-focus-glow);
 }
 .categoryBtn:disabled {
   opacity: 0.6;
@@ -146,6 +150,10 @@
 .menu button:focus-visible {
   outline: none;
   background: var(--ed-surface-2);
+}
+/* High contrast: keyboard focus gets the focus ring, apart from the outline on the selected option. */
+:global(:root[data-contrast='more']) .menu button:focus-visible {
+  box-shadow: inset var(--focus-ring);
 }
 .menu button.active {
   background: var(--ed-accent-glow);

@@ -278,7 +278,7 @@
 .select[aria-expanded='true'] {
   outline: none;
   border-color: var(--ed-accent);
-  box-shadow: 0 0 0 3px var(--ed-accent-glow);
+  box-shadow: var(--ed-focus-glow);
 }
 .select:disabled {
   opacity: 0.5;
@@ -311,7 +311,7 @@
 }
 .stepper:focus-within {
   border-color: var(--ed-accent);
-  box-shadow: 0 0 0 3px var(--ed-accent-glow);
+  box-shadow: var(--ed-focus-glow);
 }
 .stepBtn {
   width: 28px;
@@ -391,7 +391,7 @@
 .propInput:focus {
   outline: none;
   border-color: var(--ed-accent);
-  box-shadow: 0 0 0 3px var(--ed-accent-glow);
+  box-shadow: var(--ed-focus-glow);
 }
 .propInput[aria-invalid='true'] {
   border-color: var(--ed-danger);
@@ -486,6 +486,10 @@
   outline: none;
   background: var(--ed-surface-hover);
 }
+/* High contrast: keyboard focus gets a ring, not only the faint hover wash. */
+:global(:root[data-contrast='more']) .menuItem:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--ed-text);
+}
 .menuItem:disabled {
   opacity: 0.45;
   cursor: default;
@@ -493,6 +497,13 @@
 .menuItem[aria-checked='true'] {
   background: var(--ed-accent-glow);
   font-weight: 600;
+}
+/* High contrast: these lists have no tick, so the checked item gets a bar on its left, apart from the focus ring. */
+:global(:root[data-contrast='more']) .menuItem[aria-checked='true'] {
+  box-shadow: inset 4px 0 0 var(--ed-text);
+}
+:global(:root[data-contrast='more']) .menuItem[aria-checked='true']:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--ed-text), inset 4px 0 0 var(--ed-text);
 }
 .menuItem > span {
   color: var(--ed-text-dim);
