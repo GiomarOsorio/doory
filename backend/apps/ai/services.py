@@ -306,11 +306,13 @@ class TestResult:
 
 
 def _preview(png: bytes) -> str:
-    image = Image.open(BytesIO(png))
-    image.thumbnail((PREVIEW_SIDE, PREVIEW_SIDE))
-    out = BytesIO()
-    image.save(out, "PNG")
-    return "data:image/png;base64," + base64.b64encode(out.getvalue()).decode("ascii")
+    with Image.open(BytesIO(png)) as image:
+        image.thumbnail((PREVIEW_SIDE, PREVIEW_SIDE))
+        out = BytesIO()
+        image.save(out, "PNG")
+        data = out.getvalue()
+        out.close()
+    return "data:image/png;base64," + base64.b64encode(data).decode("ascii")
 
 
 def first_model(provider: Provider | EnvProvider, task: str) -> str:
