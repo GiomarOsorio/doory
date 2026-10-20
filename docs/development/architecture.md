@@ -44,7 +44,7 @@ read from the environment must have a row in [configuration.md](../self-hosting/
 | `app/` | App shell, routing, providers |
 | `pages/` | Route-level pages |
 | `features/` | Non-editor features: auth, dashboard, templates, settings, brand, uploads, … |
-| `editor/` | The editor: `engine/` (drawing), `panels/`, `toolbar/`, `collab/`, `animation/`, `presenter/`, `headless/` (the render page used by server-side image export), … |
+| `editor/` | The editor: `engine/` (drawing), `panels/`, `toolbar/`, `collab/`, `animation/`, `clips/` (video clips: timing, sources, sound), `presenter/`, `headless/` (the render page used by server-side image export), … |
 | `ui/`, `lib/`, `styles/` | Shared components, helpers and styles |
 
 Besides `index.html`, the frontend builds two more entry pages: `presenter-view.html` (the second presenter

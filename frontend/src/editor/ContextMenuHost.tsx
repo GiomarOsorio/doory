@@ -37,6 +37,7 @@ export function ContextMenuHost() {
     if (lock) list.push(lock)
     if (selection.ids.length === 1 && selection.kinds[0] === 'image') list.push(sep('s3'), ...pick('image.replace', 'image.crop'))
     else if (selection.ids.length === 1 && selection.kinds[0] === 'placeholder') list.push(sep('s3'), ...pick('image.replace'))
+    else if (selection.ids.length === 1 && selection.kinds[0] === 'video') list.push(sep('s3'), ...pick('image.crop', 'video.detachAudio', 'video.background'))
     return list
   }, [menu, selection, editor])
 
