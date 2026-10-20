@@ -3,7 +3,7 @@
  * visibility, naming, nudging and numeric position/size. Every method operates on the current selection
  * (or an explicit id) of the active page and ends in one history step.
  */
-import { ActiveSelection, type FabricObject, Group, Point } from 'fabric'
+import { ActiveSelection, FabricImage, type FabricObject, Group, IText, Point } from 'fabric'
 import { type Delta, type AlignEdge, type DistributeAxis, alignItems, distributeItems, selectionBounds, tidyItems } from '../align'
 import type { EditorEngine } from '../editor'
 import { type Rect, normalizeAngle } from '../geometry'
@@ -11,6 +11,7 @@ import { asDory, ensureId, isLocked } from '../objects/dory'
 import { bakeInPlace } from '../objects/bake'
 import { anchorFrames, carriedPictures, clampSlotImage, followFrames, hasSlot, mirrorSlot, shiftSlot } from '../objects/slot'
 import { getExtraProps } from '../serialization'
+import { coverFrame } from './insert'
 import { isFiniteNumber } from '../numbers'
 import { type ZMode, moveId, reorderIds } from '../zorder'
 import { objectRect } from '../pageCanvas'
@@ -416,6 +417,34 @@ export class ArrangeApi {
     active.setCoords()
     view.canvas.requestRenderAll()
     this.done(t.history.move, 'position')
+  }
+
+  /**
+   * Makes the selected object, unrotated, cover the whole page: a picture is scaled and cropped, a shape stretched.
+   * Text is left alone, since stretching it would only blow up the font.
+   */
+  fitToPage(): void {
+    const view = this.view
+    const active = view?.canvas.getActiveObject()
+    if (!view || !active || isLocked(active) || active instanceof ActiveSelection || active instanceof IText) return
+    const page = this.engine.pageSizeOf(this.engine.state.activePageId)
+    const border = active.strokeUniform ? active.strokeWidth || 0 : 0
+    this.carrying(active, () => {
+      active.rotate(0)
+      if (active instanceof FabricImage && !hasSlot(active)) {
+        coverFrame(active, page.width, page.height)
+      } else {
+        const w0 = Math.max(1, (active.getScaledWidth() || 1) - border)
+        const h0 = Math.max(1, (active.getScaledHeight() || 1) - border)
+        active.set({ scaleX: (active.scaleX * Math.max(1, page.width - border)) / w0, scaleY: (active.scaleY * Math.max(1, page.height - border)) / h0 })
+        bakeInPlace(active)
+      }
+      active.setPositionByOrigin(new Point(page.width / 2, page.height / 2), 'center', 'center')
+    })
+    clampSlotImage(active)
+    active.setCoords()
+    view.canvas.requestRenderAll()
+    this.done(t.history.fitToPage)
   }
 
   /** Sets the (unrotated) size, keeping the centre fixed. Optionally keeps the aspect ratio. */
