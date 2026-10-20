@@ -47,6 +47,8 @@ MAX_PROBE_OUTPUT = 256 * 1024
 MAX_DIMENSION = 8192
 MAX_WIDTH, MAX_HEIGHT = 1920, 1080  # landscape; a portrait clip may be 1080 by 1920
 MAX_FPS = 60
+MAX_SOURCE_FPS = 240
+VARIABLE_RATE_FPS = 30  # the rate a clip that names none (a browser recording) is converted at
 POSTER_MAX_SIDE = 1920
 POSTER_QUALITY = 88
 STRIP_HEIGHT = 90
@@ -263,9 +265,10 @@ def read_probe(data: dict, size: int) -> VideoInfo:
         minutes = settings.MAX_VIDEO_DURATION_SECONDS / 60
         raise VideoError(f"The video is too long: clips can be at most {minutes:g} minutes.")
     real, average = _rate(video.get("r_frame_rate")), _rate(video.get("avg_frame_rate"))
-    fps = average or real
-    if not 0 < fps <= 240:
-        raise VideoError("The video's frame rate is not supported.")
+    # Browser and screen recordings (MediaRecorder WebM) name no average and the time base (1000 fps)
+    # as the "real" rate: such a clip has a variable rate and is converted at a steady one.
+    sane = [rate for rate in (average, real) if 0 < rate <= MAX_SOURCE_FPS]
+    fps = sane[0] if sane else VARIABLE_RATE_FPS
     rotation = _rotation(video)
     if rotation in (90, 270):
         width, height = height, width
@@ -279,7 +282,7 @@ def read_probe(data: dict, size: int) -> VideoInfo:
         codec=codec,
         pix_fmt=str(video.get("pix_fmt", "")),
         rotation=rotation,
-        constant_rate=bool(real and average and abs(real - average) / real < 0.01),
+        constant_rate=bool(sane and real and average and abs(real - average) / real < 0.01),
         has_audio=bool(audios),
         audio_codec=str(audios[0].get("codec_name", "")) if audios else "",
         hdr=transfer in ("smpte2084", "arib-std-b67") or str(video.get("color_primaries", "")) == "bt2020",

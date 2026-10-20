@@ -87,12 +87,18 @@ class TestReadProbe:
                 "picture",
             ),
             (described(width=9000), "size"),
-            (described(r_frame_rate="0/0", avg_frame_rate="0/0"), "frame rate"),
         ],
     )
     def test_refused(self, data, message):
         with pytest.raises(video.VideoError, match=message):
             video.read_probe(data, 1)
+
+    @pytest.mark.parametrize(("real", "average"), [("1000/1", "0/0"), ("0/0", "0/0"), ("1000/1", "1000/1")])
+    def test_a_browser_recording_is_converted_at_a_steady_rate(self, real, average):
+        clip = info(codec_name="vp8", r_frame_rate=real, avg_frame_rate=average)
+        assert (clip.fps, clip.constant_rate, clip.web_ready) == (30, False, False)
+        args = video.transcode_args(video.Path("in"), video.Path("out.mp4"), clip)
+        assert "fps=30.000" in args[args.index("-vf") + 1]
 
     def test_a_cover_picture_is_not_a_video_stream(self):
         data = {
