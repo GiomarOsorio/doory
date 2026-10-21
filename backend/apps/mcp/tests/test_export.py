@@ -33,6 +33,7 @@ DEFAULTS = {
     "strip_metadata": True,
     "srgb": True,
     "progressive": False,
+    "optimize": False,
 }
 
 
@@ -131,6 +132,7 @@ def test_the_new_options_are_passed_on(as_caller, design, renders):
         strip_metadata=False,
         srgb=False,
         progressive=True,
+        optimize="kraken",
     )
     assert renders[-1] | {"design": None} == {
         "design": None,
@@ -145,7 +147,31 @@ def test_the_new_options_are_passed_on(as_caller, design, renders):
         "strip_metadata": False,
         "srgb": False,
         "progressive": True,
+        "optimize": "kraken",
     }
+
+
+def test_the_optimizer_and_the_size_before_are_reported(as_caller, design, monkeypatch):
+    def fake_export_image(design, **options):
+        return ImageResult(
+            data=IMAGE,
+            format="png",
+            mime="image/png",
+            width=400,
+            height=200,
+            page_id="p",
+            page_index=0,
+            options_used={
+                "format": "png",
+                "optimizer": "builtin",
+                "optimized": True,
+                "bytes_before_optimizing": 999,
+            },
+        )
+
+    monkeypatch.setattr(services, "export_image", fake_export_image)
+    info = info_of(export.export_design(str(design.pk), optimize=True))
+    assert (info["optimizer"], info["bytes_before_optimizing"], info["bytes"]) == ("builtin", 999, len(IMAGE))
 
 
 def test_avif_is_always_a_link(as_caller, design, renders):

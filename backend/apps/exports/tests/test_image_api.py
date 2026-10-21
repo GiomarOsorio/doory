@@ -24,6 +24,7 @@ DEFAULTS = {
     "strip_metadata": True,
     "srgb": True,
     "progressive": False,
+    "optimize": False,
 }
 
 
@@ -194,6 +195,7 @@ def test_the_new_options_are_passed_on(client, design, renders):
         "strip_metadata": False,
         "srgb": False,
         "progressive": True,
+        "optimize": "tinypng",
     }
     response = client.post(url(design), body, format="json")
     assert response.status_code == 200
@@ -202,6 +204,9 @@ def test_the_new_options_are_passed_on(client, design, renders):
     assert renders[-1] == {"page": 0, **DEFAULTS, **body}
     client.post(url(design), {"format": "auto", "quality": 70, "png_colors": "full"}, format="json")
     assert renders[-1] | {"page": None} == {"page": None, **DEFAULTS, "format": "auto", "quality": 70}
+    client.post(url(design), {"optimize": True}, format="json")
+    assert renders[-1]["optimize"] is True
+    assert client.post(url(design), {"optimize": 3}, format="json").status_code == 400
 
 
 def test_several_pages_come_back_as_one_zip(client, user, renders):

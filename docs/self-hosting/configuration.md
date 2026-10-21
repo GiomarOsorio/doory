@@ -40,6 +40,7 @@ add a row to the matching section (see [CONTRIBUTING.md](../../CONTRIBUTING.md#d
 | `WEB_PORT` | `8080` | Port the site is published on |
 | `WEB_BIND` | `0.0.0.0` | Interface the port is published on. Use `127.0.0.1` when a reverse proxy on the same host sits in front |
 | `INSTALL_CHROMIUM` | `true` | Build a headless Chromium into the image, needed for [server-side export](image-export.md) (adds about 400 MB) |
+| `INSTALL_IMAGE_OPTIMIZERS` | `true` | Build mozjpeg and oxipng into the image for the built-in [image optimizer](../integrations/image-optimization.md) (adds about 2 MB) |
 | `COMPOSE_PROFILES` | | Optional services to start: `mcp`, `redis`, or both (`mcp,redis`) |
 | `REALTIME_WORKERS` | `1` | Workers of the `realtime` service. Use more than 1 only together with Redis |
 | `REALTIME_MEM_LIMIT` | `2g` | Memory limit of the `realtime` service |
@@ -116,6 +117,23 @@ See [image-export.md](image-export.md).
 | `EXPORT_ALLOWED_ORIGINS` | `SITE_URL`, `http://127.0.0.1:8000` and `http://localhost:8000` | Origins Chromium may load `/media/` and `/static/` files from during an export |
 | `EXPORT_FILENAME_STYLE` | `simple` | Default file names: `simple` (`summer-sale-02.png`) or `structured` (`summer-sale_platform_preset_1080x1920_p02.png`). People can change this in the download dialog |
 | `EXPORT_FILENAME_TIMESTAMP` | `false` | End structured file names with the Unix time of the export |
+
+## Image optimization
+
+See [image-optimization.md](../integrations/image-optimization.md).
+
+| Setting | Default | What it does |
+|---------|---------|--------------|
+| `IMAGE_OPTIMIZERS` | `builtin` | Optimizers people may pick, in order, comma separated: `builtin`, `tinypng`, `kraken`, `custom`. One that isn't set up is left out. Empty: no optimizing |
+| `IMAGE_OPTIMIZER_DEFAULT` | `builtin` | The optimizer `optimize: true` uses |
+| `IMAGE_OPTIMIZER_TIMEOUT` | `30` | Time limit in seconds for optimizing one file. When it runs out, the file is kept unoptimized |
+| `IMAGE_OPTIMIZER_MAX_BYTES` | `26214400` (25 MB) | Largest file optimized, and the largest PNG `POST /api/v1/exports/optimize/` takes |
+| `TINYPNG_API_KEY` | | TinyPNG API key |
+| `KRAKEN_API_KEY` | | Kraken.io API key |
+| `KRAKEN_API_SECRET` | | Kraken.io API secret |
+| `IMAGE_OPTIMIZER_CUSTOM_NAME` | `Custom` | The name people see for the custom optimizer |
+| `IMAGE_OPTIMIZER_CUSTOM_URL` | | Address of an optimizer that follows the [custom contract](../integrations/image-optimization.md#custom-optimizer-contract) |
+| `IMAGE_OPTIMIZER_CUSTOM_KEY` | | Sent to the custom optimizer as `Authorization: Bearer …`. Empty: no header |
 
 ## Size presets
 

@@ -27,7 +27,7 @@ All three backend entry points share the same code, settings and database. See t
 | `core` | Site-wide config endpoint, background-removal models (`sync_models`) |
 | `designs` | Designs, folders, trash (`purge_trash`), version history |
 | `elements` | Element library: shapes, icons, emoji, illustrations (`seed_elements`, `sync_element_packs`) |
-| `exports` | Server-side PDF and image export with headless Chromium (`purge_exports`) |
+| `exports` | Server-side PDF and image export with headless Chromium (`purge_exports`); image optimizers (built-in, TinyPNG, Kraken.io, custom) and the optimize endpoint for browser downloads |
 | `fonts` | Font catalogue and user fonts (`sync_fonts`) |
 | `gallery` | Templates and categories (`seed_gallery`, `seed_templates`, `import_template`) |
 | `mcp` | The MCP server: tools, resources, prompts, token authentication |

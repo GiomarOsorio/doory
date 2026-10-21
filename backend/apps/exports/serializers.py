@@ -179,6 +179,8 @@ class PngColorsField(serializers.Field):
     def to_internal_value(self, data):
         if data == "full":
             return None
+        if isinstance(data, str) and data.isdigit():  # a multipart form field
+            data = int(data)
         if isinstance(data, bool) or not isinstance(data, int) or not 2 <= data <= 256:
             self.fail("invalid")
         return data
@@ -217,6 +219,27 @@ class PagesField(serializers.Field):
         return value
 
 
+@extend_schema_field(
+    {"oneOf": [{"type": "boolean"}, {"type": "string", "enum": ["builtin", "tinypng", "kraken", "custom"]}]}
+)
+class OptimizeField(serializers.Field):
+    """false, true (the server's default optimizer) or an optimizer's id; GET /api/v1/config/ lists those
+    offered (`features.image_optimize`)."""
+
+    default_error_messages = {"invalid": "Give true, false or the id of an image optimizer."}
+
+    def to_internal_value(self, data):
+        if isinstance(data, bool):
+            return data
+        if isinstance(data, str) and 0 < len(data.strip()) <= 40:
+            text = data.strip().lower()
+            return {"true": True, "false": False}.get(text, text)
+        self.fail("invalid")
+
+    def to_representation(self, value):
+        return value
+
+
 class ImageExportSerializer(serializers.Serializer):
     page = PageRefField(required=False, default=None, allow_null=True)
     pages = PagesField(required=False, default=None, allow_null=True)
@@ -233,3 +256,24 @@ class ImageExportSerializer(serializers.Serializer):
     file_names = serializers.ChoiceField(choices=list(FILE_NAMES), required=False)
     filename_style = serializers.ChoiceField(choices=list(STYLES), required=False)
     filename_timestamp = serializers.BooleanField(required=False)
+    optimize = OptimizeField(default=False)
+
+
+class ImageOptimizeSerializer(serializers.Serializer):
+    """The fields of `POST /api/v1/exports/optimize/` next to the `file` (a PNG)."""
+
+    format = serializers.ChoiceField(choices=["png", "jpg", "jpeg", "webp", "avif", "auto"], default="png")
+    quality = QualityField(default=90)
+    max_bytes = serializers.IntegerField(min_value=1, required=False, default=None, allow_null=True)
+    transparent = serializers.BooleanField(default=False)
+    png_colors = PngColorsField(default=None, allow_null=True)
+    strip_metadata = serializers.BooleanField(default=True)
+    srgb = serializers.BooleanField(default=True)
+    progressive = serializers.BooleanField(default=False)
+    optimize = OptimizeField(default=True)
+
+
+class ImageOptimizeDocumentation(ImageOptimizeSerializer):
+    """OpenAPI description of the multipart body."""
+
+    file = serializers.FileField(help_text="The image the browser drew, as a PNG.")

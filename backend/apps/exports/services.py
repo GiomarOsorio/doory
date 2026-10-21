@@ -19,7 +19,7 @@ from typing import Any
 
 from django.conf import settings
 from django.db.models.functions import Lower
-from PIL import Image, features
+from PIL import Image, UnidentifiedImageError, features
 
 from apps.core.svg import SvgError, sanitize_svg
 from apps.designs.edits import current_document
@@ -27,6 +27,7 @@ from apps.fonts.models import FontFamily
 from apps.fonts.serializers import FontFamilySerializer, with_variants
 from apps.fonts.usage import font_names_in_document, uploaded_fonts_used_by
 
+from . import optimizers
 from .exceptions import ExportFailed, ExportUnavailable, ImageExportDisabled, InvalidExport, PayloadTooLarge
 from .filenames import export_filename, page_filename
 from .fonts import load_fonts
@@ -232,6 +233,40 @@ def _whole(value, low: int, high: int | None = None) -> bool:
     )
 
 
+def _encoding(
+    format: str,
+    quality: int | str,
+    *,
+    transparent: bool,
+    max_bytes: int | None,
+    png_colors: int | None,
+    strip_metadata: bool,
+    srgb: bool,
+    progressive: bool,
+) -> Encoding:
+    """The checked `Encoding` of an export's options; InvalidExport for one that is out of range."""
+    fmt = FORMAT_ALIASES.get(str(format).lower(), str(format).lower())
+    if fmt not in (*IMAGE_FORMATS, AUTO):
+        raise InvalidExport("invalid_format", "The format must be png, jpg, webp, avif or auto.")
+    if fmt != AUTO and fmt not in image_formats():
+        raise InvalidExport("format_unavailable", f"This server can't make {fmt.upper()} images.")
+    quality = _quality(quality)
+    if max_bytes is not None and not _whole(max_bytes, 1):
+        raise InvalidExport("invalid_max_bytes", "max_bytes must be a whole number of bytes, 1 or more.")
+    if png_colors is not None and not _whole(png_colors, 2, 256):
+        raise InvalidExport("invalid_png_colors", "png_colors must be a whole number from 2 to 256.")
+    return Encoding(
+        format=fmt,
+        quality=quality,
+        transparent=bool(transparent) and fmt != "jpg",
+        max_bytes=max_bytes,
+        png_colors=png_colors,
+        strip_metadata=bool(strip_metadata),
+        srgb=bool(srgb),
+        progressive=bool(progressive),
+    )
+
+
 def page_index(page: int | str | None) -> int | str | None:
     """A page as the API and MCP name it (its id, or its number counting from 1) as `export_image` takes it
     (its id, or its 0-based index)."""
@@ -367,6 +402,47 @@ def _fit(encode, quality: int, max_bytes: int, first: bytes) -> tuple[bytes, int
     return fitting or smallest
 
 
+def _optimized(
+    converted: Converted,
+    optimizer: optimizers.Optimizer | None,
+    encoding: Encoding,
+    *,
+    source: bytes,
+    width: int,
+    height: int,
+) -> Converted:
+    """`converted` made smaller by `optimizer` (None: as it is). The options say which optimizer ran and how
+    large the file was before; a `max_bytes` warning goes when the optimized file fits after all."""
+    if optimizer is None:
+        return converted
+    result = optimizers.optimize(
+        optimizer,
+        optimizers.Job(
+            converted.data,
+            converted.format,
+            width,
+            height,
+            quality=converted.options.get("quality"),
+            strip_metadata=encoding.strip_metadata,
+            srgb=encoding.srgb,
+            progressive=encoding.progressive,
+            source=source,
+        ),
+    )
+    fits = encoding.max_bytes is not None and len(result.data) <= encoding.max_bytes
+    return Converted(
+        result.data,
+        converted.format,
+        converted.options
+        | {
+            "optimizer": result.optimizer or None,
+            "optimized": result.optimized,
+            "bytes_before_optimizing": result.bytes_before,
+        },
+        (() if fits else converted.warnings) + result.warnings,
+    )
+
+
 def _to_png(png: bytes, image: Image.Image | None, info: dict, encoding: Encoding) -> Converted:
     """The PNG as drawn, without the chunks `strip_metadata` and `srgb` leave out; with `png_colors`, a
     palette PNG instead when that is smaller (never bigger than the PNG as drawn)."""
@@ -436,6 +512,7 @@ def export_image(
     strip_metadata: bool = True,
     srgb: bool = True,
     progressive: bool = False,
+    optimize: bool | str = False,
 ) -> ImageResult:
     """Draw one page of `design` (its live editor state when it is open, else the saved document) as PNG, JPG,
     WebP or AVIF, or `auto`: the smallest of those. `page` is an index or a page id (default: the first page);
@@ -444,22 +521,24 @@ def export_image(
     `size` ("2x", "1080w", "1350h") replaces `scale`. `quality` is 1-100 or a preset (small, balanced, best,
     original); with `max_bytes`, JPG, WebP and AVIF are made at the highest quality up to `quality` that fits.
     `png_colors` (2-256) makes a palette PNG when that is smaller. `strip_metadata` and `srgb` leave the drawn
-    PNG's metadata and colour profile out; `progressive` is for JPG. Raises `InvalidExport`, `PayloadTooLarge`
-    and the `Export*` exceptions."""
+    PNG's metadata and colour profile out; `progressive` is for JPG. `optimize` makes the file smaller
+    afterwards: True (the server's default optimizer) or an optimizer's id (`apps.exports.optimizers`). Raises
+    `InvalidExport`, `PayloadTooLarge` and the `Export*` exceptions."""
     if not settings.SERVER_IMAGE_EXPORT_ENABLED:
         raise ImageExportDisabled
     if not settings.EXPORT_RENDER_PAGE_URL:
         raise ExportUnavailable
-    fmt = FORMAT_ALIASES.get(str(format).lower(), str(format).lower())
-    if fmt not in (*IMAGE_FORMATS, AUTO):
-        raise InvalidExport("invalid_format", "The format must be png, jpg, webp, avif or auto.")
-    if fmt != AUTO and fmt not in image_formats():
-        raise InvalidExport("format_unavailable", f"This server can't make {fmt.upper()} images.")
-    quality = _quality(quality)
-    if max_bytes is not None and not _whole(max_bytes, 1):
-        raise InvalidExport("invalid_max_bytes", "max_bytes must be a whole number of bytes, 1 or more.")
-    if png_colors is not None and not _whole(png_colors, 2, 256):
-        raise InvalidExport("invalid_png_colors", "png_colors must be a whole number from 2 to 256.")
+    encoding = _encoding(
+        format,
+        quality,
+        transparent=transparent,
+        max_bytes=max_bytes,
+        png_colors=png_colors,
+        strip_metadata=strip_metadata,
+        srgb=srgb,
+        progressive=progressive,
+    )
+    optimizer = optimizers.choose(optimize)
     if size is None:
         try:
             scale = float(scale)
@@ -469,7 +548,7 @@ def export_image(
             raise InvalidExport(
                 "invalid_scale", f"The scale must be between {MIN_SCALE:g} and {MAX_SCALE:g}."
             )
-    transparent = bool(transparent) and fmt != "jpg"
+    transparent = encoding.transparent
 
     document = current_document(design)
     if len(json.dumps(document, separators=(",", ":"))) > settings.EXPORT_IMAGE_MAX_DOCUMENT_BYTES:
@@ -493,21 +572,14 @@ def export_image(
     }
     with render_slot(design.owner_id):
         result = render_image(payload, render_url=settings.EXPORT_RENDER_PAGE_URL)
-    encoding = Encoding(
-        format=fmt,
-        quality=quality,
-        transparent=transparent,
-        max_bytes=max_bytes,
-        png_colors=png_colors,
-        strip_metadata=bool(strip_metadata),
-        srgb=bool(srgb),
-        progressive=bool(progressive),
-    )
     try:
         converted = _convert(result.data, encoding)
     except (OSError, ValueError) as exc:
         logger.error("Image export: the render page sent an unreadable PNG (%s)", exc)
         raise ExportFailed from exc
+    converted = _optimized(
+        converted, optimizer, encoding, source=result.data, width=result.width, height=result.height
+    )
     warnings = []
     if result.placeholders:
         warnings.append(
@@ -555,6 +627,103 @@ def export_image(
             "strip_metadata": encoding.strip_metadata,
             "srgb": encoding.srgb,
             **({"max_bytes": max_bytes} if max_bytes is not None else {}),
+        },
+    )
+
+
+@dataclass(frozen=True)
+class OptimizedImage:
+    """What `optimize_image` made of a PNG the browser drew."""
+
+    data: bytes
+    format: str
+    mime: str
+    width: int
+    height: int
+    bytes_in: int  # the PNG that was sent
+    bytes_before_optimizing: int  # the converted file, before the optimizer
+    optimizer: str  # the optimizer asked ("" for none)
+    optimized: bool  # whether its smaller file was kept
+    warnings: tuple[str, ...] = ()
+    options_used: dict[str, Any] = field(default_factory=dict)
+
+
+def optimize_image(
+    png: bytes,
+    *,
+    format: str = "png",
+    quality: int | str = 90,
+    transparent: bool = False,
+    max_bytes: int | None = None,
+    png_colors: int | None = None,
+    strip_metadata: bool = True,
+    srgb: bool = True,
+    progressive: bool = False,
+    optimize: bool | str = True,
+    owner: object = None,
+) -> OptimizedImage:
+    """Convert a PNG the browser drew as `export_image` converts the PNG the server drew (same options), then
+    optimize it. For browser downloads: AVIF, WebP where the browser can't make it, and the optimizers. The
+    image must be a PNG of at most `EXPORT_IMAGE_MAX_PIXELS` (Pillow's decompression-bomb limit stays on);
+    one conversion holds a render slot of `owner`. Raises `InvalidExport` and `ExportBusy`."""
+    encoding = _encoding(
+        format,
+        quality,
+        transparent=transparent,
+        max_bytes=max_bytes,
+        png_colors=png_colors,
+        strip_metadata=strip_metadata,
+        srgb=srgb,
+        progressive=progressive,
+    )
+    optimizer = optimizers.choose(optimize)
+    unreadable = InvalidExport("invalid_image", "The file is not a readable PNG image.")
+    try:
+        with Image.open(io.BytesIO(png)) as image:
+            if image.format != "PNG":
+                raise InvalidExport("invalid_image", "Send the image as a PNG.")
+            width, height = image.size
+            if width * height > settings.EXPORT_IMAGE_MAX_PIXELS:
+                raise InvalidExport(
+                    "too_large",
+                    f"{width} x {height} px is more than this server converts "
+                    f"({settings.EXPORT_IMAGE_MAX_PIXELS} pixels).",
+                )
+            image.load()  # a truncated or broken file fails here, not halfway through an optimizer
+    except (UnidentifiedImageError, Image.DecompressionBombError, OSError, ValueError, SyntaxError) as exc:
+        raise unreadable from exc
+    with render_slot(owner):
+        try:
+            converted = _convert(png, encoding)
+        except (OSError, ValueError) as exc:
+            raise unreadable from exc
+        converted = _optimized(converted, optimizer, encoding, source=png, width=width, height=height)
+    options = converted.options
+    logger.info(
+        "Image optimize: %s %dx%d, %d byte(s) in, %d out, optimizer=%s",
+        converted.format,
+        width,
+        height,
+        len(png),
+        len(converted.data),
+        options.get("optimizer"),
+    )
+    return OptimizedImage(
+        data=converted.data,
+        format=converted.format,
+        mime=IMAGE_FORMATS[converted.format],
+        width=width,
+        height=height,
+        bytes_in=len(png),
+        bytes_before_optimizing=options.get("bytes_before_optimizing", len(converted.data)),
+        optimizer=options.get("optimizer") or "",
+        optimized=bool(options.get("optimized")),
+        warnings=converted.warnings,
+        options_used={
+            **options,
+            "transparent": encoding.transparent,
+            "strip_metadata": encoding.strip_metadata,
+            "srgb": encoding.srgb,
         },
     )
 

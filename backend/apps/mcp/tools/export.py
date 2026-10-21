@@ -31,6 +31,14 @@ def _charge_pages(extra: int) -> None:
 
 
 def _page_info(image: ImageResult, filename: str) -> dict[str, Any]:
+    optimized = (
+        {
+            "optimizer": image.options_used["optimizer"],
+            "bytes_before_optimizing": image.options_used["bytes_before_optimizing"],
+        }
+        if "bytes_before_optimizing" in image.options_used
+        else {}
+    )
     return {
         "page": image.page_index + 1,
         "page_id": image.page_id,
@@ -38,6 +46,7 @@ def _page_info(image: ImageResult, filename: str) -> dict[str, Any]:
         "width": image.width,
         "height": image.height,
         "bytes": len(image.data),
+        **optimized,
         "filename": filename,
         "options": image.options_used,
     }
@@ -92,6 +101,16 @@ def export_design(
     strip_metadata: Annotated[bool, Field(description="Leave text, time and Exif metadata out.")] = True,
     srgb: Annotated[bool, Field(description="Leave the colour profile out (the pixels are sRGB).")] = True,
     progressive: Annotated[bool, Field(description="JPG only: a progressive JPG.")] = False,
+    optimize: Annotated[
+        bool | Literal["builtin", "tinypng", "kraken", "custom"],
+        Field(
+            description=(
+                "Make the file smaller after it is drawn: true (the server's default optimizer) or one by "
+                "id. It never makes a file bigger; when an optimizer fails, the file comes back unoptimized "
+                "with a warning. The result reports optimizer and bytes_before_optimizing."
+            )
+        ),
+    ] = False,
     file_names: Annotated[
         Literal["simple", "detailed"] | None,
         Field(description="simple: the title and page; detailed: with platform, preset and size."),
@@ -128,6 +147,7 @@ def export_design(
         strip_metadata=strip_metadata,
         srgb=srgb,
         progressive=progressive,
+        optimize=optimize,
     )
     info: dict[str, Any] = {"design_id": str(design.pk)}
     if bundle.format == "zip":

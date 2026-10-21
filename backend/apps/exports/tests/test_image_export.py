@@ -9,10 +9,12 @@ from PIL import Image
 
 from apps.accounts.models import User
 from apps.designs.tests.helpers import make_design, make_doc
-from apps.exports import services
+from apps.exports import optimizers, services
 from apps.exports.exceptions import ExportBusy, ImageExportDisabled, InvalidExport, PayloadTooLarge
 from apps.exports.renderer import RenderResult, render_slot
 from apps.fonts.models import FontFamily, FontVariant
+
+from .helpers import FakeOptimizer
 
 RENDER_URL = "http://frontend.test:8080/render.html"
 
@@ -593,3 +595,55 @@ def test_unpublished_catalogue_fonts_are_left_out(user, renders):
     hidden.save()
     services.export_image(make_design(user, document=make_doc(objects=[text("Hidden Font")])))
     assert renders[0]["payload"]["fonts"] == []
+
+
+# ---- optimizing --------------------------------------------------------------------------------
+
+
+@pytest.fixture
+def optimizer(monkeypatch) -> FakeOptimizer:
+    fake = FakeOptimizer()
+    monkeypatch.setitem(optimizers.OPTIMIZERS, "builtin", fake)
+    return fake
+
+
+def test_optimize_makes_the_file_smaller_after_converting_it(design, renders, optimizer):
+    plain = services.export_image(design, format="webp", quality=80)
+    result = services.export_image(design, format="webp", quality=80, optimize=True)
+    (job,) = optimizer.jobs
+    assert (job.format, job.quality, job.width, job.height) == ("webp", 80, 40, 20)
+    assert job.data == plain.data and job.source == drawn_png()
+    assert len(result.data) < len(plain.data)
+    assert result.options_used | {"optimizer": "builtin", "optimized": True} == result.options_used
+    assert result.options_used["bytes_before_optimizing"] == len(plain.data)
+    assert "optimizer" not in plain.options_used
+    assert opened(result.data).size == (40, 20)
+
+
+def test_an_optimizer_by_id_and_a_failing_one_keeps_the_export(design, renders, monkeypatch, settings):
+    settings.IMAGE_OPTIMIZERS = ["builtin", "custom"]
+    monkeypatch.setitem(optimizers.OPTIMIZERS, "custom", FakeOptimizer("custom", "Ours", fail=True))
+    result = services.export_image(design, format="png", optimize="custom")
+    assert result.data and not result.options_used["optimized"]
+    assert result.warnings == (
+        "Ours could not optimize the file (the service answered 503); it is not optimized.",
+    )
+
+
+def test_an_unknown_optimizer_is_refused_before_anything_is_drawn(design, renders, optimizer):
+    with pytest.raises(InvalidExport) as raised:
+        services.export_image(design, optimize="tinypng")
+    assert raised.value.detail.code == "optimizer_unavailable"
+    assert renders == []
+
+
+def test_optimize_true_on_a_server_without_optimizers_is_a_warning(design, renders, settings):
+    settings.IMAGE_OPTIMIZERS = []
+    result = services.export_image(design, optimize=True)
+    assert result.warnings == ("No image optimizer is set up on this server; the file is not optimized.",)
+
+
+def test_a_max_bytes_warning_goes_when_the_optimized_file_fits(design, renders, optimizer):
+    plain = services.export_image(design, format="png")
+    result = services.export_image(design, format="png", max_bytes=len(plain.data) - 1, optimize=True)
+    assert len(result.data) < len(plain.data) and result.warnings == ()
