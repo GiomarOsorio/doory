@@ -936,3 +936,159 @@ def test_the_rest_endpoint_returns_the_drawn_page(client, render_site, user):
     assert image.size == (200, 100)
     red = image.getpixel((20, 20))
     assert red[0] > 230 and red[1] < 30 and red[2] < 30
+
+
+# ---- SVG and PDF of a saved design: all pages from the render page in one browser ----------------
+
+
+def two_pages(owner, *objects, title="Two"):
+    from apps.designs.tests.helpers import make_design
+
+    background = {"type": "solid", "color": "#00ff00"}
+    document = {
+        "schemaVersion": 1,
+        "width": 200,
+        "height": 100,
+        "unit": "px",
+        "pages": [
+            {"id": "p1", "background": background, "objects": list(objects)},
+            {"id": "p2", "background": background, "objects": list(objects), "width": 100, "height": 150},
+        ],
+    }
+    return make_design(owner, title=title, document=document)
+
+
+def text_box(text: str, family: str) -> dict:
+    return {
+        "id": "t",
+        "type": "textbox",
+        "text": text,
+        "left": 10,
+        "top": 10,
+        "width": 180,
+        "height": 60,
+        "originX": "left",
+        "originY": "top",
+        "fontFamily": f"'{family}', serif",
+        "fontSize": 30,
+        "fill": "#000000",
+        "textAlign": "left",
+        "lineHeight": 1,
+    }
+
+
+@pytest.fixture
+def test_font(user):
+    family = FontFamily.objects.create(family="Doory Test Sans", slug="doory-test-sans", owner=user)
+    FontVariant.objects.create(
+        family=family, weight=400, format="ttf", file=ContentFile(build_test_font(), name="e2e.ttf")
+    )
+    yield family
+    for variant in family.variants.all():
+        variant.file.delete(save=False)
+
+
+@requires_dist
+def test_svg_files_carry_their_pictures_and_fonts(render_site, user, test_font):
+    name = default_storage.save("uploads/e2e-red.png", ContentFile(PNG_RED_10X10))
+    try:
+        design = two_pages(user, rect(10, 10, 40, 30, "#ff0000"), picture(f"/media/{name}", left=100))
+        design.document["pages"][0]["objects"].append(text_box("Hi", "Doory Test Sans"))
+        design.save()
+        bundle = export_images(design, pages="all", format="svg")
+    finally:
+        default_storage.delete(name)
+    assert bundle.format == "zip" and bundle.filenames == ("Two - page 1.svg", "Two - page 2.svg")
+    archive = zipfile.ZipFile(io.BytesIO(bundle.data))
+    assert archive.getinfo("Two - page 1.svg").compress_type == zipfile.ZIP_DEFLATED
+    first, second = (archive.read(name).decode() for name in bundle.filenames)
+    assert first.startswith("<?xml") and "<svg" in first and "data:image/png;base64," in first
+    assert f"/media/{name}" not in first
+    assert "@font-face" in first and 'font-family:"Doory Test Sans"' in first and "@font-face" not in second
+    assert [(image.width, image.height, image.page_id) for image in bundle.images] == [
+        (200, 100, "p1"),
+        (100, 150, "p2"),
+    ]
+    assert re.search(r'viewBox="0 0 100 150"', second)
+
+    one = export_images(design, pages=["p2"], format="svg")
+    assert (one.format, one.mime, one.filename) == ("svg", "image/svg+xml", "Two - page 2.svg")
+
+
+@requires_dist
+def test_a_pdf_of_pictures_has_every_page_at_300_dpi_with_bleed_and_marks(render_site, user, tmp_path):
+    design = two_pages(user, rect(10, 10, 40, 30, "#ff0000"))
+    bundle = export_images(design, pages="all", format="pdf", bleed_mm=3, crop_marks=True)
+    assert (bundle.format, bundle.mime, bundle.filename) == ("pdf", "application/pdf", "Two.pdf")
+    assert bundle.options == {"format": "pdf", "bleed_mm": 3, "crop_marks": True, "cmyk": False, "dpi": 300}
+    pdf = reader(bundle.data)
+    margin = 9 * PX_PER_MM  # 3 mm bleed + 6 mm slug
+    for (width, height), (expected_w, expected_h) in zip(
+        sizes_px(pdf), [(200, 100), (100, 150)], strict=True
+    ):
+        assert width == pytest.approx(expected_w + 2 * margin, abs=0.01)
+        assert height == pytest.approx(expected_h + 2 * margin, abs=0.01)
+    page = pdf.pages[0]
+    assert float(page.trimbox.width) == pytest.approx(200 * PT, abs=0.01)
+    (image,) = page.images
+    assert image.name.endswith(".jpg")  # the render page's JPEG, not drawn again
+    art = 200 + 2 * 3 * PX_PER_MM
+    assert image.image.width == pytest.approx(art * 300 / 96, abs=2)
+    first, _ = raster(bundle.data, tmp_path)
+    left = round(margin + 20)
+    assert first.getpixel((left, round(margin + 20)))[0] > 230  # the red rectangle
+    assert first.getpixel((round(margin + 150), round(margin + 80)))[1] > 230  # the green page
+
+    small = export_images(design, format="pdf")
+    assert sizes_px(reader(small.data)) == [pytest.approx((200, 100), abs=0.01)]
+
+
+@requires_dist
+def test_a_pdf_of_pictures_lowers_the_dpi_rather_than_exceed_the_pixel_limit(render_site, user, settings):
+    settings.EXPORT_IMAGE_MAX_PIXELS = 400 * 200
+    bundle = export_images(two_pages(user), format="pdf")
+    assert bundle.options["dpi"] == 192
+    assert "192 dpi" in bundle.warnings[0]
+
+
+@requires_dist
+def test_a_print_pdf_is_vector_with_its_fonts_bleed_and_links(render_site, user, test_font):
+    design = two_pages(user, rect(10, 80, 40, 10, "#ff0000"))
+    design.document["pages"][0]["objects"].append(
+        # The test font only has an "A": the other letters fall back to the serif font.
+        {**text_box("A Hello print", "Doory Test Sans"), "link": {"url": "https://example.com/more"}}
+    )
+    design.save()
+    bundle = export_images(design, pages="all", format="pdf-print", bleed_mm=3)
+    assert bundle.filename == "Two-print.pdf" and bundle.images[0].missing_fonts == ()
+    pdf = reader(bundle.data)
+    assert len(pdf.pages) == 2 and "Hello print" in pdf.pages[0].extract_text()
+    fonts = {
+        str(font.get_object().get("/BaseFont"))
+        for font in pdf.pages[0]["/Resources"].get("/Font", {}).values()
+    }
+    assert any("DooryTestSans" in name for name in fonts), fonts
+    assert not pdf.pages[0].images  # nothing was drawn as a picture
+    assert float(pdf.pages[0].bleedbox.width) == pytest.approx((200 + 6 * PX_PER_MM) * PT, abs=0.01)
+    assert links_of(pdf)[0][0][0] == "https://example.com/more"
+
+
+@requires_dist
+def test_a_picture_that_cannot_be_fetched_is_a_stand_in_or_refuses_the_svg(render_site, canary, user):
+    design = two_pages(user, picture(f"{canary.origin}/media/pixel.png"))
+    pdf = export_images(design, format="pdf")
+    assert pdf.images[0].placeholders == 1 and pdf.warnings and canary.hits == []
+    svg = export_images(design, format="svg")
+    assert svg.images[0].placeholders == 1 and b"<svg" in svg.data and canary.hits == []
+
+
+@requires_dist
+def test_the_rest_endpoint_returns_a_print_pdf(client, render_site, user):
+    design = two_pages(user, rect(10, 10, 40, 30, "#ff0000"))
+    response = client.post(
+        f"/api/v1/designs/{design.pk}/export/image/",
+        {"format": "pdf-print", "pages": "all", "crop_marks": True},
+        format="json",
+    )
+    assert response.status_code == 200 and response["Content-Type"] == "application/pdf"
+    assert len(reader(response.content).pages) == 2

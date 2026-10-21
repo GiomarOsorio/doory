@@ -14,7 +14,7 @@ import {
 } from './registry'
 import { type RasterFormat, browserEncodes, hasAlpha, serverConverts } from './raster'
 import { parseSize } from './size'
-import { blobToDataUrl } from './svgEmbed'
+import { embedFontFaces } from './svgFonts'
 import { t } from '../../strings'
 
 const PDF_DPI = 300
@@ -64,39 +64,11 @@ async function svgFiles(ctx: ExportContext): Promise<ExportFile[]> {
     const { page, index } = ctx.pages[i]
     const size = pageSize(ctx.document, page)
     const svg = await renderPageToSvg(page, size, ctx.engine.loadContext)
-    const withFonts = await embedFontFaces(svg, page.objects, ctx)
+    const withFonts = await embedFontFaces(svg, page.objects, (family) => ctx.engine.fonts.lookup(family))
     files.push({ blob: new Blob([withFonts], { type: 'image/svg+xml' }), filename: exportFilename(ctx, pageFilename(ctx.title, 'svg', index + 1, total, ctx.document.pages.length), 'svg', size, index) })
     ctx.onProgress((i + 1) / total)
   }
   return files
-}
-
-/** Adds `@font-face` rules with data-URI fonts for catalog fonts used on the page (best effort). */
-async function embedFontFaces(svg: string, objects: ExportContext['pages'][number]['page']['objects'], ctx: ExportContext): Promise<string> {
-  const uses = fontsInObjects(objects)
-  if (uses.length === 0) return svg
-  const rules: string[] = []
-  const seen = new Set<string>()
-  for (const use of uses) {
-    const entry = await ctx.engine.fonts.lookup(use.family)
-    if (!entry) continue
-    for (const v of entry.variants) {
-      const key = `${v.url}`
-      if (seen.has(key)) continue
-      seen.add(key)
-      try {
-        const res = await fetch(v.url, { credentials: 'same-origin' })
-        if (!res.ok) continue
-        const data = await blobToDataUrl(await res.blob())
-        rules.push(`@font-face{font-family:"${entry.family}";font-weight:${v.weight};font-style:${v.style};src:url(${data});}`)
-      } catch {
-        /* an unreachable font file only costs fidelity, not the export */
-      }
-    }
-  }
-  if (rules.length === 0) return svg
-  const style = `<style type="text/css"><![CDATA[${rules.join('')}]]></style>`
-  return svg.includes('<defs>') ? svg.replace('<defs>', `<defs>${style}`) : svg.replace(/(<svg[^>]*>)/, `$1<defs>${style}</defs>`)
 }
 
 /**

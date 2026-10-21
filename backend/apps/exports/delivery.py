@@ -1,4 +1,4 @@
-"""Short-lived download links for exported images and ZIPs of them (the MCP tool's `delivery="url"`).
+"""Short-lived download links for exported images, SVGs, PDFs and ZIPs (the MCP tool's `delivery="url"`).
 
 The image is stored in a private directory outside `MEDIA_ROOT` (`EXPORT_STORAGE_ROOT`, never under `/media/`)
 and served only by `ImageDownloadView` at a URL that carries a signed, timestamped token naming the file:
@@ -29,10 +29,12 @@ EXTENSIONS = {
     "image/jpeg": "jpg",
     "image/webp": "webp",
     "image/avif": "avif",
+    "image/svg+xml": "svg",
+    "application/pdf": "pdf",
     "application/zip": "zip",
 }
 MIME_TYPES = {ext: mime for mime, ext in EXTENSIONS.items()}
-_NAME = re.compile(r"^(?P<made>\d{10})-[0-9a-f]{32}\.(?P<ext>png|jpg|webp|avif|zip)$")
+_NAME = re.compile(r"^(?P<made>\d{10})-[0-9a-f]{32}\.(?P<ext>png|jpg|webp|avif|svg|pdf|zip)$")
 
 
 def export_storage() -> FileSystemStorage:

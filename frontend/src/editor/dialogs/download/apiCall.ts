@@ -1,8 +1,16 @@
 import type { ExportOptions } from '../../engine/export/registry'
 import { readSize } from '../../engine/export/size'
 
-/** The formats REST and MCP image exports take (PDF, SVG and video are not among them yet). */
-export const API_FORMATS = ['png', 'jpg', 'webp', 'avif']
+/** The dialog's formats that REST and MCP make, by the name the API gives them (video is not among them yet). */
+export const API_FORMATS: Readonly<Record<string, string>> = { png: 'png', jpg: 'jpg', webp: 'webp', avif: 'avif', svg: 'svg', pdf: 'pdf', 'pdf-server': 'pdf-print' }
+
+/** Files of all pages or vector pages: none of the image options apply to them. */
+const DOCUMENT_FORMATS = new Set(['svg', 'pdf', 'pdf-print'])
+
+/** The API's name of a dialog format, or null when REST and MCP can't make it. */
+export function apiFormat(formatId: string): string | null {
+  return Object.hasOwn(API_FORMATS, formatId) ? API_FORMATS[formatId] : null
+}
 
 export interface ApiCallInput {
   designId: string
@@ -21,10 +29,17 @@ function apiSize(text: string): string {
 
 /** The arguments of the MCP tool `export_design` (and the REST body) that make the same file as the dialog. */
 export function exportArguments({ designId, formatId, options, pages, fileNames }: ApiCallInput): Record<string, unknown> {
-  const args: Record<string, unknown> = { design_id: designId, format: formatId }
+  const format = apiFormat(formatId) ?? formatId
+  const args: Record<string, unknown> = { design_id: designId, format }
   if (pages === 'all') args.pages = 'all'
   else if (pages.length === 1) args.page = pages[0]
   else args.pages = pages
+  if (DOCUMENT_FORMATS.has(format)) {
+    if (format !== 'svg' && options.bleedMm > 0) args.bleed_mm = options.bleedMm
+    if (format !== 'svg' && options.cropMarks) args.crop_marks = true
+    if (fileNames === 'structured') args.file_names = 'detailed'
+    return args
+  }
   if (options.size?.trim()) args.size = apiSize(options.size)
   else if (options.scale !== 1) args.scale = options.scale
   if (formatId !== 'png') {

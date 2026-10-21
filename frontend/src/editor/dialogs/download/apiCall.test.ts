@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_EXPORT_OPTIONS } from '../../engine/export/registry'
-import { describeCall, exportArguments } from './apiCall'
+import { apiFormat, describeCall, exportArguments } from './apiCall'
 
 const base = { designId: 'd1', pages: 'all' as const, fileNames: 'simple' as const }
 
@@ -25,5 +25,16 @@ describe('the API / MCP preview', () => {
     expect(text).toContain('// MCP tool export_design')
     expect(text).toContain('POST https://doory.example/api/v1/designs/d1/export/image/')
     expect(text.split('// REST')[1]).not.toContain('design_id')
+  })
+
+  it('names the print-quality PDF as the API does, with its bleed and marks and none of the image options', () => {
+    const options = { ...DEFAULT_EXPORT_OPTIONS, bleedMm: 3, cropMarks: true, scale: 2, optimize: true, qualityPreset: 'small' as const }
+    expect(exportArguments({ ...base, formatId: 'pdf-server', options })).toEqual({ design_id: 'd1', format: 'pdf-print', pages: 'all', bleed_mm: 3, crop_marks: true })
+    expect(exportArguments({ ...base, pages: [1], formatId: 'pdf', options: { ...options, bleedMm: 0, cropMarks: false } })).toEqual({ design_id: 'd1', format: 'pdf', page: 1 })
+    expect(exportArguments({ ...base, fileNames: 'structured', formatId: 'svg', options })).toEqual({ design_id: 'd1', format: 'svg', pages: 'all', file_names: 'detailed' })
+  })
+
+  it('knows which formats the API makes', () => {
+    expect(['png', 'avif', 'svg', 'pdf', 'pdf-server', 'mp4', 'toString'].map(apiFormat)).toEqual(['png', 'avif', 'svg', 'pdf', 'pdf-print', null, null])
   })
 })
