@@ -319,6 +319,14 @@ EXPORT_IMAGE_MAX_DOCUMENT_BYTES = env.int("EXPORT_IMAGE_MAX_DOCUMENT_BYTES", def
 # Pages one export may draw (`pages`, sent back as a ZIP). Each page is a render of its own, and the whole
 # export is one request: keep pages x EXPORT_TIMEOUT_SECONDS under the web server's worker timeout.
 EXPORT_IMAGE_MAX_PAGES = env.int("EXPORT_IMAGE_MAX_PAGES", default=10)
+# Server-side MP4, WebM and GIF of saved designs (apps.exports.services.export_video), on the same render page
+# with the editor's video pipeline. Off by default: one video keeps a browser busy for minutes. It also needs
+# SERVER_IMAGE_EXPORT_ENABLED. The deadline covers the whole file; the bundled nginx waits 330 s for it.
+SERVER_VIDEO_EXPORT_ENABLED = env.bool("SERVER_VIDEO_EXPORT_ENABLED", default=False)
+EXPORT_VIDEO_TIMEOUT_SECONDS = env.int("EXPORT_VIDEO_TIMEOUT_SECONDS", default=300)
+EXPORT_VIDEO_MAX_SECONDS = env.int("EXPORT_VIDEO_MAX_SECONDS", default=120)  # the longest video or GIF
+EXPORT_VIDEO_MAX_RESOLUTION = env.int("EXPORT_VIDEO_MAX_RESOLUTION", default=1080)  # shorter side, px
+EXPORT_VIDEO_MAX_BYTES = env.int("EXPORT_VIDEO_MAX_BYTES", default=200 * 1024 * 1024)
 
 # Image optimizers (apps.exports.optimizers): make exported and downloaded images smaller after drawing them.
 # IMAGE_OPTIMIZERS lists the ones people may pick, in order (empty: none). `builtin` runs mozjpeg and oxipng

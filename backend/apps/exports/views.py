@@ -34,6 +34,7 @@ from .serializers import (
 from .services import (
     PDF_MIME,
     SVG_MIME,
+    VIDEO_FORMATS,
     ZIP_MIME,
     ExportRequest,
     export_images,
@@ -119,7 +120,8 @@ def _charge_pages(user, extra: int) -> None:
 
 class ImageExportView(APIView):
     """Render pages of a saved design as PNG, JPG, WebP, AVIF or SVG on the server, as the editor draws them
-    (several pages come back as one ZIP), or as one PDF of pictures (`pdf`) or vector pages (`pdf-print`)."""
+    (several pages come back as one ZIP), as one PDF of pictures (`pdf`) or vector pages (`pdf-print`), or as
+    a video: MP4, WebM or GIF (all pages unless `pages` or `page` says otherwise)."""
 
     permission_classes = [IsAuthenticated]
     content_negotiation_class = AnyAcceptNegotiation
@@ -135,6 +137,7 @@ class ImageExportView(APIView):
             (200, SVG_MIME): OpenApiTypes.BINARY,
             (200, PDF_MIME): OpenApiTypes.BINARY,
             (200, ZIP_MIME): OpenApiTypes.BINARY,
+            **{(200, mime): OpenApiTypes.BINARY for mime in VIDEO_FORMATS.values()},
         },
         tags=["exports"],
     )
@@ -144,6 +147,8 @@ class ImageExportView(APIView):
         body.is_valid(raise_exception=True)
         data = body.validated_data
         pages = data["pages"]
+        if data["format"] in VIDEO_FORMATS and pages is None and data["page"] is None:
+            pages = "all"
         style = (
             data.get("filename_style")
             or FILE_NAMES.get(data.get("file_names"))
@@ -170,6 +175,13 @@ class ImageExportView(APIView):
             bleed_mm=data["bleed_mm"],
             crop_marks=data["crop_marks"],
             cmyk=data["cmyk"],
+            resolution=data["resolution"],
+            fps=data["fps"],
+            fit=data["fit"],
+            sound=data["sound"],
+            loop=data["loop"],
+            dither=data["dither"],
+            page_seconds=data["page_seconds"],
         )
         response = HttpResponse(result.data, content_type=result.mime)
         response["X-Doory-Placeholders"] = str(result.placeholders)

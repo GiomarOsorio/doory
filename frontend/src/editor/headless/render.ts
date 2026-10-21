@@ -38,7 +38,16 @@ export interface RenderedPage {
   missingFonts: string[]
 }
 
-export type RenderErrorCode = 'invalid_document' | 'page_not_found' | 'invalid_options' | 'image_unavailable'
+export type RenderErrorCode =
+  | 'invalid_document'
+  | 'page_not_found'
+  | 'invalid_options'
+  | 'image_unavailable'
+  // The video export (`video.ts`):
+  | 'too_long'
+  | 'too_large'
+  | 'sound_unavailable'
+  | 'video_unsupported'
 
 export class RenderError extends Error {
   constructor(
@@ -50,14 +59,14 @@ export class RenderError extends Error {
   }
 }
 
-function pickPage(doc: DoryDocument, page: number | string | undefined): [DocPage, number] {
+export function pickPage(doc: DoryDocument, page: number | string | undefined): [DocPage, number] {
   if (page === undefined) return [doc.pages[0], 0]
   const index = typeof page === 'number' ? page : doc.pages.findIndex((p) => p.id === page)
   if (!Number.isInteger(index) || index < 0 || index >= doc.pages.length) throw new RenderError('page_not_found', `The design has no page ${JSON.stringify(page)}.`)
   return [doc.pages[index], index]
 }
 
-interface Session {
+export interface Session {
   doc: DoryDocument
   fonts: FontManager
   ctx: LoadContext
@@ -65,7 +74,7 @@ interface Session {
   placeholders: () => number
 }
 
-function open(document: unknown, families: FontFamily[] | undefined): Session {
+export function open(document: unknown, families: FontFamily[] | undefined): Session {
   let doc: DoryDocument
   try {
     doc = migrateDocument(document)
