@@ -35,7 +35,18 @@ export interface BackgroundRemovalModel {
 export interface AppConfig {
   google_client_id: string
   /** `background_removal` (and `ai_providers`, …) are absent on servers that predate them. */
-  features: { stock_photos: boolean; server_pdf: boolean; google_login: boolean; email_verification: boolean; background_removal?: boolean; realtime?: boolean; mcp?: boolean; ai_providers?: boolean }
+  features: {
+    stock_photos: boolean
+    server_pdf: boolean
+    google_login: boolean
+    email_verification: boolean
+    background_removal?: boolean
+    realtime?: boolean
+    mcp?: boolean
+    ai_providers?: boolean
+    /** Converting and optimizing downloads on the server; absent on servers that predate it. */
+    image_optimize?: ImageOptimizeConfig | null
+  }
   limits: { max_upload_bytes: number; max_pages: number; max_document_bytes: number; realtime_max_participants?: number; bulk_fill_max_rows?: number }
   /** Files the browser downloads at run time; absent on servers that predate it. */
   assets?: { background_removal_model: BackgroundRemovalModel | null }
@@ -43,6 +54,13 @@ export interface AppConfig {
   exports?: { filename_style: 'simple' | 'structured'; filename_timestamp: boolean }
   /** Remote AI image providers; absent on servers that predate them. */
   ai?: AiConfig
+}
+
+/** `features.image_optimize` as `/config/` writes it. */
+export interface ImageOptimizeConfig {
+  formats: string[]
+  optimizers: { id: string; name: string; formats: string[]; sends_offsite: boolean }[]
+  default: string | null
 }
 
 /** Who may add their own AI servers in Settings (`staff`: staff accounts only). */
