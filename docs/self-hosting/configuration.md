@@ -102,10 +102,11 @@ See [image-export.md](image-export.md).
 | Setting | Default | What it does |
 |---------|---------|--------------|
 | `SERVER_PDF_ENABLED` | `true` | Make print PDFs on the server. Needs Chromium; set to `false` if you don't have it |
-| `SERVER_IMAGE_EXPORT_ENABLED` | `false` | Make PNG, JPG and WebP images of a page on the server (used by the REST API and the MCP tool `export_design`) |
+| `SERVER_IMAGE_EXPORT_ENABLED` | `false` | Make PNG, JPG, WebP and AVIF images of pages on the server (used by the REST API and the MCP tool `export_design`) |
 | `EXPORT_RENDER_PAGE_URL` | `SITE_URL/render.html` | The built frontend's `render.html`, at an address the API and MCP services can reach. Docker: `http://doory-web:8080/render.html` |
 | `EXPORT_IMAGE_MAX_PIXELS` | `40000000` | Largest image, as width × height after scaling |
 | `EXPORT_IMAGE_MAX_DOCUMENT_BYTES` | `5242880` | Largest design document the export will draw |
+| `EXPORT_IMAGE_MAX_PAGES` | `10` | Most pages one image export draws (they come back as a ZIP). Each page is a render of its own in the same request |
 | `EXPORT_MAX_CONCURRENCY` | `2` | Exports running at the same time in each API process |
 | `EXPORT_TIMEOUT_SECONDS` | `30` | Time limit for one export |
 | `EXPORT_CHROMIUM_PATH` | | Path to a Chromium binary. Empty: the one Playwright installed |

@@ -6,6 +6,7 @@ import re
 import shutil
 import subprocess
 import sys
+import zipfile
 from pathlib import Path
 
 import pypdf
@@ -18,7 +19,7 @@ from apps.exports import services
 from apps.exports.exceptions import ExportTimeout, ExportUnavailable
 from apps.exports.layout import PX_PER_MM
 from apps.exports.renderer import render_image, render_pdf
-from apps.exports.services import ExportRequest, export_image
+from apps.exports.services import ExportRequest, export_image, export_images
 from apps.fonts.models import FontFamily, FontVariant
 
 from .conftest import requires_chromium
@@ -824,6 +825,29 @@ def test_a_design_page_is_drawn_with_the_editors_engine(render_site, user):
 
     clear = export_image(design, transparent=True, format="webp")
     assert pixel(clear.data, 150, 80)[3] == 0 and pixel(clear.data, 20, 20)[3] == 255
+
+
+@requires_dist
+@pytest.mark.skipif("avif" not in services.image_formats(), reason="Pillow without AVIF")
+def test_pages_come_back_as_avif_in_a_zip_at_the_size_asked_for(render_site, user):
+    from apps.designs.tests.helpers import make_design
+
+    page = {"background": {"type": "solid", "color": "#0000ff"}, "objects": [rect(10, 10, 40, 30, "#ff0000")]}
+    document = {
+        "schemaVersion": 1,
+        "width": 200,
+        "height": 100,
+        "unit": "px",
+        "pages": [{"id": "p1", **page}, {"id": "p2", **page}],
+    }
+    design = make_design(user, title="Two", document=document)
+    bundle = export_images(design, pages="all", format="avif", size="300w", quality="balanced")
+    assert bundle.format == "zip" and [image.width for image in bundle.images] == [300, 300]
+    archive = zipfile.ZipFile(io.BytesIO(bundle.data))
+    image = Image.open(io.BytesIO(archive.read(archive.namelist()[1])))
+    assert (image.format, image.size) == ("AVIF", (300, 150))
+    red = image.convert("RGB").getpixel((30, 30))
+    assert red[0] > 200 and red[1] < 60 and red[2] < 60
 
 
 @requires_dist

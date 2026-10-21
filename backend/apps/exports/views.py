@@ -13,11 +13,12 @@ from rest_framework.settings import api_settings
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
+from apps.designs.fill import charge
 from apps.designs.models import Design
 
 from . import delivery
 from .exceptions import ExportDisabled, PayloadTooLarge
-from .filenames import page_filename, pdf_filename, unix_now
+from .filenames import FILE_NAMES, pdf_filename, unix_now
 from .serializers import (
     MAX_PAGES,
     MAX_TOTAL_BYTES,
@@ -26,7 +27,7 @@ from .serializers import (
     PdfExportSerializer,
     validate_page_files,
 )
-from .services import ExportRequest, export_image, export_pdf, page_index
+from .services import ZIP_MIME, ExportRequest, export_images, export_pdf, page_index
 from .throttling import ExportRateThrottle
 
 MULTIPART_OVERHEAD_BYTES = 2 * 1024 * 1024
@@ -97,8 +98,15 @@ def _file_headers(response: HttpResponse, filename: str, *, attachment: bool) ->
     return response
 
 
+def _charge_pages(user, extra: int) -> None:
+    """Each page after the first is one more render, counted against the `export` rate."""
+    for _ in range(extra):
+        charge(ExportRateThrottle(), user)
+
+
 class ImageExportView(APIView):
-    """Render one page of a saved design as PNG, JPG or WebP on the server, as the editor draws it."""
+    """Render pages of a saved design as PNG, JPG, WebP or AVIF on the server, as the editor draws them;
+    several pages come back as one ZIP."""
 
     permission_classes = [IsAuthenticated]
     content_negotiation_class = AnyAcceptNegotiation
@@ -110,6 +118,8 @@ class ImageExportView(APIView):
             (200, "image/png"): OpenApiTypes.BINARY,
             (200, "image/jpeg"): OpenApiTypes.BINARY,
             (200, "image/webp"): OpenApiTypes.BINARY,
+            (200, "image/avif"): OpenApiTypes.BINARY,
+            (200, ZIP_MIME): OpenApiTypes.BINARY,
         },
         tags=["exports"],
     )
@@ -118,20 +128,33 @@ class ImageExportView(APIView):
         body = ImageExportSerializer(data=request.data)
         body.is_valid(raise_exception=True)
         data = body.validated_data
-        result = export_image(
+        pages = data["pages"]
+        style = (
+            data.get("filename_style")
+            or FILE_NAMES.get(data.get("file_names"))
+            or settings.EXPORT_FILENAME_STYLE
+        )
+        stamp = data.get("filename_timestamp", settings.EXPORT_FILENAME_TIMESTAMP)
+        result = export_images(
             design,
-            page=page_index(data["page"]),
+            pages=pages if pages == "all" else [page_index(p) for p in pages or [data["page"]]],
+            filename_style=style,
+            unix=unix_now() if stamp else None,
+            charge=lambda extra: _charge_pages(request.user, extra),
             format=data["format"],
             quality=data["quality"],
             scale=data["scale"],
+            size=data["size"],
             transparent=data["transparent"],
+            max_bytes=data["max_bytes"],
+            png_colors=data["png_colors"],
+            strip_metadata=data["strip_metadata"],
+            srgb=data["srgb"],
+            progressive=data["progressive"],
         )
-        style = data.get("filename_style") or settings.EXPORT_FILENAME_STYLE
-        stamp = data.get("filename_timestamp", settings.EXPORT_FILENAME_TIMESTAMP)
-        filename = page_filename(design.title, result, style=style, unix=unix_now() if stamp else None)
         response = HttpResponse(result.data, content_type=result.mime)
         response["X-Doory-Placeholders"] = str(result.placeholders)
-        return _file_headers(response, filename, attachment=True)
+        return _file_headers(response, result.filename, attachment=True)
 
 
 class ImageDownloadView(APIView):
@@ -152,4 +175,4 @@ class ImageDownloadView(APIView):
         except FileNotFoundError as exc:
             raise Http404 from exc
         response = FileResponse(stream, content_type=mime)
-        return _file_headers(response, name, attachment=False)
+        return _file_headers(response, name, attachment=mime == ZIP_MIME)
