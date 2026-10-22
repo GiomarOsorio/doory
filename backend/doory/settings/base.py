@@ -163,6 +163,16 @@ EMAIL_SEND_ASYNC = env.bool("EMAIL_SEND_ASYNC", default=True)  # send off the re
 
 # ---- Integrations (all optional) ----
 GOOGLE_CLIENT_ID = env("GOOGLE_CLIENT_ID", default="")
+# OpenID Connect sign-in (apps.accounts.oidc): on when the issuer, client ID and client secret are all set.
+# A setting that is wrong turns it off and `manage.py check` says why. OIDC_TRUST_EMAIL lets a first OIDC
+# sign-in take over an existing account with the same (provider-verified) address; off, existing users
+# connect their account from Settings instead.
+OIDC_ISSUER = env("OIDC_ISSUER", default="")
+OIDC_CLIENT_ID = env("OIDC_CLIENT_ID", default="")
+OIDC_CLIENT_SECRET = env("OIDC_CLIENT_SECRET", default="")
+OIDC_BUTTON_LABEL = env("OIDC_BUTTON_LABEL", default="Sign in with SSO")
+OIDC_SCOPES = env("OIDC_SCOPES", default="openid email profile")
+OIDC_TRUST_EMAIL = env.bool("OIDC_TRUST_EMAIL", default=False)
 UNSPLASH_ACCESS_KEY = env("UNSPLASH_ACCESS_KEY", default="")
 PEXELS_API_KEY = env("PEXELS_API_KEY", default="")
 PIXABAY_API_KEY = env("PIXABAY_API_KEY", default="")

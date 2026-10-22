@@ -23,6 +23,7 @@ class UserSerializer(serializers.ModelSerializer):
     avatar_url = serializers.SerializerMethodField()
     has_password = serializers.SerializerMethodField()
     google_linked = serializers.SerializerMethodField()
+    oidc_linked = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -35,6 +36,7 @@ class UserSerializer(serializers.ModelSerializer):
             "is_email_verified",
             "has_password",
             "google_linked",
+            "oidc_linked",
             "created_at",
         )
         read_only_fields = fields
@@ -48,6 +50,9 @@ class UserSerializer(serializers.ModelSerializer):
 
     def get_google_linked(self, obj: User) -> bool:
         return bool(obj.google_sub)
+
+    def get_oidc_linked(self, obj: User) -> bool:
+        return obj.oidc_identities.exists()
 
 
 class UserEnvelopeSerializer(serializers.Serializer):
@@ -134,6 +139,17 @@ class ProfileUpdateSerializer(serializers.Serializer):
 class DeleteAccountSerializer(serializers.Serializer):
     password = _password_field(required=False, allow_blank=True)
     confirm_email = serializers.CharField(required=False, allow_blank=True, max_length=254, write_only=True)
+
+
+class OidcConnectSerializer(serializers.Serializer):
+    """Proof that it is the account's owner who connects an OIDC account: as for deleting the account."""
+
+    password = _password_field(required=False, allow_blank=True)
+    confirm_email = serializers.CharField(required=False, allow_blank=True, max_length=254, write_only=True)
+
+
+class OidcRedirectSerializer(serializers.Serializer):
+    redirect_url = serializers.CharField(read_only=True)
 
 
 class PasswordChangeSerializer(serializers.Serializer):

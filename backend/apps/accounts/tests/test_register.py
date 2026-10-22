@@ -21,6 +21,7 @@ USER_KEYS = {
     "is_email_verified",
     "has_password",
     "google_linked",
+    "oidc_linked",
     "created_at",
 }
 

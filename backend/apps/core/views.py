@@ -9,6 +9,7 @@ from rest_framework.decorators import api_view, authentication_classes, permissi
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
+from apps.accounts import oidc
 from apps.ai.catalog import ai_config, has_server_options
 from apps.ai.serializers import TaskOptionsSerializer
 from apps.assets.providers import configured_providers as configured_stock_providers
@@ -33,12 +34,14 @@ _CONFIG_SCHEMA = inline_serializer(
     "AppConfig",
     {
         "google_client_id": serializers.CharField(),
+        "oidc_button_label": serializers.CharField(),
         "features": inline_serializer(
             "AppConfigFeatures",
             {
                 "stock_photos": serializers.BooleanField(),
                 "server_pdf": serializers.BooleanField(),
                 "google_login": serializers.BooleanField(),
+                "oidc_login": serializers.BooleanField(),
                 "email_verification": serializers.BooleanField(),
                 "background_removal": serializers.BooleanField(),
                 "realtime": serializers.BooleanField(),
@@ -130,10 +133,12 @@ def config(request):
     return Response(
         {
             "google_client_id": settings.GOOGLE_CLIENT_ID,
+            "oidc_button_label": oidc.button_label(),
             "features": {
                 "stock_photos": bool(configured_stock_providers()),
                 "server_pdf": settings.SERVER_PDF_ENABLED,
                 "google_login": bool(settings.GOOGLE_CLIENT_ID),
+                "oidc_login": oidc.enabled(),
                 "email_verification": email_delivers(),
                 "background_removal": background_removal is not None,
                 "realtime": realtime_enabled(),
