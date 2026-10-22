@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { MemoryRouter } from 'react-router-dom'
@@ -35,6 +35,20 @@ describe('single sign-on on the sign-in pages', () => {
   it('offers it on the sign-up page too', async () => {
     renderApp('/signup', { config: withSso() })
     expect(await screen.findByRole('link', { name: 'Sign in with Authentik' })).toHaveAttribute('href', start('/dashboard'))
+  })
+
+  it('shows the logo the server names', async () => {
+    renderApp('/login', { config: { ...withSso(), oidc_button_icon: 'authentik' } })
+    const button = await screen.findByRole('link', { name: 'Sign in with Authentik' })
+    await waitFor(() => expect(button.querySelector('img')).toHaveAttribute('src', expect.stringMatching(/authentik|^data:image\/svg\+xml/)))
+    expect(button.querySelector('svg')).toBeNull()
+  })
+
+  it('keeps the key icon for a logo it does not have', async () => {
+    renderApp('/login', { config: { ...withSso(), oidc_button_icon: 'no-such-provider' } })
+    const button = await screen.findByRole('link', { name: 'Sign in with Authentik' })
+    expect(button.querySelector('img')).toBeNull()
+    expect(button.querySelector('svg')).not.toBeNull()
   })
 
   it('falls back to a generic label', async () => {

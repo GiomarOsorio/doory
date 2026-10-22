@@ -192,6 +192,7 @@ See [google-sign-in.md](../integrations/google-sign-in.md).
 | `OIDC_CLIENT_ID` | | Client ID of a confidential client registered at the provider, with `SITE_URL/api/v1/auth/oidc/callback/` as its redirect URI |
 | `OIDC_CLIENT_SECRET` | | That client's secret |
 | `OIDC_BUTTON_LABEL` | `Sign in with SSO` | Text of the sign-in button, e.g. `Sign in with Authentik` |
+| `OIDC_BUTTON_ICON` | | Logo on the sign-in button, by name: the file name of an icon in [`frontend/src/assets/sso-icons/`](../../frontend/src/assets/sso-icons/) without `.svg`, e.g. `authentik`, `keycloak`, `authelia`, `pocket-id`, `okta`, `microsoft`, `google`. Empty or unknown: a key icon |
 | `OIDC_SCOPES` | `openid email profile` | Scopes to ask for. Must include `openid` |
 | `OIDC_TRUST_EMAIL` | `false` | Let a first sign-in use an existing account with the same email address, when the provider says it has verified it. Never applies to staff accounts. Off, people connect their existing account from Settings |
 
