@@ -11,6 +11,10 @@ Three modes share one locked-down browser:
    `page.evaluate` and the PNG comes back the same way: the page needs no API, cookies or tokens.
  * `pages` opens the same page and makes several pages at once for the SVG and PDF exports (SVG files, the
    print server's SVG pages or JPEG pictures, `window.__dooryRenderPages`), one file per page.
+ * `video` opens the same page, makes an MP4, WebM or GIF (`window.__dooryRenderVideo`) and reads the file in
+   slices (`window.__dooryVideoSlice`). The browser's encoders need a secure context, so a page at a plain
+   `http://` address is opened at its `*.localhost` alias (`policy.secure_alias`), which the route serves from
+   the real address.
 
 For both:
  * every request goes through `context.route`: `data:` URLs pass, same-origin `/media/` and `/static/`
@@ -30,8 +34,9 @@ import traceback
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
-from apps.exports.policy import RequestPolicy
+from apps.exports.policy import RequestPolicy, secure_alias, unaliased
 
 WAIT_FOR_FONTS = """
 (timeoutMs) => Promise.race([
@@ -56,8 +61,21 @@ RENDER_PAGES = """
   )),
 ])
 """
+RENDER_VIDEO = """
+([input, timeoutMs]) => Promise.race([
+  window.__dooryRenderVideo(input),
+  new Promise((resolve) => setTimeout(
+    () => resolve({ ok: false, error: { code: "timeout", message: "render deadline exceeded" } }), timeoutMs,
+  )),
+])
+"""
+READ_VIDEO_SLICE = "([offset, length]) => window.__dooryVideoSlice(offset, length)"
 RENDER_READY = "() => window.__dooryRenderReady === true && typeof window.__dooryRender === 'function'"
 HAS_RENDER_PAGES = "() => typeof window.__dooryRenderPages === 'function'"
+HAS_RENDER_VIDEO = (
+    "() => typeof window.__dooryRenderVideo === 'function' && typeof window.__dooryVideoSlice === 'function'"
+)
+VIDEO_SLICE_BYTES = 4 * 1024 * 1024  # base64 through the DevTools connection, one slice at a time
 PAGE_SUFFIXES = {"svg": "svg", "print": "svg", "picture": "jpg"}
 MAX_RECORDED_REQUESTS = 50
 LAUNCH_ARGS = (
@@ -89,6 +107,8 @@ def run(spec: dict[str, Any]) -> dict[str, Any]:
         return _with_page(spec, js=True, work=_render_image)
     if spec.get("mode") == "pages":
         return _with_page(spec, js=True, work=_render_pages)
+    if spec.get("mode") == "video":
+        return _with_page(spec, js=True, work=_render_video, secure=True)
     return _with_page(spec, js=False, work=_print_pdf)
 
 
@@ -203,9 +223,70 @@ def _render_pages(
     ]
 
 
-def _with_page(spec: dict[str, Any], *, js: bool, work: Work) -> dict[str, Any]:
+def _render_video(
+    page, spec: dict[str, Any], remaining_ms: Callable[[], int], report: dict[str, Any]
+) -> None:
+    """Open the render page (at its secure alias, see the module), make the video of the payload in
+    `spec["payload_path"]` and write it to `spec["video_path"]`, read in slices of `VIDEO_SLICE_BYTES`."""
+    payload = json.loads(Path(spec["payload_path"]).read_text(encoding="utf-8"))
+    url = secure_alias(spec["render_url"]) or spec["render_url"]
+    page.goto(url, wait_until="load", timeout=remaining_ms())
+    page.wait_for_function(RENDER_READY, timeout=remaining_ms())
+    if not page.evaluate(HAS_RENDER_VIDEO):
+        report.update(status="error", kind="unavailable", message="the render page cannot make videos yet")
+        return
+    answer = page.evaluate(RENDER_VIDEO, [payload, remaining_ms()])
+    remaining_ms()
+    if not _answered(answer, report):
+        return
+    size = answer.get("bytes")
+    if not isinstance(size, int) or not 0 < size <= int(spec["max_video_bytes"]):
+        report.update(status="error", kind="failed", message=f"the render page made a video of {size} bytes")
+        return
+    written = 0
+    with Path(spec["video_path"]).open("wb") as out:
+        while written < size:
+            part = page.evaluate(READ_VIDEO_SLICE, [written, VIDEO_SLICE_BYTES])
+            remaining_ms()
+            if not _answered(part, report):
+                return
+            try:
+                data = base64.b64decode(part["data"], validate=True)
+            except (KeyError, TypeError, binascii.Error):
+                data = b""
+            if not data:
+                break
+            out.write(data)
+            written += len(data)
+    if written != size:
+        message = f"the render page sent {written} of {size} bytes"
+        report.update(status="error", kind="failed", message=message)
+        return
+    report.update(
+        mime=str(answer.get("mime") or "")[:40],
+        bytes=size,
+        width=int(answer.get("width") or 0),
+        height=int(answer.get("height") or 0),
+        fps=int(answer.get("fps") or 0),
+        frames=int(answer.get("frames") or 0),
+        duration_ms=int(answer.get("durationMs") or 0),
+        video=str(answer.get("video") or "")[:40],
+        audio=str(answer["audio"])[:40] if answer.get("audio") else None,
+        warnings=[str(code)[:40] for code in answer.get("warnings") or []][:16],
+        page_ids=[str(item)[:100] for item in answer.get("pageIds") or []][:1000],
+        page_indexes=[int(item) for item in answer.get("pageIndexes") or []][:1000],
+        placeholders=int(answer.get("placeholders") or 0),
+        missing_fonts=[str(name)[:120] for name in answer.get("missingFonts") or []][:64],
+    )
+
+
+def _with_page(spec: dict[str, Any], *, js: bool, work: Work, secure: bool = False) -> dict[str, Any]:
     """Launch the browser, route every request through the policy and hand a fresh page to `work`, which
-    writes its output and may add to the report. Deadline and failures become the report's error kinds."""
+    writes its output and may add to the report. Deadline and failures become the report's error kinds.
+
+    `secure`: the render page is opened at its secure alias (when it needs one), whose requests are checked
+    and fetched at the real address; the answers name the alias as allowed origin, for pictures, fonts and
+    sounds the page loads from the real address."""
     from playwright.sync_api import Error as PlaywrightError
     from playwright.sync_api import TimeoutError as PlaywrightTimeout
     from playwright.sync_api import sync_playwright
@@ -213,6 +294,9 @@ def _with_page(spec: dict[str, Any], *, js: bool, work: Work) -> dict[str, Any]:
     policy = RequestPolicy.build(
         spec["allowed_origins"], spec["path_prefixes"], page_url=spec.get("render_url") if js else None
     )
+    page_url = spec.get("render_url") or ""
+    alias = secure_alias(page_url) if secure and js else None
+    alias_origin = f"http://{urlsplit(alias).netloc}" if alias else None
     deadline = time.monotonic() + float(spec["timeout_s"])
     max_asset_bytes = int(spec["max_asset_bytes"])
     report: dict[str, Any] = {"status": "ok", "blocked": [], "blocked_total": 0, "allowed_total": 0}
@@ -231,24 +315,28 @@ def _with_page(spec: dict[str, Any], *, js: bool, work: Work) -> dict[str, Any]:
 
     def handle(route) -> None:
         request = route.request
-        decision = policy.evaluate(request.url, request.method)
+        url = unaliased(request.url, alias, page_url) if alias else request.url
+        decision = policy.evaluate(url, request.method)
         if not decision.allowed:
-            block(route, request.url, decision.reason)
+            block(route, url, decision.reason)
             return
         report["allowed_total"] += 1
         if not decision.fetch:
             route.continue_()
             return
         try:
-            response = route.fetch(max_redirects=0, timeout=min(remaining_ms(), 10_000))
+            response = route.fetch(url=url, max_redirects=0, timeout=min(remaining_ms(), 10_000))
             body = response.body()
         except (PlaywrightError, RenderTimeout):
-            block(route, request.url, "fetch-failed")
+            block(route, url, "fetch-failed")
             return
         if 300 <= response.status < 400:
-            block(route, request.url, "redirect")
+            block(route, url, "redirect")
         elif len(body) > max_asset_bytes:
-            block(route, request.url, "too-large")
+            block(route, url, "too-large")
+        elif alias_origin:
+            headers = {**response.headers, "access-control-allow-origin": alias_origin}
+            route.fulfill(response=response, body=body, headers=headers)
         else:
             route.fulfill(response=response, body=body)
 

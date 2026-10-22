@@ -1,5 +1,5 @@
 """See a design: render pages on the server with the editor's own engine and return them as images, or hand
-them on as SVG files or a PDF."""
+them on as SVG files, a PDF or a video."""
 
 from __future__ import annotations
 
@@ -15,13 +15,13 @@ from apps.apitokens.scopes import DESIGNS_READ
 from apps.designs.doc.ops import PageRef
 from apps.exports.delivery import store_image
 from apps.exports.filenames import FILE_NAMES, unix_now
-from apps.exports.services import ImageBundle, ImageResult, export_images, page_index
+from apps.exports.services import VIDEO_FORMATS, ImageBundle, ImageResult, export_images, page_index
 from apps.exports.throttling import ExportRateThrottle
 
 from ..registry import charge_call, throttle, tool
 from .designs import DesignId, _design, editor_url
 
-ALWAYS_LINKED = ("avif", "svg", "pdf", "zip")  # clients can't show these inline
+ALWAYS_LINKED = ("avif", "svg", "pdf", "zip", *VIDEO_FORMATS)  # clients can't show these inline
 
 
 def _charge_pages(extra: int) -> None:
@@ -73,6 +73,23 @@ def _pdf_info(bundle: ImageBundle) -> dict[str, Any]:
     }
 
 
+def _video_info(bundle: ImageBundle) -> dict[str, Any]:
+    video, options = bundle.images[0], bundle.options
+    return {
+        "format": bundle.format,
+        "bytes": len(bundle.data),
+        "width": video.width,
+        "height": video.height,
+        **{key: options[key] for key in ("fps", "duration_ms", "frames", "video", "audio", "pages")},
+        "filename": bundle.filename,
+        "options": {
+            key: value
+            for key, value in options.items()
+            if key not in ("duration_ms", "frames", "video", "audio", "pages")
+        },
+    }
+
+
 @tool(scope=DESIGNS_READ, title="Export a design", read_only=True)
 def export_design(
     design_id: DesignId,
@@ -82,26 +99,32 @@ def export_design(
         Field(
             description=(
                 'Several pages instead of `page`: "all", or a list of page ids and numbers counting from 1. '
-                "They come back as one ZIP (always a link); each page after the first counts as one call."
+                "They come back as one ZIP (always a link); each page after the first counts as one call. "
+                "A video plays all pages unless `page` or `pages` says otherwise."
             )
         ),
     ] = None,
     format: Annotated[
-        Literal["png", "jpg", "webp", "avif", "auto", "svg", "pdf", "pdf-print"],
+        Literal["png", "jpg", "webp", "avif", "auto", "svg", "pdf", "pdf-print", "mp4", "webm", "gif"],
         Field(
             description=(
                 "auto: the smallest image of all formats (no JPG when transparent). svg: one vector file per "
                 "page, with its pictures and fonts inside. pdf: one PDF of all pages, each a 300 dpi picture "
                 "(as the editor's PDF download). pdf-print: one vector PDF for printing (the editor's "
-                "print-quality PDF). AVIF, SVG and PDF are links; the image options (quality to optimize) "
-                "do not apply to SVG and PDF."
+                "print-quality PDF). mp4, webm, gif: a video of the pages one after another, with their "
+                "animations, transitions and (mp4, webm) the design's sound, as the editor's video download; "
+                "each started 10 s after the first counts as one more call. AVIF, SVG, PDF and videos are "
+                "links; the image options (quality to optimize) do not apply to SVG, PDF and videos."
             )
         ),
     ] = "png",
     quality: Annotated[
         Annotated[int, Field(ge=1, le=100)] | Literal["small", "balanced", "best", "original"],
         Field(
-            description="JPG, WebP and AVIF: 1-100, or small (65), balanced (82), best (95), original (100)."
+            description=(
+                "JPG, WebP and AVIF: 1-100, or small (65), balanced (82), best (95), original (100). Video: "
+                "small, balanced or best (a number up to 70 is small, up to 90 balanced)."
+            )
         ),
     ] = 90,
     max_bytes: Annotated[
@@ -147,6 +170,35 @@ def export_design(
         bool,
         Field(description="CMYK colours. Not offered: PDFs are RGB, as on screen; true is refused."),
     ] = False,
+    resolution: Annotated[
+        Literal["design", 240, 360, 480, 720, 1080, 2160] | None,
+        Field(
+            description=(
+                "Video: the shorter side of the frame in px, or design (the first page's size, at most "
+                "1920 px on its longer side; 720 for GIF). MP4 and WebM: design, 480-2160 (default "
+                "design); GIF: 240-720 (default 480). The server may cap it lower."
+            )
+        ),
+    ] = None,
+    fps: Annotated[
+        Literal[5, 10, 15, 20, 24, 30, 60] | None,
+        Field(
+            description="Video frame rate: MP4 and WebM 24, 30 (default) or 60; GIF 5, 10, 15 (default), 20."
+        ),
+    ] = None,
+    fit: Annotated[
+        Literal["fit", "fill"],
+        Field(
+            description="Video: a page of another shape than the first is fitted whole, or fills the frame."
+        ),
+    ] = "fit",
+    sound: Annotated[bool, Field(description="MP4 and WebM: put the design's sound in the file.")] = True,
+    loop: Annotated[int, Field(ge=0, le=65_535, description="GIF: how often it plays, 0 = forever.")] = 0,
+    dither: Annotated[bool, Field(description="GIF: smoother gradients, larger file.")] = True,
+    page_seconds: Annotated[
+        float | None,
+        Field(ge=1, le=600, description="Video: hold every page this long instead of its own time (5 s)."),
+    ] = None,
     file_names: Annotated[
         Literal["simple", "detailed"] | None,
         Field(description="simple: the title and page; detailed: with platform, preset and size."),
@@ -157,16 +209,19 @@ def export_design(
             description=(
                 "inline: the image itself, to look at. url: a download link that expires after a few "
                 "minutes, for large images or to hand on. Images too large to send inline, AVIF images, SVG, "
-                "PDF and ZIPs become a link."
+                "PDF, ZIPs and videos become a link."
             )
         ),
     ] = "inline",
 ) -> list[ImageContent | TextContent]:
     """Render pages of a design as images, exactly as the editor draws them, to check how they look (after
-    edit_design, for example) or to hand them on; or export them as SVG files or a PDF, as the editor's
-    Download makes them. It shows the live state when the design is open in the editor."""
+    edit_design, for example) or to hand them on; or export them as SVG files, a PDF or a video (MP4, WebM,
+    GIF), as the editor's Download makes them. It shows the live state when the design is open in the
+    editor."""
     throttle(ExportRateThrottle())
     design = _design(design_id)
+    if format in VIDEO_FORMATS and pages is None and page is None:
+        pages = "all"
     bundle = export_images(
         design,
         pages=pages if pages == "all" else [page_index(p) for p in pages or [page]],
@@ -187,9 +242,18 @@ def export_design(
         bleed_mm=bleed_mm,
         crop_marks=crop_marks,
         cmyk=cmyk,
+        resolution=resolution,
+        fps=fps,
+        fit=fit,
+        sound=sound,
+        loop=loop,
+        dither=dither,
+        page_seconds=page_seconds,
     )
     info: dict[str, Any] = {"design_id": str(design.pk)}
-    if bundle.format == "pdf":
+    if bundle.format in VIDEO_FORMATS:
+        info |= _video_info(bundle)
+    elif bundle.format == "pdf":
         info |= _pdf_info(bundle)
     elif bundle.format == "zip":
         info |= {
@@ -207,7 +271,9 @@ def export_design(
     if bundle.warnings:
         info["warnings"] = list(bundle.warnings)
     if delivery == "inline" and bundle.format in ALWAYS_LINKED:
-        info["note"] = "AVIF images, SVG files, PDFs and ZIPs of several pages are always sent as a link."
+        info["note"] = (
+            "AVIF images, SVG files, PDFs, ZIPs of several pages and videos are always sent as a link."
+        )
         delivery = "url"
     if delivery == "inline" and len(bundle.data) > settings.MCP_EXPORT_INLINE_MAX_BYTES:
         info["note"] = (

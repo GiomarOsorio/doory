@@ -124,7 +124,7 @@ def test_an_image_comes_back_whatever_the_accept_header(client, design, renders)
         {"page": 0},
         {"page": True},
         {"page": ""},
-        {"format": "gif"},
+        {"format": "heic"},
         {"filename_style": "fancy"},
         {"quality": 0},
         {"scale": 5},
@@ -322,3 +322,103 @@ def test_the_schema_documents_pdf_and_svg(client, db):
     assert set(operation["responses"]["200"]["content"]) >= {"application/pdf", "image/svg+xml"}
     body = schema["components"]["schemas"]["ImageExportRequest"]["properties"]
     assert {"bleed_mm", "crop_marks", "cmyk"} <= set(body)
+
+
+# ---- Video ---------------------------------------------------------------------------------------
+
+
+@pytest.fixture
+def videos(monkeypatch) -> list[dict]:
+    """`export_video` stubbed out: records its options and answers with the video."""
+    calls: list[dict] = []
+
+    def fake_export_video(design, **options):
+        calls.append(options)
+        fmt = options["format"]
+        mime = services.VIDEO_FORMATS[fmt]
+        name = f"{design.title}.{fmt}"
+        video = ImageResult(b"video", fmt, mime, 1920, 1080, "p", 0, placeholders=3)
+        return services.ImageBundle(b"video", fmt, mime, name, (video,), (name,))
+
+    monkeypatch.setattr(services, "export_video", fake_export_video)
+    return calls
+
+
+def test_a_video_of_all_pages_by_default(client, design, videos, renders):
+    response = client.post(url(design), {"format": "mp4"}, format="json")
+    assert response.status_code == 200 and response.content == b"video"
+    assert response["Content-Type"] == "video/mp4"
+    assert response["Content-Disposition"] == 'attachment; filename="Summer sale.mp4"'
+    assert response["X-Doory-Placeholders"] == "3"
+    assert videos[0] | {"charge": None} == {
+        "format": "mp4",
+        "pages": "all",
+        "quality": 90,
+        "resolution": None,
+        "fps": None,
+        "fit": "fit",
+        "sound": True,
+        "loop": 0,
+        "dither": True,
+        "page_seconds": None,
+        "filename_style": "simple",
+        "unix": None,
+        "charge": None,
+    }
+    assert renders == []
+
+
+def test_the_video_options_are_passed_on(client, user, videos):
+    design = make_design(user, title="Deck", document=make_doc(pages=3))
+    body = {
+        "format": "gif",
+        "page": 2,
+        "resolution": 360,
+        "fps": 10,
+        "quality": "best",
+        "fit": "fill",
+        "loop": 2,
+        "dither": False,
+        "page_seconds": 3,
+    }
+    response = client.post(url(design), body, format="json")
+    assert response.status_code == 200 and response["Content-Type"] == "image/gif"
+    call = videos[0]
+    assert (call["pages"], call["resolution"], call["fps"], call["quality"]) == ([1], 360, 10, "best")
+    assert (call["fit"], call["loop"], call["dither"], call["page_seconds"]) == ("fill", 2, False, 3.0)
+    client.post(url(design), {"format": "webm", "resolution": "design", "sound": False}, format="json")
+    assert (videos[1]["resolution"], videos[1]["sound"]) == ("design", False)
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"resolution": "big"},
+        {"resolution": True},
+        {"fps": 0},
+        {"fps": 120},
+        {"fit": "stretch"},
+        {"loop": -1},
+        {"page_seconds": 0},
+        {"page_seconds": 601},
+    ],
+)
+def test_bad_video_options_are_refused(client, design, videos, body):
+    response = client.post(url(design), {"format": "mp4", **body}, format="json")
+    assert response.status_code == 400 and videos == []
+
+
+def test_video_export_is_off_unless_turned_on(client, design, settings):
+    settings.SERVER_IMAGE_EXPORT_ENABLED = True
+    settings.SERVER_VIDEO_EXPORT_ENABLED = False
+    response = client.post(url(design), {"format": "webm"}, format="json")
+    assert response.status_code == 404
+    assert "video export is not enabled" in response.content.decode()
+
+
+def test_the_schema_documents_video(client, db):
+    schema = client.get("/api/v1/schema/", {"format": "json"}).json()
+    operation = schema["paths"]["/api/v1/designs/{id}/export/image/"]["post"]
+    assert set(operation["responses"]["200"]["content"]) >= {"video/mp4", "video/webm", "image/gif"}
+    body = schema["components"]["schemas"]["ImageExportRequest"]["properties"]
+    assert {"resolution", "fps", "fit", "sound", "loop", "dither", "page_seconds"} <= set(body)

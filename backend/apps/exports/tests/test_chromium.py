@@ -1092,3 +1092,108 @@ def test_the_rest_endpoint_returns_a_print_pdf(client, render_site, user):
     )
     assert response.status_code == 200 and response["Content-Type"] == "application/pdf"
     assert len(reader(response.content).pages) == 2
+
+
+# ---- Video of a saved design: the editor's video pipeline on the render page ----------------------
+
+
+@pytest.fixture
+def video_site(render_site, settings):
+    settings.SERVER_VIDEO_EXPORT_ENABLED = True
+    settings.EXPORT_VIDEO_TIMEOUT_SECONDS = 120
+    return render_site
+
+
+def tone_wav(seconds=1.0, rate=48_000) -> bytes:
+    import math
+    import struct
+    import wave
+
+    out = io.BytesIO()
+    with wave.open(out, "wb") as file:
+        file.setnchannels(1)
+        file.setsampwidth(2)
+        file.setframerate(rate)
+        frames = int(seconds * rate)
+        file.writeframes(b"".join(struct.pack("<h", int(8000 * math.sin(i / 10))) for i in range(frames)))
+    return out.getvalue()
+
+
+def with_sound(design, src: str):
+    design.document["audioTracks"] = [
+        {
+            "id": "t",
+            "kind": "music",
+            "name": "tone",
+            "src": src,
+            "scope": {"type": "design"},
+            "startMs": 0,
+            "trimStartMs": 0,
+            "trimEndMs": 1000,
+            "volume": 1,
+            "fadeInMs": 0,
+            "fadeOutMs": 0,
+            "loop": True,
+            "muted": False,
+        }
+    ]
+    design.save()
+    return design
+
+
+@requires_dist
+def test_a_gif_of_all_pages_at_the_alias_of_the_render_page(video_site, user):
+    design = two_pages(user, rect(10, 10, 40, 30, "#ff0000"))
+    bundle = export_images(design, pages="all", format="gif", resolution=240, fps=5, page_seconds=1)
+    assert bundle.data.startswith(b"GIF89a") and bundle.mime == "image/gif"
+    image = Image.open(io.BytesIO(bundle.data))
+    assert (image.size, image.n_frames > 1) == ((480, 240), True)
+    first = image.convert("RGB").getpixel((30, 30))
+    assert first[0] > 200 and first[1] < 80  # the red box of the first page, scaled 2x
+    assert (bundle.options["duration_ms"], bundle.options["video"], bundle.options["pages"]) == (
+        2000,
+        "GIF",
+        [1, 2],
+    )
+    # Opened at `127.0.0.1.localhost` and served from the real address (`policy.secure_alias`).
+    assert "/render.html" in video_site.hits
+
+
+@requires_dist
+@pytest.mark.parametrize(
+    ("fmt", "magic", "video"), [("webm", b"\x1a\x45\xdf\xa3", "VP9"), ("mp4", b"ftyp", "H.264")]
+)
+def test_a_video_with_the_designs_sound(video_site, user, fmt, magic, video):
+    name = default_storage.save("uploads/e2e-tone.wav", ContentFile(tone_wav()))
+    try:
+        design = with_sound(two_pages(user, rect(10, 10, 40, 30, "#ff0000")), f"/media/{name}")
+        bundle = export_images(design, pages="all", format=fmt, resolution=480, fps=24, page_seconds=1)
+    finally:
+        default_storage.delete(name)
+    assert magic in bundle.data[:16] and bundle.mime == f"video/{fmt}"
+    assert (bundle.images[0].width, bundle.images[0].height) == (960, 480)
+    assert bundle.options["video"] == video and bundle.options["audio"] in ("Opus", "AAC")
+    assert (b"mp4a" in bundle.data or b"Opus" in bundle.data) if fmt == "mp4" else b"A_OPUS" in bundle.data
+    if bundle.options["audio"] == "Opus" and fmt == "mp4":
+        assert any("Opus, not AAC" in text for text in bundle.warnings)
+
+
+@requires_dist
+def test_a_sound_that_cannot_be_loaded_names_itself(video_site, user):
+    design = with_sound(two_pages(user), "/media/uploads/missing.wav")
+    with pytest.raises(services.InvalidExport) as caught:
+        export_images(design, format="webm", page_seconds=1)
+    assert caught.value.get_codes() == "sound_unavailable"
+
+
+@requires_dist
+def test_the_rest_endpoint_returns_a_video(client, video_site, user):
+    design = two_pages(user, rect(10, 10, 40, 30, "#ff0000"))
+    response = client.post(
+        f"/api/v1/designs/{design.pk}/export/image/",
+        {"format": "webm", "resolution": 480, "page_seconds": 1},
+        format="json",
+    )
+    assert response.status_code == 200 and response["Content-Type"] == "video/webm"
+    assert response.content.startswith(b"\x1a\x45\xdf\xa3")
+    assert response["Content-Disposition"] == 'attachment; filename="Two.webm"'

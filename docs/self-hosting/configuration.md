@@ -108,6 +108,11 @@ See [image-export.md](image-export.md).
 | `EXPORT_IMAGE_MAX_PIXELS` | `40000000` | Largest image, as width × height after scaling |
 | `EXPORT_IMAGE_MAX_DOCUMENT_BYTES` | `5242880` | Largest design document the export will draw |
 | `EXPORT_IMAGE_MAX_PAGES` | `10` | Most pages one image, SVG or PDF export draws (several images or SVGs come back as a ZIP). Each image page is a render of its own in the same request |
+| `SERVER_VIDEO_EXPORT_ENABLED` | `false` | Make MP4, WebM and GIF videos of saved designs on the server (REST API and `export_design`). Also needs `SERVER_IMAGE_EXPORT_ENABLED`. One video keeps a browser busy for up to `EXPORT_VIDEO_TIMEOUT_SECONDS` |
+| `EXPORT_VIDEO_TIMEOUT_SECONDS` | `300` | Time limit for making one video. Keep your proxy's read timeout for the export endpoint and `/mcp` above it (the bundled nginx waits 330 s) |
+| `EXPORT_VIDEO_MAX_SECONDS` | `120` | Longest video or GIF the server makes |
+| `EXPORT_VIDEO_MAX_RESOLUTION` | `1080` | Largest shorter side of a video frame, in px (the editor offers up to 2160) |
+| `EXPORT_VIDEO_MAX_BYTES` | `209715200` | Largest video file the server keeps (200 MB) |
 | `EXPORT_MAX_CONCURRENCY` | `2` | Exports running at the same time in each API process |
 | `EXPORT_TIMEOUT_SECONDS` | `30` | Time limit for one export. SVG and PDF exports of a saved design get it once per page to draw them, and a PDF once more to print |
 | `EXPORT_CHROMIUM_PATH` | | Path to a Chromium binary. Empty: the one Playwright installed |

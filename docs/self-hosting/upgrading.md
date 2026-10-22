@@ -40,6 +40,13 @@ sudo systemctl daemon-reload && sudo nginx -t && sudo systemctl reload nginx
 
 Changes that need you to do something, newest first. Changes that need nothing aren't listed here.
 
+### 2026-10-21: server-side video export (opt-in)
+
+- New settings `SERVER_VIDEO_EXPORT_ENABLED` (off) and `EXPORT_VIDEO_*`; see
+  [image-export.md](image-export.md#video).
+- **Without Docker:** `deploy/nginx.conf` waits 330 s (was 120 s) for the image export endpoint and for `/mcp`.
+  Copy it again, keeping your own edits; a proxy of your own needs the same for video export.
+
 ### 2026-10-21: image optimizers
 
 - **Docker:** the API image builds mozjpeg and installs oxipng (`INSTALL_IMAGE_OPTIMIZERS=true`, about 2 MB),

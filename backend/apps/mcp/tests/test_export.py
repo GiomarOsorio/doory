@@ -16,6 +16,7 @@ from rest_framework.test import APIClient
 from apps.designs.tests.helpers import make_design, make_doc
 from apps.exports import delivery, services
 from apps.exports.exceptions import ExportBusy, InvalidExport
+from apps.exports.renderer import VideoResult as RenderedVideo
 from apps.exports.services import IMAGE_FORMATS, ImageResult
 from apps.exports.throttling import ExportRateThrottle
 from apps.mcp.tools import export
@@ -436,3 +437,86 @@ def test_the_print_pdf_takes_crop_marks_and_refuses_cmyk(as_caller, design, docu
     with pytest.raises(ToolError, match="no CMYK conversion"):
         export.export_design(str(design.pk), format="pdf-print", cmyk=True)
     assert len(documents) == 1
+
+
+# ---- Video ---------------------------------------------------------------------------------------
+
+
+@pytest.fixture
+def videos(monkeypatch, settings) -> list[dict]:
+    """The render page's video, faked below `export_video`: records the payload, answers with a small file."""
+    settings.SERVER_IMAGE_EXPORT_ENABLED = True
+    settings.SERVER_VIDEO_EXPORT_ENABLED = True
+    settings.EXPORT_RENDER_PAGE_URL = "http://frontend.test:8080/render.html"
+    calls: list[dict] = []
+
+    def fake_render_video(payload, **kwargs):
+        calls.append(payload)
+        pages = payload["document"]["pages"]
+        return RenderedVideo(
+            data=b"\x00\x00\x00\x18ftypisom-video",
+            mime=services.VIDEO_FORMATS[payload["format"]],
+            width=480,
+            height=240,
+            fps=payload["fps"],
+            frames=100,
+            duration_ms=10_000,
+            video="GIF" if payload["format"] == "gif" else "H.264",
+            audio=None if payload["format"] == "gif" else "Opus",
+            warnings=() if payload["format"] == "gif" else ("audio-fallback",),
+            page_ids=tuple(pages[index]["id"] for index in payload["pages"]),
+            page_indexes=tuple(payload["pages"]),
+        )
+
+    monkeypatch.setattr(services, "render_video", fake_render_video)
+    return calls
+
+
+def test_a_video_of_all_pages_is_a_link_with_what_it_holds(as_caller, design, videos, renders):
+    info = info_of(export.export_design(str(design.pk), format="mp4", delivery="inline"))
+    assert videos[0]["pages"] == [0, 1] and renders == []
+    assert (info["format"], info["filename"], info["width"], info["height"]) == (
+        "mp4",
+        "Poster.mp4",
+        480,
+        240,
+    )
+    assert (info["fps"], info["duration_ms"], info["frames"], info["video"], info["audio"]) == (
+        30,
+        10_000,
+        100,
+        "H.264",
+        "Opus",
+    )
+    assert info["pages"] == [1, 2] and info["options"]["resolution"] == "design"
+    assert info["warnings"][0].startswith("The sound is Opus") and "always sent as a link" in info["note"]
+    response = APIClient().get(info["url"].removeprefix("http://localhost:5173"))
+    assert response["Content-Type"] == "video/mp4"
+    assert b"".join(response.streaming_content) == b"\x00\x00\x00\x18ftypisom-video"
+
+
+def test_a_gif_takes_its_options(as_caller, design, videos):
+    info = info_of(
+        export.export_design(
+            str(design.pk), page=2, format="gif", resolution=240, fps=10, loop=2, dither=False, page_seconds=3
+        )
+    )
+    payload = videos[0]
+    assert (payload["pages"], payload["resolution"], payload["fps"]) == ([1], 240, 10)
+    assert (payload["loops"], payload["dither"], payload["pageSeconds"]) == (2, False, 3)
+    assert info["format"] == "gif" and info["options"]["loop"] == 2 and "warnings" not in info
+
+
+def test_each_started_10_seconds_after_the_first_is_one_more_call(as_caller, design, videos, settings):
+    settings.MCP_CALLS_PER_MINUTE = 3
+    export.export_design(str(design.pk), format="webm", page_seconds=10)  # 20 s: one more call
+    with pytest.raises(ToolError, match="Too many calls"):
+        export.export_design(str(design.pk), format="webm", page_seconds=10)
+    assert len(videos) == 1
+
+
+def test_video_export_is_off_unless_the_server_turns_it_on(as_caller, design, videos, settings):
+    settings.SERVER_VIDEO_EXPORT_ENABLED = False
+    with pytest.raises(ToolError, match="video export is not enabled"):
+        export.export_design(str(design.pk), format="mp4")
+    assert videos == []

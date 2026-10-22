@@ -1,4 +1,5 @@
-"""Runs the render worker (PDF or image) in a child process with a hard deadline and bounded concurrency."""
+"""Runs the render worker (PDF, image, pages or video) in a child process with a hard deadline and bounded
+concurrency."""
 
 from __future__ import annotations
 
@@ -30,12 +31,25 @@ KILL_GRACE_SECONDS = 3
 # the path of a unix socket stops at 107 characters.
 MAX_WORKDIR_CHARS = 60
 MAX_ASSET_BYTES = 10 * 1024 * 1024
+MAX_SOUND_BYTES = 30 * 1024 * 1024  # video: a sound file of the design (the editor takes up to 25 MB)
 # Error codes of the render page that describe the request (a 400), not a broken renderer.
 # `image_unavailable`: a picture of the design could not be fetched, so it can't go into an SVG.
+# Video: `too_long` and `too_large` (the server's limits), `sound_unavailable` (a sound file would not load).
 RENDER_PAGE_INPUT_ERRORS = frozenset(
-    {"invalid_document", "page_not_found", "invalid_options", "image_unavailable"}
+    {
+        "invalid_document",
+        "page_not_found",
+        "invalid_options",
+        "image_unavailable",
+        "too_long",
+        "too_large",
+        "sound_unavailable",
+    }
 )
+# The render page's browser has no encoder for the video asked for (a 503).
+RENDER_PAGE_UNAVAILABLE = frozenset({"video_unsupported"})
 PAGE_MIME_TYPES = {"svg": "image/svg+xml", "print": "image/svg+xml", "picture": "image/jpeg"}
+VIDEO_MIME_TYPES = frozenset({"video/mp4", "video/webm", "image/gif"})
 _ENV_ALLOWLIST = (
     "PATH",
     "HOME",
@@ -97,6 +111,29 @@ class PagesResult:
     pages: tuple[RenderedPage, ...]
     mime: str
     font_files: tuple[dict, ...] = ()  # print pages: the font files they use, as the editor sends them
+    allowed_total: int = 0
+    blocked_total: int = 0
+    blocked: tuple[BlockedRequest, ...] = field(default_factory=tuple)
+
+
+@dataclass(frozen=True)
+class VideoResult:
+    """The file `render_video` made and what the render page reported about it."""
+
+    data: bytes
+    mime: str  # video/mp4, video/webm or image/gif
+    width: int
+    height: int
+    fps: int
+    frames: int
+    duration_ms: int
+    video: str  # what the picture was made with: H.264, VP9, GIF ...
+    audio: str | None  # and the sound (Opus, AAC), or None for a file without sound
+    warnings: tuple[str, ...] = ()  # the pipeline's codes: audio-fallback, no-audio, video-fallback
+    page_ids: tuple[str, ...] = ()
+    page_indexes: tuple[int, ...] = ()
+    placeholders: int = 0
+    missing_fonts: tuple[str, ...] = ()
     allowed_total: int = 0
     blocked_total: int = 0
     blocked: tuple[BlockedRequest, ...] = field(default_factory=tuple)
@@ -299,6 +336,30 @@ def render_pages(payload: dict, *, render_url: str, timeout: float | None = None
     return _run_worker(prepare, mime, "Page export", timeout=timeout, read=_read_pages)
 
 
+def render_video(payload: dict, *, render_url: str, timeout: float, max_bytes: int) -> VideoResult:
+    """Make an MP4, WebM or GIF of a design on the frontend's headless render page at `render_url`, in one
+    browser, within `timeout` seconds. `payload` is the render page's input (`document`, `pages`, `format` and
+    the video options, `maxMs`, `maxBytes`, `fonts`); a file over `max_bytes` is refused. The design's sound
+    files may be up to `MAX_SOUND_BYTES`. Raises the `Export*` API exceptions, `InvalidExport` with the page's
+    code when it refuses the input, and `ExportUnavailable` when the browser cannot encode the format."""
+    _check_render_url(render_url)
+
+    def prepare(workdir: Path) -> tuple[dict, Path]:
+        payload_path, video_path = workdir / "payload.json", workdir / "output.video"
+        payload_path.write_text(json.dumps(payload), encoding="utf-8")
+        spec = {
+            "mode": "video",
+            "render_url": render_url,
+            "payload_path": str(payload_path),
+            "video_path": str(video_path),
+            "max_video_bytes": max_bytes,
+            "max_asset_bytes": MAX_SOUND_BYTES,
+        }
+        return spec, video_path
+
+    return _run_worker(prepare, "", "Video export", timeout=timeout, read=_read_video)
+
+
 def _run_worker(prepare, mime: str, label: str, *, timeout: float | None = None, read=None):
     """Run the worker on the spec `prepare(workdir)` writes the inputs for, and read its output (`read`, by
     default one file: a `RenderResult`)."""
@@ -306,6 +367,7 @@ def _run_worker(prepare, mime: str, label: str, *, timeout: float | None = None,
     workdir = _new_workdir()
     try:
         spec, output_path = prepare(workdir)
+        spec.setdefault("max_asset_bytes", MAX_ASSET_BYTES)
         report_path, spec_path, log_path = (
             workdir / "report.json",
             workdir / "spec.json",
@@ -321,7 +383,6 @@ def _run_worker(prepare, mime: str, label: str, *, timeout: float | None = None,
                     "allowed_origins": allowed_origins(),
                     "path_prefixes": allowed_path_prefixes(),
                     "timeout_s": timeout,
-                    "max_asset_bytes": MAX_ASSET_BYTES,
                 }
             ),
             encoding="utf-8",
@@ -378,6 +439,8 @@ def _checked_report(report_path: Path, log_path: Path, returncode: int, label: s
             raise ExportTimeout
         if kind == "unavailable":
             raise ExportUnavailable
+        if kind == "render" and error.get("code") in RENDER_PAGE_UNAVAILABLE:
+            raise ExportUnavailable("This server's browser cannot encode this video format.")
         if kind == "render" and error.get("code") in RENDER_PAGE_INPUT_ERRORS:
             raise InvalidExport(
                 str(error["code"]), str(error.get("message") or "The design cannot be drawn.")
@@ -443,3 +506,32 @@ def _read_pages(report: dict, pages_dir: Path, mime: str) -> PagesResult:
         blocked_total=int(report.get("blocked_total", 0)),
         blocked=_blocked(report),
     )
+
+
+def _read_video(report: dict, video_path: Path, mime: str) -> VideoResult:
+    try:
+        data = video_path.read_bytes()
+        result = VideoResult(
+            data=data,
+            mime=str(report["mime"]),
+            width=int(report["width"]),
+            height=int(report["height"]),
+            fps=int(report["fps"]),
+            frames=int(report["frames"]),
+            duration_ms=int(report["duration_ms"]),
+            video=str(report["video"]),
+            audio=str(report["audio"]) if report.get("audio") else None,
+            warnings=tuple(str(code) for code in report.get("warnings", [])),
+            page_ids=tuple(str(item) for item in report.get("page_ids", [])),
+            page_indexes=tuple(int(item) for item in report.get("page_indexes", [])),
+            placeholders=int(report.get("placeholders", 0)),
+            missing_fonts=tuple(str(name) for name in report.get("missing_fonts", [])),
+            allowed_total=int(report.get("allowed_total", 0)),
+            blocked_total=int(report.get("blocked_total", 0)),
+            blocked=_blocked(report),
+        )
+    except (OSError, KeyError, TypeError, ValueError):
+        raise ExportFailed
+    if result.mime not in VIDEO_MIME_TYPES or not data or len(data) != report.get("bytes"):
+        raise ExportFailed
+    return result

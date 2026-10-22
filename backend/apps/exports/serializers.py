@@ -6,7 +6,7 @@ from rest_framework import serializers
 
 from .filenames import FILE_NAMES, STYLES
 from .layout import MAX_BLEED_MM
-from .services import DOCUMENT_FORMATS, QUALITY_PRESETS
+from .services import DOCUMENT_FORMATS, MAX_LOOPS, PAGE_SECONDS, QUALITY_PRESETS, VIDEO_FORMATS
 
 MAX_PAGES = 100
 MAX_PAGE_BYTES = 5 * 1024 * 1024
@@ -240,11 +240,40 @@ class OptimizeField(serializers.Field):
         return value
 
 
+@extend_schema_field(
+    {
+        "oneOf": [
+            {"type": "string", "enum": ["design"]},
+            {"type": "integer", "enum": [240, 360, 480, 720, 1080, 2160]},
+        ]
+    }
+)
+class ResolutionField(serializers.Field):
+    """Video: `design` (the first page's size) or the shorter side of the frame in px."""
+
+    default_error_messages = {
+        "invalid": 'Give "design" or the shorter side of the frame in px (720, 1080 ...).'
+    }
+
+    def to_internal_value(self, data):
+        if data == "design":
+            return data
+        if isinstance(data, str) and data.isdigit():  # a form field
+            data = int(data)
+        if isinstance(data, bool) or not isinstance(data, int):
+            self.fail("invalid")
+        return data
+
+    def to_representation(self, value):
+        return value
+
+
 class ImageExportSerializer(serializers.Serializer):
     page = PageRefField(required=False, default=None, allow_null=True)
     pages = PagesField(required=False, default=None, allow_null=True)
     format = serializers.ChoiceField(
-        choices=["png", "jpg", "jpeg", "webp", "avif", "auto", *DOCUMENT_FORMATS], default="png"
+        choices=["png", "jpg", "jpeg", "webp", "avif", "auto", *DOCUMENT_FORMATS, *VIDEO_FORMATS],
+        default="png",
     )
     quality = QualityField(default=90)
     max_bytes = serializers.IntegerField(min_value=1, required=False, default=None, allow_null=True)
@@ -262,6 +291,16 @@ class ImageExportSerializer(serializers.Serializer):
     bleed_mm = FiniteFloatField(min_value=0, max_value=MAX_BLEED_MM, default=0)
     crop_marks = serializers.BooleanField(default=False)
     cmyk = serializers.BooleanField(default=False)
+    # Video (mp4, webm, gif); `pages` defaults to all of them.
+    resolution = ResolutionField(required=False, default=None, allow_null=True)
+    fps = serializers.IntegerField(min_value=1, max_value=60, required=False, default=None, allow_null=True)
+    fit = serializers.ChoiceField(choices=["fit", "fill"], default="fit")
+    sound = serializers.BooleanField(default=True)
+    loop = serializers.IntegerField(min_value=0, max_value=MAX_LOOPS, default=0)
+    dither = serializers.BooleanField(default=True)
+    page_seconds = FiniteFloatField(
+        min_value=PAGE_SECONDS[0], max_value=PAGE_SECONDS[1], required=False, default=None, allow_null=True
+    )
 
 
 class ImageOptimizeSerializer(serializers.Serializer):

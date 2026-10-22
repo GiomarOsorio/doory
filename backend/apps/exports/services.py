@@ -5,6 +5,7 @@
   render page), one at a time, then convert each PNG to the requested format; several pages go into a ZIP.
 * SVG and PDF of a saved design: the render page makes all pages at once (SVG files, the print server's SVG
   pages, or pictures of the pages); PDF pages then go through the PDF pipeline above, as the editor's do.
+* Video of a saved design: the render page makes the MP4, WebM or GIF with the editor's video pipeline.
 """
 
 from __future__ import annotations
@@ -39,6 +40,7 @@ from .exceptions import (
     ImageExportDisabled,
     InvalidExport,
     PayloadTooLarge,
+    VideoExportDisabled,
 )
 from .filenames import document_filename, export_filename, page_filename
 from .fonts import load_fonts
@@ -53,6 +55,7 @@ from .renderer import (
     render_pages,
     render_pdf,
     render_slot,
+    render_video,
 )
 
 logger = logging.getLogger("doory.exports")
@@ -770,7 +773,12 @@ def pick_pages(design, pages: str | Sequence[int | str | None] | None) -> list[i
     return _page_indexes(current_document(design), pages)
 
 
-def _page_indexes(document: dict, pages: str | Sequence[int | str | None] | None) -> list[int]:
+def _page_indexes(
+    document: dict,
+    pages: str | Sequence[int | str | None] | None,
+    limit: int | None = None,
+) -> list[int]:
+    """See `pick_pages`; `limit` replaces `EXPORT_IMAGE_MAX_PAGES` (a video is bounded by its length)."""
     if pages is None:
         pages = [None]
     if isinstance(pages, str) and pages.strip().lower() == "all":
@@ -780,11 +788,11 @@ def _page_indexes(document: dict, pages: str | Sequence[int | str | None] | None
         indexes = list(dict.fromkeys(_pick_page(document, page)[1] for page in pages))
     else:
         raise InvalidExport("invalid_pages", 'Give "all" or a list of pages.')
-    if len(indexes) > settings.EXPORT_IMAGE_MAX_PAGES:
+    limit = settings.EXPORT_IMAGE_MAX_PAGES if limit is None else limit
+    if len(indexes) > limit:
         raise InvalidExport(
             "too_many_pages",
-            f"This server exports at most {settings.EXPORT_IMAGE_MAX_PAGES} pages at once, "
-            f"not {len(indexes)}.",
+            f"This server exports at most {limit} pages at once, not {len(indexes)}.",
         )
     return indexes
 
@@ -808,9 +816,24 @@ def export_images(
     ZIP after the design's title.
 
     The formats svg, pdf and pdf-print go to `export_document` with `bleed_mm` and `crop_marks` (which
-    images leave out); the image options are not used for them. `cmyk` is refused for every format."""
+    images leave out); the image options are not used for them. `cmyk` is refused for every format. The
+    formats mp4, webm and gif go to `export_video` with its own options (`resolution`, `fps`, `fit`,
+    `sound`, `loop`, `dither`, `page_seconds`; `quality` as a preset); the other image options are not used
+    for them."""
     fmt = str(options.get("format", "png")).lower()
     bleed, marks = _print_options(bleed_mm, crop_marks, cmyk)
+    video_options = {key: options.pop(key) for key in VIDEO_OPTIONS if key in options}
+    if fmt in VIDEO_FORMATS:
+        return export_video(
+            design,
+            format=fmt,
+            pages=pages,
+            quality=options.get("quality", "balanced"),
+            filename_style=filename_style,
+            unix=unix,
+            charge=charge,
+            **video_options,
+        )
     if fmt in DOCUMENT_FORMATS:
         return export_document(
             design,
@@ -1051,3 +1074,252 @@ def export_document(
     if output == "picture":
         options["dpi"] = min(image.options_used["dpi"] for image in images)
     return ImageBundle(result.data, "pdf", PDF_MIME, name, tuple(images), (name,), options)
+
+
+# ---- Video of a saved design ---------------------------------------------------------------------
+
+VIDEO_FORMATS = {"mp4": "video/mp4", "webm": "video/webm", "gif": "image/gif"}
+VIDEO_OPTIONS = ("resolution", "fps", "fit", "sound", "loop", "dither", "page_seconds")
+# What each format offers, as the editor's video section (`engine/export/video/options.ts`): frame rates,
+# the shorter side of the frame (`design`: the first page's size, its longer side at most `design_max`), and
+# the defaults.
+VIDEO_RULES: dict[str, dict[str, Any]] = {
+    "mp4": {"fps": (24, 30, 60), "resolutions": ("design", 480, 720, 1080, 2160), "design_max": 1920},
+    "webm": {"fps": (24, 30, 60), "resolutions": ("design", 480, 720, 1080, 2160), "design_max": 1920},
+    "gif": {"fps": (5, 10, 15, 20), "resolutions": (240, 360, 480, 720), "design_max": 720},
+}
+VIDEO_DEFAULTS = {"mp4": ("design", 30), "webm": ("design", 30), "gif": (480, 15)}
+VIDEO_QUALITIES = {"small": "small", "balanced": "balanced", "best": "high", "original": "high"}
+PAGE_SECONDS = (1, 600)  # as the editor's page time
+DEFAULT_PAGE_SECONDS = 5
+SECONDS_PER_CALL = 10  # a video costs one more call or export for every started 10 s after the first
+MAX_LOOPS = 65_535
+# The pipeline's notes about the file, in words.
+VIDEO_WARNINGS = {
+    "audio-fallback": (
+        "The sound is Opus, not AAC: this server's browser has no AAC encoder. Browsers, VLC and Android "
+        "play it; some older Apple apps play this MP4 without sound."
+    ),
+    "no-audio": "The video has no sound: this server's browser could not encode it.",
+    "video-fallback": (
+        "The picture is not in the format's usual codec: this server's browser has no encoder for it."
+    ),
+}
+
+
+def _video_quality(quality: int | str) -> str:
+    """The video quality for an image `quality`: a preset by name, or a number (up to 70 small, up to 90
+    balanced, above that high)."""
+    if isinstance(quality, str) and quality.strip().lower() in VIDEO_QUALITIES:
+        return VIDEO_QUALITIES[quality.strip().lower()]
+    value = _quality(quality)
+    return "small" if value <= 70 else "balanced" if value <= 90 else "high"
+
+
+def _video_resolution(fmt: str, resolution, first: tuple[float, float]) -> str | int:
+    rules = VIDEO_RULES[fmt]
+    if resolution is None:
+        resolution = VIDEO_DEFAULTS[fmt][0]
+    if isinstance(resolution, str) and resolution.isdigit():
+        resolution = int(resolution)
+    if isinstance(resolution, bool) or resolution not in rules["resolutions"]:
+        raise InvalidExport(
+            "invalid_resolution",
+            f"{fmt.upper()} resolutions are " + ", ".join(map(str, rules["resolutions"])) + ".",
+        )
+    limit = settings.EXPORT_VIDEO_MAX_RESOLUTION
+    if resolution == "design":
+        width, height = first
+        short = min(width, height) * min(1, rules["design_max"] / max(width, height))
+        if round(short) > limit:
+            raise InvalidExport(
+                "invalid_resolution",
+                f"At the design's size this video would be {round(short)} px on its shorter side; this "
+                f"server makes at most {limit}. Give a resolution of {limit} or less.",
+            )
+    elif resolution > limit:
+        raise InvalidExport(
+            "invalid_resolution", f"This server makes videos of at most {limit} px on the shorter side."
+        )
+    return resolution
+
+
+def _video_fps(fmt: str, fps) -> int:
+    allowed = VIDEO_RULES[fmt]["fps"]
+    if fps is None:
+        return VIDEO_DEFAULTS[fmt][1]
+    if isinstance(fps, bool) or fps not in allowed:
+        raise InvalidExport(
+            "invalid_fps", f"{fmt.upper()} frame rates are " + ", ".join(map(str, allowed)) + "."
+        )
+    return int(fps)
+
+
+def _page_seconds(page_seconds) -> float | None:
+    if page_seconds is None:
+        return None
+    low, high = PAGE_SECONDS
+    if (
+        isinstance(page_seconds, bool)
+        or not isinstance(page_seconds, int | float)
+        or not (math.isfinite(page_seconds) and low <= page_seconds <= high)
+    ):
+        raise InvalidExport("invalid_page_seconds", f"page_seconds must be between {low} and {high}.")
+    return page_seconds
+
+
+def hold_seconds(pages: Sequence[dict], page_seconds: float | None) -> float:
+    """How long the pages are held in a video: `page_seconds`, or each page's own time (5 s without one). The
+    video is a little longer (transitions and the time animations take to build a page up), which the render
+    page adds and checks against the limit itself."""
+    total = 0.0
+    for page in pages:
+        own = page.get("durationSec") if isinstance(page, dict) else None
+        valid = isinstance(own, int | float) and not isinstance(own, bool)
+        if page_seconds is not None:
+            total += page_seconds
+        elif valid and PAGE_SECONDS[0] <= own <= PAGE_SECONDS[1]:
+            total += own
+        else:
+            total += DEFAULT_PAGE_SECONDS
+    return total
+
+
+def export_video(
+    design,
+    *,
+    format: str,
+    pages: str | Sequence[int | str | None] | None = "all",
+    resolution: str | int | None = None,
+    fps: int | None = None,
+    quality: int | str = "balanced",
+    fit: str = "fit",
+    sound: bool = True,
+    loop: int = 0,
+    dither: bool = True,
+    page_seconds: float | None = None,
+    filename_style: str | None = None,
+    unix: int | None = None,
+    charge: Callable[[int], None] | None = None,
+) -> ImageBundle:
+    """`pages` of `design` (see `pick_pages`; default all) as the editor's video download makes them: an MP4
+    (H.264), a WebM (VP9) or an animated GIF, one page after another with their animations and transitions,
+    and the design's sound in MP4 and WebM (`sound`).
+
+    `resolution` is the shorter side of the frame (or `design`), `fps` the frame rate, both as the editor
+    offers them per format; `quality` a preset (small, balanced, best) or a number; `fit` shows the whole
+    page (`fit`) or covers the frame (`fill`); `page_seconds` holds every page that long instead of its own
+    time. GIF: `loop` plays it that many times (0: forever) and `dither` smooths gradients. The video is made
+    within `EXPORT_VIDEO_TIMEOUT_SECONDS`, at most `EXPORT_VIDEO_MAX_SECONDS` long and
+    `EXPORT_VIDEO_MAX_BYTES` large. Before anything is drawn, `charge` is called with one for every started
+    10 s of the pages' time after the first. Raises `InvalidExport`, `PayloadTooLarge` and the `Export*`
+    exceptions."""
+    fmt_id = str(format).lower()
+    if fmt_id not in VIDEO_FORMATS:
+        raise InvalidExport("invalid_format", "The format must be " + ", ".join(VIDEO_FORMATS) + ".")
+    if not settings.SERVER_IMAGE_EXPORT_ENABLED:
+        raise ImageExportDisabled
+    if not settings.SERVER_VIDEO_EXPORT_ENABLED:
+        raise VideoExportDisabled
+    if not settings.EXPORT_RENDER_PAGE_URL:
+        raise ExportUnavailable
+    level = _video_quality(quality)
+    rate = _video_fps(fmt_id, fps)
+    if fit not in ("fit", "fill"):
+        raise InvalidExport("invalid_fit", "fit must be fit or fill.")
+    if isinstance(loop, bool) or not isinstance(loop, int) or not 0 <= loop <= MAX_LOOPS:
+        raise InvalidExport("invalid_loop", f"loop must be a whole number from 0 (forever) to {MAX_LOOPS}.")
+    seconds = _page_seconds(page_seconds)
+    document = current_document(design)
+    if len(json.dumps(document, separators=(",", ":"))) > settings.EXPORT_IMAGE_MAX_DOCUMENT_BYTES:
+        raise PayloadTooLarge("The design is too large to export on the server.")
+    indexes = _page_indexes(document, pages, limit=len(document.get("pages") or []))
+    chosen = [document["pages"][index] for index in indexes]
+    first = _page_size(document, chosen[0])
+    frame = _video_resolution(fmt_id, resolution, first)
+    held = hold_seconds(chosen, seconds)
+    longest = settings.EXPORT_VIDEO_MAX_SECONDS
+    if held > longest:
+        raise InvalidExport(
+            "too_long", f"The video would last at least {held:g} s; this server makes at most {longest} s."
+        )
+    if charge is not None and held > SECONDS_PER_CALL:
+        charge(math.ceil(held / SECONDS_PER_CALL) - 1)
+    payload: dict[str, Any] = {
+        "document": document,
+        "pages": indexes,
+        "format": fmt_id,
+        "resolution": frame,
+        "fps": rate,
+        "quality": level,
+        "fit": fit,
+        "sound": bool(sound),
+        "loops": loop,
+        "dither": bool(dither),
+        "pageSeconds": seconds,
+        "maxMs": longest * 1000,
+        "maxBytes": settings.EXPORT_VIDEO_MAX_BYTES,
+        "fonts": font_manifest(chosen, design.owner),
+    }
+    with render_slot(design.owner_id):
+        made = render_video(
+            payload,
+            render_url=settings.EXPORT_RENDER_PAGE_URL,
+            timeout=settings.EXPORT_VIDEO_TIMEOUT_SECONDS,
+            max_bytes=settings.EXPORT_VIDEO_MAX_BYTES,
+        )
+    if list(made.page_indexes) != indexes or made.mime != VIDEO_FORMATS[fmt_id]:
+        logger.error("Video export: the render page made another video than asked for")
+        raise ExportFailed
+    warnings = _drawing_warnings(made.placeholders, made.missing_fonts)
+    warnings.extend(VIDEO_WARNINGS[code] for code in made.warnings if code in VIDEO_WARNINGS)
+    options: dict[str, Any] = {
+        "format": fmt_id,
+        "resolution": frame,
+        "fps": made.fps,
+        "quality": "best" if level == "high" else level,
+        "fit": fit,
+        **({"loop": loop, "dither": bool(dither)} if fmt_id == "gif" else {"sound": bool(sound)}),
+        "page_seconds": seconds,
+        "pages": [index + 1 for index in indexes],
+        "duration_ms": made.duration_ms,
+        "frames": made.frames,
+        "video": made.video,
+        "audio": made.audio,
+    }
+    video = ImageResult(
+        data=made.data,
+        format=fmt_id,
+        mime=made.mime,
+        width=made.width,
+        height=made.height,
+        page_id=made.page_ids[0] if made.page_ids else str(chosen[0].get("id", "")),
+        page_index=indexes[0],
+        placeholders=made.placeholders,
+        missing_fonts=made.missing_fonts,
+        warnings=tuple(warnings),
+        blocked_total=made.blocked_total,
+        page_width=first[0],
+        page_height=first[1],
+        page_count=len(document["pages"]),
+        preset=_preset_id(document) or design.preset,
+        bytes_before=len(made.data),
+        options_used=options,
+    )
+    style = filename_style or settings.EXPORT_FILENAME_STYLE
+    name = document_filename(design.title, fmt_id, video, style=style, unix=unix)
+    logger.info(
+        "Video export: design=%s %s %dx%d %d fps, %d ms, %d byte(s), %d page(s), %d placeholder(s), "
+        "%d blocked request(s)",
+        design.pk,
+        fmt_id,
+        made.width,
+        made.height,
+        made.fps,
+        made.duration_ms,
+        len(made.data),
+        len(indexes),
+        made.placeholders,
+        made.blocked_total,
+    )
+    return ImageBundle(made.data, fmt_id, made.mime, name, (video,), (name,), options)
