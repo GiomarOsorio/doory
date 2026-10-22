@@ -7,10 +7,10 @@ export type VideoFormatName = 'MP4' | 'WebM' | 'GIF'
 
 /** Opens the Download dialog (by its shortcut where the top bar has no room for the button, as on a phone) and picks a format. */
 export async function openVideoDialog(page: Page, format: VideoFormatName): Promise<void> {
-  const button = page.locator('[data-testid="ed-download"]')
+  const button = page.locator('[data-testid="ed-share"]')
   if (await button.isVisible()) {
     await button.click()
-    await page.getByRole('menuitem', { name: 'More options…' }).click()
+    await page.getByRole('menuitem', { name: 'All formats and options…' }).click()
   } else await page.keyboard.press('Control+Shift+D')
   await page.getByRole('radio', { name: new RegExp(`^${format}`) }).check({ force: true })
   await expect(page.getByTestId('video-section')).toBeVisible()

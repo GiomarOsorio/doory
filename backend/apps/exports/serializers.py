@@ -1,20 +1,23 @@
 import json
 import math
 
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
-from .filenames import STYLES
+from .filenames import FILE_NAMES, STYLES
+from .layout import MAX_BLEED_MM
+from .services import DOCUMENT_FORMATS, MAX_LOOPS, PAGE_SECONDS, QUALITY_PRESETS, VIDEO_FORMATS
 
 MAX_PAGES = 100
 MAX_PAGE_BYTES = 5 * 1024 * 1024
 MAX_TOTAL_BYTES = 40 * 1024 * 1024
 MAX_DIMENSION_PX = 20_000
-MAX_BLEED_MM = 10
 MAX_FONT_SPECS = 32
 MAX_TITLE_LENGTH = 200
 MAX_SIZES_BYTES = 16 * 1024
 FONT_FAMILY_PATTERN = r"^[\w .\-]{1,100}$"
 LANGUAGE_PATTERN = r"^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8}){0,3}$"
+SIZE_PATTERN = r"^\d+(?:\.\d+)?[xXwWhH]$"
 
 
 class FiniteFloatField(serializers.FloatField):
@@ -133,11 +136,188 @@ class PageRefField(serializers.Field):
         return value
 
 
+@extend_schema_field(
+    {
+        "oneOf": [
+            {"type": "integer", "minimum": 1, "maximum": 100},
+            {"type": "string", "enum": list(QUALITY_PRESETS)},
+        ]
+    }
+)
+class QualityField(serializers.Field):
+    """1 to 100, or a preset name (small, balanced, best, original)."""
+
+    default_error_messages = {
+        "invalid": "Give a whole number from 1 to 100, or one of " + ", ".join(QUALITY_PRESETS) + "."
+    }
+
+    def to_internal_value(self, data):
+        if isinstance(data, str) and data.strip().lower() in QUALITY_PRESETS:
+            return data.strip().lower()
+        if isinstance(data, bool) or not isinstance(data, int | str):
+            self.fail("invalid")
+        try:
+            value = int(data)
+        except ValueError:
+            self.fail("invalid")
+        if not 1 <= value <= 100:
+            self.fail("invalid")
+        return value
+
+    def to_representation(self, value):
+        return value
+
+
+@extend_schema_field(
+    {"oneOf": [{"type": "string", "enum": ["full"]}, {"type": "integer", "minimum": 2, "maximum": 256}]}
+)
+class PngColorsField(serializers.Field):
+    """`full` (None) or a palette of 2 to 256 colours."""
+
+    default_error_messages = {"invalid": 'Give "full" or a whole number of colours from 2 to 256.'}
+
+    def to_internal_value(self, data):
+        if data == "full":
+            return None
+        if isinstance(data, str) and data.isdigit():  # a multipart form field
+            data = int(data)
+        if isinstance(data, bool) or not isinstance(data, int) or not 2 <= data <= 256:
+            self.fail("invalid")
+        return data
+
+    def to_representation(self, value):
+        return "full" if value is None else value
+
+
+@extend_schema_field(
+    {
+        "oneOf": [
+            {"type": "string", "enum": ["all"]},
+            {
+                "type": "array",
+                "items": {"oneOf": [{"type": "integer", "minimum": 1}, {"type": "string"}]},
+                "minItems": 1,
+                "maxItems": MAX_PAGES,
+            },
+        ]
+    }
+)
+class PagesField(serializers.Field):
+    """`all`, or a list of pages by id or by number counting from 1."""
+
+    default_error_messages = {"invalid": 'Give "all" or a list of page ids and page numbers counting from 1.'}
+
+    def to_internal_value(self, data):
+        if data == "all":
+            return data
+        if not isinstance(data, list) or not 0 < len(data) <= MAX_PAGES:
+            self.fail("invalid")
+        page = PageRefField()
+        return [page.to_internal_value(item) for item in data]
+
+    def to_representation(self, value):
+        return value
+
+
+@extend_schema_field(
+    {"oneOf": [{"type": "boolean"}, {"type": "string", "enum": ["builtin", "tinypng", "kraken", "custom"]}]}
+)
+class OptimizeField(serializers.Field):
+    """false, true (the server's default optimizer) or an optimizer's id; GET /api/v1/config/ lists those
+    offered (`features.image_optimize`)."""
+
+    default_error_messages = {"invalid": "Give true, false or the id of an image optimizer."}
+
+    def to_internal_value(self, data):
+        if isinstance(data, bool):
+            return data
+        if isinstance(data, str) and 0 < len(data.strip()) <= 40:
+            text = data.strip().lower()
+            return {"true": True, "false": False}.get(text, text)
+        self.fail("invalid")
+
+    def to_representation(self, value):
+        return value
+
+
+@extend_schema_field(
+    {
+        "oneOf": [
+            {"type": "string", "enum": ["design"]},
+            {"type": "integer", "enum": [240, 360, 480, 720, 1080, 2160]},
+        ]
+    }
+)
+class ResolutionField(serializers.Field):
+    """Video: `design` (the first page's size) or the shorter side of the frame in px."""
+
+    default_error_messages = {
+        "invalid": 'Give "design" or the shorter side of the frame in px (720, 1080 ...).'
+    }
+
+    def to_internal_value(self, data):
+        if data == "design":
+            return data
+        if isinstance(data, str) and data.isdigit():  # a form field
+            data = int(data)
+        if isinstance(data, bool) or not isinstance(data, int):
+            self.fail("invalid")
+        return data
+
+    def to_representation(self, value):
+        return value
+
+
 class ImageExportSerializer(serializers.Serializer):
     page = PageRefField(required=False, default=None, allow_null=True)
-    format = serializers.ChoiceField(choices=["png", "jpg", "jpeg", "webp"], default="png")
-    quality = serializers.IntegerField(min_value=1, max_value=100, default=90)
+    pages = PagesField(required=False, default=None, allow_null=True)
+    format = serializers.ChoiceField(
+        choices=["png", "jpg", "jpeg", "webp", "avif", "auto", *DOCUMENT_FORMATS, *VIDEO_FORMATS],
+        default="png",
+    )
+    quality = QualityField(default=90)
+    max_bytes = serializers.IntegerField(min_value=1, required=False, default=None, allow_null=True)
     scale = FiniteFloatField(min_value=0.1, max_value=4, default=1)
+    size = serializers.RegexField(SIZE_PATTERN, max_length=20, required=False, default=None, allow_null=True)
     transparent = serializers.BooleanField(default=False)
+    png_colors = PngColorsField(default=None, allow_null=True)
+    strip_metadata = serializers.BooleanField(default=True)
+    srgb = serializers.BooleanField(default=True)
+    progressive = serializers.BooleanField(default=False)
+    file_names = serializers.ChoiceField(choices=list(FILE_NAMES), required=False)
     filename_style = serializers.ChoiceField(choices=list(STYLES), required=False)
     filename_timestamp = serializers.BooleanField(required=False)
+    optimize = OptimizeField(default=False)
+    bleed_mm = FiniteFloatField(min_value=0, max_value=MAX_BLEED_MM, default=0)
+    crop_marks = serializers.BooleanField(default=False)
+    cmyk = serializers.BooleanField(default=False)
+    # Video (mp4, webm, gif); `pages` defaults to all of them.
+    resolution = ResolutionField(required=False, default=None, allow_null=True)
+    fps = serializers.IntegerField(min_value=1, max_value=60, required=False, default=None, allow_null=True)
+    fit = serializers.ChoiceField(choices=["fit", "fill"], default="fit")
+    sound = serializers.BooleanField(default=True)
+    loop = serializers.IntegerField(min_value=0, max_value=MAX_LOOPS, default=0)
+    dither = serializers.BooleanField(default=True)
+    page_seconds = FiniteFloatField(
+        min_value=PAGE_SECONDS[0], max_value=PAGE_SECONDS[1], required=False, default=None, allow_null=True
+    )
+
+
+class ImageOptimizeSerializer(serializers.Serializer):
+    """The fields of `POST /api/v1/exports/optimize/` next to the `file` (a PNG)."""
+
+    format = serializers.ChoiceField(choices=["png", "jpg", "jpeg", "webp", "avif", "auto"], default="png")
+    quality = QualityField(default=90)
+    max_bytes = serializers.IntegerField(min_value=1, required=False, default=None, allow_null=True)
+    transparent = serializers.BooleanField(default=False)
+    png_colors = PngColorsField(default=None, allow_null=True)
+    strip_metadata = serializers.BooleanField(default=True)
+    srgb = serializers.BooleanField(default=True)
+    progressive = serializers.BooleanField(default=False)
+    optimize = OptimizeField(default=True)
+
+
+class ImageOptimizeDocumentation(ImageOptimizeSerializer):
+    """OpenAPI description of the multipart body."""
+
+    file = serializers.FileField(help_text="The image the browser drew, as a PNG.")

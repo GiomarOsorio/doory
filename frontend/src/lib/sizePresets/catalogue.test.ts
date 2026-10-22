@@ -76,6 +76,26 @@ describe('building a catalogue', () => {
     expect(buildCatalogue(null)).toBeNull()
     expect(buildCatalogue({ error: { code: 'x' } })).toBeNull()
   })
+
+  it('reads the upload limits a platform states, and nothing it cannot use', () => {
+    const tree = {
+      version: 1,
+      groups: [
+        {
+          slug: 'social',
+          label: 'Social',
+          presets: [
+            { slug: 'post', label: 'Post', width: 1080, height: 1350, meta: { formats: ['JPG', 'png', 3], max_bytes: 30_000_000 } },
+            { slug: 'plain', label: 'Plain', width: 100, height: 100, meta: { formats: 'jpg', max_bytes: -1 } },
+          ],
+        },
+      ],
+    }
+    const catalogue = buildCatalogue(tree)
+    expect(catalogue?.byId.get('post')).toMatchObject({ formats: ['jpg', 'png'], maxBytes: 30_000_000 })
+    expect(catalogue?.byId.get('plain')?.formats).toBeUndefined()
+    expect(catalogue?.byId.get('plain')?.maxBytes).toBeUndefined()
+  })
 })
 
 describe('finding presets', () => {
@@ -119,9 +139,21 @@ describe('finding presets', () => {
 })
 
 describe('the built-in catalogue', () => {
-  it('is the same as the one the server seeds (backend/data/size_presets.json)', () => {
-    const server = JSON.parse(readFileSync(resolve(__dirname, '../../../../backend/data/size_presets.json'), 'utf-8'))
-    expect(BUILTIN_PRESET_TREE).toEqual(server)
+  it('is part of the one the server seeds (backend/data/size_presets.json), row for row', () => {
+    const server = JSON.parse(readFileSync(resolve(__dirname, '../../../../backend/data/size_presets.json'), 'utf-8')) as PresetTree
+    // Every group and preset by slug, with the group path it sits in and its own fields (without its contents).
+    const rows = (groups: PresetTree['groups'], path: string[] = [], into = new Map<string, unknown>()) => {
+      for (const { children, presets, ...group } of groups) {
+        into.set(`group:${group.slug}`, { path, ...group })
+        for (const preset of presets ?? []) into.set(preset.slug, { path: [...path, group.slug], ...preset })
+        rows(children ?? [], [...path, group.slug], into)
+      }
+      return into
+    }
+    const ours = rows(BUILTIN_PRESET_TREE.groups)
+    const theirs = rows(server.groups)
+    for (const [slug, row] of ours) expect(theirs.get(slug), slug).toEqual(row)
+    expect(BUILTIN_PRESET_TREE.version).toBe(server.version)
   })
 
   it('builds without losing a preset', () => {

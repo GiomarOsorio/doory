@@ -27,6 +27,8 @@ GOOGLE_CLIENT_ID = "test-google-client-id.apps.googleusercontent.com"
 UNSPLASH_ACCESS_KEY = ""
 PEXELS_API_KEY = ""
 PIXABAY_API_KEY = ""
+PEXELS_VIDEO_API_KEY = ""
+PIXABAY_VIDEO_API_KEY = ""
 FREESOUND_API_KEY = ""
 SERVER_PDF_ENABLED = True
 STATIC_ROOT = tempfile.mkdtemp(prefix="doory-test-static-")
@@ -37,3 +39,11 @@ AI_USER_PROVIDERS = "off"
 AI_ALLOWED_PRIVATE_HOSTS = []
 AI_SECRETS_KEY = ""
 AI_SECRETS_KEY_FALLBACKS = []
+# Nor may it switch on image optimizers that send images out, or depend on what the machine has installed.
+IMAGE_OPTIMIZERS = ["builtin"]
+IMAGE_OPTIMIZER_DEFAULT = "builtin"
+TINYPNG_API_KEY = ""
+KRAKEN_API_KEY = ""
+KRAKEN_API_SECRET = ""
+IMAGE_OPTIMIZER_CUSTOM_URL = ""
+IMAGE_OPTIMIZER_CUSTOM_KEY = ""

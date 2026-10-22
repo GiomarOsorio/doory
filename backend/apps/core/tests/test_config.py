@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 import pytest
 from rest_framework.test import APIClient
 
@@ -45,6 +47,7 @@ def test_config_is_public_and_has_the_documented_shape(api):
         "realtime",
         "mcp",
         "ai_providers",
+        "image_optimize",
     }
     assert set(body["ai"]) == {"user_providers", "offsite_notice", "background_removal"}
     assert body["exports"] == {"filename_style": "simple", "filename_timestamp": False}
@@ -244,3 +247,39 @@ def test_the_mcp_flag_follows_the_setting(api, settings):
     assert api.get(URL).json()["features"]["mcp"] is False
     settings.MCP_ENABLED = True
     assert api.get(URL).json()["features"]["mcp"] is True
+
+
+def test_image_optimize_lists_the_formats_and_the_optimizers_people_may_pick(api, settings, monkeypatch):
+    from apps.exports.optimizers import builtin
+
+    monkeypatch.setattr(builtin, "cjpeg", lambda: None)
+    monkeypatch.setattr(builtin, "oxipng", lambda: "/usr/local/bin/oxipng")
+    settings.IMAGE_OPTIMIZERS = ["custom", "builtin", "tinypng", "kraken"]
+    settings.IMAGE_OPTIMIZER_CUSTOM_URL = "https://optimizer.example/v1"
+    settings.IMAGE_OPTIMIZER_CUSTOM_NAME = "In-house"
+    settings.TINYPNG_API_KEY = "a-key-that-must-not-leak"
+    body = api.get(URL).json()["features"]["image_optimize"]
+    assert {"png", "jpg", "webp"} <= set(body["formats"])
+    assert body["optimizers"] == [
+        {
+            "id": "custom",
+            "name": "In-house",
+            "formats": ["png", "jpg", "webp", "avif"],
+            "sends_offsite": True,
+        },
+        {"id": "builtin", "name": "Built-in", "formats": ["png"], "sends_offsite": False},
+        {
+            "id": "tinypng",
+            "name": "TinyPNG",
+            "formats": ["png", "jpg", "webp", "avif"],
+            "sends_offsite": True,
+        },
+    ]
+    assert body["default"] == "builtin"
+    assert "a-key-that-must-not-leak" not in json.dumps(api.get(URL).json())
+
+
+def test_image_optimize_without_optimizers(api, settings):
+    settings.IMAGE_OPTIMIZERS = []
+    body = api.get(URL).json()["features"]["image_optimize"]
+    assert body["optimizers"] == [] and body["default"] is None

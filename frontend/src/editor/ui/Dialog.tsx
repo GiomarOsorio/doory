@@ -13,12 +13,14 @@ interface DialogProps {
   footer?: ReactNode
   width?: number
   description?: string
+  /** A column beside the title and body (a preview); the footer runs under both. On narrow screens it goes on top. */
+  aside?: ReactNode
 }
 
 const FOCUSABLE = 'a[href], button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])'
 
 /** Modal dialog with a focus trap, Escape to close and focus restoration. */
-export function Dialog({ title, onClose, children, footer, width = 520, description }: DialogProps) {
+export function Dialog({ title, onClose, children, footer, width = 520, description, aside }: DialogProps) {
   const root = usePortalRoot()
   const ref = useRef<HTMLDivElement>(null)
   const titleId = useId()
@@ -72,10 +74,11 @@ export function Dialog({ title, onClose, children, footer, width = 520, descript
         aria-modal="true"
         aria-labelledby={titleId}
         aria-describedby={description ? descId : undefined}
-        className={styles.dialog}
+        className={`${styles.dialog} ${aside ? styles.split : ''}`}
         style={{ maxWidth: width }}
         onKeyDown={onKeyDown}
       >
+        {aside ? <div className={styles.aside}>{aside}</div> : null}
         <header className={styles.header}>
           <h2 id={titleId} className={styles.title}>
             {title}

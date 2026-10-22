@@ -29,6 +29,7 @@ def export_filename(title: str | None, extension: str) -> str:
 # `engine/export/filenames.ts`; both are checked against `engine/fixtures/export-filenames.json` there.
 
 STYLES = ("simple", "structured")
+FILE_NAMES = {"simple": "simple", "detailed": "structured"}  # the styles as the API's `file_names` says them
 MAX_SLUG_LENGTH = 80
 _NOT_SLUG = re.compile(r"[^a-z0-9]+")
 
@@ -111,4 +112,31 @@ def page_filename(title: str | None, result, *, style: str, unix: int | None = N
         page=result.page_index + 1,
         pages=result.page_count,
         unix=unix,
+    )
+
+
+def document_filename(
+    title: str | None,
+    extension: str,
+    first,
+    *,
+    style: str,
+    unix: int | None = None,
+    suffix: str | None = None,
+) -> str:
+    """The download name of a file of all pages (a PDF), as the editor names it: `<title>[-<suffix>].pdf`, or
+    structured with the size of the first page (`first`, an `export_image`-like result) and no page number."""
+    if style != "structured":
+        name = export_filename(title, extension)
+        return f"{name[: -len(extension) - 1]}-{suffix}.{extension}" if suffix else name
+    platform, preset = preset_parts(first.preset, first.page_width, first.page_height)
+    return structured_filename(
+        title,
+        extension,
+        platform=platform,
+        preset=preset,
+        width=first.page_width,
+        height=first.page_height,
+        unix=unix,
+        suffix=suffix,
     )

@@ -39,7 +39,19 @@ export interface AppConfig {
   /** Name of the button's logo in `src/assets/sso-icons/`; "" or absent: a key icon. */
   oidc_button_icon?: string
   /** `background_removal` (and `ai_providers`, …) are absent on servers that predate them. */
-  features: { stock_photos: boolean; server_pdf: boolean; google_login: boolean; oidc_login?: boolean; email_verification: boolean; background_removal?: boolean; realtime?: boolean; mcp?: boolean; ai_providers?: boolean }
+  features: {
+    stock_photos: boolean
+    server_pdf: boolean
+    google_login: boolean
+    oidc_login?: boolean
+    email_verification: boolean
+    background_removal?: boolean
+    realtime?: boolean
+    mcp?: boolean
+    ai_providers?: boolean
+    /** Converting and optimizing downloads on the server; absent on servers that predate it. */
+    image_optimize?: ImageOptimizeConfig | null
+  }
   limits: { max_upload_bytes: number; max_pages: number; max_document_bytes: number; realtime_max_participants?: number; bulk_fill_max_rows?: number }
   /** Files the browser downloads at run time; absent on servers that predate it. */
   assets?: { background_removal_model: BackgroundRemovalModel | null }
@@ -47,6 +59,13 @@ export interface AppConfig {
   exports?: { filename_style: 'simple' | 'structured'; filename_timestamp: boolean }
   /** Remote AI image providers; absent on servers that predate them. */
   ai?: AiConfig
+}
+
+/** `features.image_optimize` as `/config/` writes it. */
+export interface ImageOptimizeConfig {
+  formats: string[]
+  optimizers: { id: string; name: string; formats: string[]; sends_offsite: boolean }[]
+  default: string | null
 }
 
 /** Who may add their own AI servers in Settings (`staff`: staff accounts only). */
@@ -157,7 +176,7 @@ export interface FolderT {
   created_at: string
 }
 
-export type AssetKind = 'image' | 'svg' | 'audio'
+export type AssetKind = 'image' | 'svg' | 'audio' | 'video'
 export interface Asset {
   id: string
   kind: AssetKind
@@ -171,9 +190,64 @@ export interface Asset {
   tags: string[]
   /** Credit for imported stock photos; null for the user's own uploads. */
   attribution: { provider: string; author: string; author_url: string; source_url: string } | null
-  /** Length of an audio file when the container says (null for images and for audio that does not say). */
+  /** Length of an audio file when the container says, or of a video clip (null for images and for audio that does not say). */
   duration_ms?: number | null
+  /** `processing` while the server converts a video clip; `failed` (with `error`) when that went wrong. Else `ready`. */
+  status?: AssetStatus
+  error?: string
+  /** Video only: the still every surface that can't play the clip shows. Empty for other kinds. */
+  poster_url?: string
+  /** Video only: the clip's sound as a file of its own (empty for a silent clip). */
+  audio_url?: string
+  /** Video only (null for other kinds). */
+  video?: AssetVideo | null
   created_at: string
+}
+
+export type AssetStatus = 'ready' | 'processing' | 'failed'
+
+/** A strip of frames from a clip, side by side in one image, for the timeline. */
+export interface VideoFilmstrip {
+  url: string
+  frames: number
+  interval_ms: number
+  tile_width: number
+  tile_height: number
+}
+
+export interface AssetVideo {
+  fps: number
+  has_audio: boolean
+  filmstrip: VideoFilmstrip | null
+}
+
+export interface StockVideo {
+  id: string
+  provider: string
+  /** A still, for the grid. */
+  thumb_url: string
+  /** A small rendition from the provider's CDN that plays while the pointer rests on the result. */
+  preview_url: string
+  width: number
+  height: number
+  duration_ms: number
+  author: string
+  author_url: string
+  source_url: string
+}
+
+export interface StockVideoPage extends Omit<StockPage, 'results'> {
+  results: StockVideo[]
+}
+
+export type VideoOrientation = 'landscape' | 'portrait' | 'square'
+export type VideoLength = 'short' | 'medium' | 'long'
+
+/** Whether the server takes clips at all (it needs ffmpeg), its limits, and the stock video providers. */
+export interface VideoInfo extends StockProviders {
+  enabled: boolean
+  max_upload_bytes: number
+  max_duration_ms: number
 }
 
 export interface StockPhoto {

@@ -15,6 +15,7 @@ from defusedxml import ElementTree as SafeET
 from apps.core.svg import svg_info
 
 PX_PER_MM = 96 / 25.4
+MAX_BLEED_MM = 10  # the most bleed an export may ask for (the editor's `printGeometry.ts` says the same)
 _FAMILY_UNSAFE = re.compile(r"[^\w .\-]")
 MARK_GAP_MM = 1.0  # between the bleed edge and the start of a crop mark
 MARK_LENGTH_MM = 5.0

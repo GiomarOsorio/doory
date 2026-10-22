@@ -21,13 +21,13 @@ All three backend entry points share the same code, settings and database. See t
 | `accounts` | Users, sign-up and sign-in, email confirmation, Google sign-in |
 | `ai` | AI image providers: API styles, the network policy for outgoing calls, encrypted keys, quotas (`reencrypt_ai_secrets`) |
 | `apitokens` | Personal access tokens and their permissions (used by MCP) |
-| `assets` | Uploads, per-user storage quota, the audio library (`sync_audio`) |
+| `assets` | Uploads, per-user storage quota, stock photos, videos and sounds, video clips (`video.py` runs ffprobe/ffmpeg, `video_jobs.py` converts in the background), the audio library (`sync_audio`) |
 | `brand` | Brand kits: colours, fonts, logos |
 | `collab` | Realtime co-editing: rooms, Yjs updates, snapshots, presence (`collab_maintenance`) |
 | `core` | Site-wide config endpoint, background-removal models (`sync_models`) |
 | `designs` | Designs, folders, trash (`purge_trash`), version history |
 | `elements` | Element library: shapes, icons, emoji, illustrations (`seed_elements`, `sync_element_packs`) |
-| `exports` | Server-side PDF and image export with headless Chromium (`purge_exports`) |
+| `exports` | Server-side PDF, image and SVG export with headless Chromium (`purge_exports`); image optimizers (built-in, TinyPNG, Kraken.io, custom) and the optimize endpoint for browser downloads |
 | `fonts` | Font catalogue and user fonts (`sync_fonts`) |
 | `gallery` | Templates and categories (`seed_gallery`, `seed_templates`, `import_template`) |
 | `mcp` | The MCP server: tools, resources, prompts, token authentication |
@@ -44,7 +44,7 @@ read from the environment must have a row in [configuration.md](../self-hosting/
 | `app/` | App shell, routing, providers |
 | `pages/` | Route-level pages |
 | `features/` | Non-editor features: auth, dashboard, templates, settings, brand, uploads, … |
-| `editor/` | The editor: `engine/` (drawing), `panels/`, `toolbar/`, `collab/`, `animation/`, `presenter/`, `headless/` (the render page used by server-side image export), … |
+| `editor/` | The editor: `engine/` (drawing), `panels/`, `toolbar/`, `collab/`, `animation/`, `clips/` (video clips: timing, sources, sound), `presenter/`, `headless/` (the render page used by server-side image export), … |
 | `ui/`, `lib/`, `styles/` | Shared components, helpers and styles |
 
 Besides `index.html`, the frontend builds two more entry pages: `presenter-view.html` (the second presenter

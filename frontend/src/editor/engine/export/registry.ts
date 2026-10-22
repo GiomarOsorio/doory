@@ -12,11 +12,30 @@ import { getSizePresets } from '@/lib/sizePresets'
 import { type FileNaming, SIMPLE_NAMING, documentFilename } from './filenames'
 import type { VideoOptions } from './video/options'
 
+/** The quality stops of the Download dialog, by the name REST and MCP exports take too. */
+export const QUALITY_PRESETS = { small: 65, balanced: 82, best: 95, original: 100 } as const
+export type QualityPreset = keyof typeof QUALITY_PRESETS
+
 export interface ExportOptions {
-  /** Output pixels per design pixel (PNG / JPG). */
+  /** Output pixels per design pixel (PNG / JPG / WebP / AVIF). */
   scale: number
-  /** 0.1..1 (JPG). */
+  /** As typed: `2x`, `1080w` or `1350h` (see `size.ts`). Replaces `scale` when it reads as a size. */
+  size?: string
+  /** 0.1..1 (JPG, WebP, AVIF). */
   quality: number
+  /** The quality stop `quality` came from, when it came from one. */
+  qualityPreset?: QualityPreset
+  /** Lossy formats: the largest file wanted per page; the quality goes down until it fits. */
+  maxBytes?: number
+  /** PNG: 256 makes a palette PNG (on the server), when that is smaller. */
+  pngColors?: 'full' | 256
+  /** Recompress on the server after rendering (`optimizer`, or the instance's default). */
+  optimize?: boolean
+  optimizer?: string
+  /** Leave metadata out of the file (default on). */
+  stripMetadata?: boolean
+  /** JPG that loads blurry first, then sharp. */
+  progressive?: boolean
   transparent: boolean
   /** Print bleed in mm (PDF): the pages grow by this much on every side. 0 = none. */
   bleedMm: number
@@ -42,6 +61,8 @@ export interface ExportContext {
   naming?: FileNaming
   /** Report progress in 0..1, and what is going on while the progress bar is not moving. */
   onProgress(fraction: number, stage?: ExportStage): void
+  /** Something the person should know about the files (a server step that failed and was skipped). */
+  onNote?(message: string): void
   signal: AbortSignal
 }
 
@@ -58,7 +79,17 @@ export interface ExportFormat {
   /** Made by the print server rather than in the browser; the dialog says which. */
   server?: boolean
   /** Which option controls apply. */
-  controls: { scale?: boolean; quality?: boolean; transparent?: boolean; /** Bleed and crop marks. */ print?: boolean; /** Video options, progress and a preview instead of a plain download. */ video?: boolean }
+  controls: {
+    scale?: boolean
+    quality?: boolean
+    transparent?: boolean
+    /** Bleed and crop marks. */
+    print?: boolean
+    /** Video options, progress and a preview instead of a plain download. */
+    video?: boolean
+    /** A picture the server can optimize or convert (`EditorAdapter.optimizeImage`). */
+    optimize?: boolean
+  }
   /** Lower first. */
   order?: number
   /** Hidden when this returns false (e.g. server PDF without an adapter method). */

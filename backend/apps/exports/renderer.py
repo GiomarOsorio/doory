@@ -1,4 +1,5 @@
-"""Runs the render worker (PDF or image) in a child process with a hard deadline and bounded concurrency."""
+"""Runs the render worker (PDF, image, pages or video) in a child process with a hard deadline and bounded
+concurrency."""
 
 from __future__ import annotations
 
@@ -30,8 +31,25 @@ KILL_GRACE_SECONDS = 3
 # the path of a unix socket stops at 107 characters.
 MAX_WORKDIR_CHARS = 60
 MAX_ASSET_BYTES = 10 * 1024 * 1024
+MAX_SOUND_BYTES = 30 * 1024 * 1024  # video: a sound file of the design (the editor takes up to 25 MB)
 # Error codes of the render page that describe the request (a 400), not a broken renderer.
-RENDER_PAGE_INPUT_ERRORS = frozenset({"invalid_document", "page_not_found", "invalid_options"})
+# `image_unavailable`: a picture of the design could not be fetched, so it can't go into an SVG.
+# Video: `too_long` and `too_large` (the server's limits), `sound_unavailable` (a sound file would not load).
+RENDER_PAGE_INPUT_ERRORS = frozenset(
+    {
+        "invalid_document",
+        "page_not_found",
+        "invalid_options",
+        "image_unavailable",
+        "too_long",
+        "too_large",
+        "sound_unavailable",
+    }
+)
+# The render page's browser has no encoder for the video asked for (a 503).
+RENDER_PAGE_UNAVAILABLE = frozenset({"video_unsupported"})
+PAGE_MIME_TYPES = {"svg": "image/svg+xml", "print": "image/svg+xml", "picture": "image/jpeg"}
+VIDEO_MIME_TYPES = frozenset({"video/mp4", "video/webm", "image/gif"})
 _ENV_ALLOWLIST = (
     "PATH",
     "HOME",
@@ -71,6 +89,54 @@ class RenderResult:
     @property
     def pdf(self) -> bytes:
         return self.data
+
+
+@dataclass(frozen=True)
+class RenderedPage:
+    """One page `render_pages` made: its file and what the render page reported about it."""
+
+    data: bytes
+    width: float  # the page's own size in px, without the bleed
+    height: float
+    page_id: str
+    page_index: int
+    pixel_width: int = 0  # pictures only
+    pixel_height: int = 0
+    placeholders: int = 0
+    missing_fonts: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class PagesResult:
+    pages: tuple[RenderedPage, ...]
+    mime: str
+    font_files: tuple[dict, ...] = ()  # print pages: the font files they use, as the editor sends them
+    allowed_total: int = 0
+    blocked_total: int = 0
+    blocked: tuple[BlockedRequest, ...] = field(default_factory=tuple)
+
+
+@dataclass(frozen=True)
+class VideoResult:
+    """The file `render_video` made and what the render page reported about it."""
+
+    data: bytes
+    mime: str  # video/mp4, video/webm or image/gif
+    width: int
+    height: int
+    fps: int
+    frames: int
+    duration_ms: int
+    video: str  # what the picture was made with: H.264, VP9, GIF ...
+    audio: str | None  # and the sound (Opus, AAC), or None for a file without sound
+    warnings: tuple[str, ...] = ()  # the pipeline's codes: audio-fallback, no-audio, video-fallback
+    page_ids: tuple[str, ...] = ()
+    page_indexes: tuple[int, ...] = ()
+    placeholders: int = 0
+    missing_fonts: tuple[str, ...] = ()
+    allowed_total: int = 0
+    blocked_total: int = 0
+    blocked: tuple[BlockedRequest, ...] = field(default_factory=tuple)
 
 
 # ---- bounded concurrency -----------------------------------------------------------------------
@@ -213,11 +279,7 @@ def render_pdf(html: str, *, width_px: float, height_px: float) -> RenderResult:
     return _run_worker(prepare, "application/pdf", "PDF export")
 
 
-def render_image(payload: dict, *, render_url: str) -> RenderResult:
-    """Draw one design page as a PNG on the frontend's headless render page at `render_url`.
-
-    `payload` is the render page's input (`document`, `page`, `multiplier`, `transparent`, `fonts`). Raises
-    the `Export*` API exceptions, and `InvalidExport` with the page's code when it refuses the input."""
+def _check_render_url(render_url: str) -> None:
     try:
         if not render_url:
             raise ValueError
@@ -225,6 +287,14 @@ def render_image(payload: dict, *, render_url: str) -> RenderResult:
     except ValueError:
         logger.error("EXPORT_RENDER_PAGE_URL must be the http(s) URL of render.html, not %r", render_url)
         raise ExportUnavailable
+
+
+def render_image(payload: dict, *, render_url: str) -> RenderResult:
+    """Draw one design page as a PNG on the frontend's headless render page at `render_url`.
+
+    `payload` is the render page's input (`document`, `page`, `multiplier`, `transparent`, `fonts`). Raises
+    the `Export*` API exceptions, and `InvalidExport` with the page's code when it refuses the input."""
+    _check_render_url(render_url)
 
     def prepare(workdir: Path) -> tuple[dict, Path]:
         payload_path, png_path = workdir / "payload.json", workdir / "output.png"
@@ -240,12 +310,64 @@ def render_image(payload: dict, *, render_url: str) -> RenderResult:
     return _run_worker(prepare, "image/png", "Image export")
 
 
-def _run_worker(prepare, mime: str, label: str) -> RenderResult:
-    """Run the worker on the spec `prepare(workdir)` writes the inputs for, and read its output file."""
-    timeout = float(settings.EXPORT_TIMEOUT_SECONDS)
+def render_pages(payload: dict, *, render_url: str, timeout: float | None = None) -> PagesResult:
+    """Make several design pages at once on the frontend's headless render page at `render_url`, in one
+    browser: SVG files, the print server's SVG pages or JPEG pictures (`payload["output"]`: svg, print or
+    picture).
+
+    `payload` is the render page's input (`document`, `pages`, `output`, `bleed`, `multiplier`, `maxPixels`,
+    `fonts`). `timeout` replaces `EXPORT_TIMEOUT_SECONDS` (several pages take longer than one). Raises the
+    `Export*` API exceptions, and `InvalidExport` with the page's code when it refuses the input."""
+    _check_render_url(render_url)
+
+    def prepare(workdir: Path) -> tuple[dict, Path]:
+        payload_path, pages_dir = workdir / "payload.json", workdir / "pages"
+        payload_path.write_text(json.dumps(payload), encoding="utf-8")
+        pages_dir.mkdir()
+        spec = {
+            "mode": "pages",
+            "render_url": render_url,
+            "payload_path": str(payload_path),
+            "pages_dir": str(pages_dir),
+        }
+        return spec, pages_dir
+
+    mime = PAGE_MIME_TYPES.get(payload.get("output"), "image/svg+xml")
+    return _run_worker(prepare, mime, "Page export", timeout=timeout, read=_read_pages)
+
+
+def render_video(payload: dict, *, render_url: str, timeout: float, max_bytes: int) -> VideoResult:
+    """Make an MP4, WebM or GIF of a design on the frontend's headless render page at `render_url`, in one
+    browser, within `timeout` seconds. `payload` is the render page's input (`document`, `pages`, `format` and
+    the video options, `maxMs`, `maxBytes`, `fonts`); a file over `max_bytes` is refused. The design's sound
+    files may be up to `MAX_SOUND_BYTES`. Raises the `Export*` API exceptions, `InvalidExport` with the page's
+    code when it refuses the input, and `ExportUnavailable` when the browser cannot encode the format."""
+    _check_render_url(render_url)
+
+    def prepare(workdir: Path) -> tuple[dict, Path]:
+        payload_path, video_path = workdir / "payload.json", workdir / "output.video"
+        payload_path.write_text(json.dumps(payload), encoding="utf-8")
+        spec = {
+            "mode": "video",
+            "render_url": render_url,
+            "payload_path": str(payload_path),
+            "video_path": str(video_path),
+            "max_video_bytes": max_bytes,
+            "max_asset_bytes": MAX_SOUND_BYTES,
+        }
+        return spec, video_path
+
+    return _run_worker(prepare, "", "Video export", timeout=timeout, read=_read_video)
+
+
+def _run_worker(prepare, mime: str, label: str, *, timeout: float | None = None, read=None):
+    """Run the worker on the spec `prepare(workdir)` writes the inputs for, and read its output (`read`, by
+    default one file: a `RenderResult`)."""
+    timeout = float(settings.EXPORT_TIMEOUT_SECONDS if timeout is None else timeout)
     workdir = _new_workdir()
     try:
         spec, output_path = prepare(workdir)
+        spec.setdefault("max_asset_bytes", MAX_ASSET_BYTES)
         report_path, spec_path, log_path = (
             workdir / "report.json",
             workdir / "spec.json",
@@ -261,7 +383,6 @@ def _run_worker(prepare, mime: str, label: str) -> RenderResult:
                     "allowed_origins": allowed_origins(),
                     "path_prefixes": allowed_path_prefixes(),
                     "timeout_s": timeout,
-                    "max_asset_bytes": MAX_ASSET_BYTES,
                 }
             ),
             encoding="utf-8",
@@ -285,22 +406,22 @@ def _run_worker(prepare, mime: str, label: str) -> RenderResult:
             finally:
                 if process.poll() is None:
                     _kill_group(process)
-        return _read_result(report_path, output_path, log_path, process.returncode, mime, label)
+        report = _checked_report(report_path, log_path, process.returncode, label)
+        return (read or _read_result)(report, output_path, mime)
     finally:
         _kill_browser_leftovers(workdir)
         shutil.rmtree(workdir, ignore_errors=True)
 
 
-def _read_result(
-    report_path: Path, output_path: Path, log_path: Path, returncode: int, mime: str, label: str
-) -> RenderResult:
+def _checked_report(report_path: Path, log_path: Path, returncode: int, label: str) -> dict:
+    """The worker's report when it says `ok`; else the `Export*` exception its error stands for."""
     try:
         report = json.loads(report_path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         tail = log_path.read_bytes()[-2000:].decode("utf-8", "replace") if log_path.exists() else ""
         logger.error("%s worker exited with %s and no report: %s", label, returncode, tail)
         raise ExportUnavailable if "ModuleNotFoundError" in tail else ExportFailed
-    blocked = tuple(BlockedRequest(item["url"], item["reason"]) for item in report.get("blocked", []))
+    blocked = _blocked(report)
     if blocked:
         logger.warning(
             "%s blocked %d request(s): %s",
@@ -318,15 +439,26 @@ def _read_result(
             raise ExportTimeout
         if kind == "unavailable":
             raise ExportUnavailable
+        if kind == "render" and error.get("code") in RENDER_PAGE_UNAVAILABLE:
+            raise ExportUnavailable("This server's browser cannot encode this video format.")
         if kind == "render" and error.get("code") in RENDER_PAGE_INPUT_ERRORS:
             raise InvalidExport(
                 str(error["code"]), str(error.get("message") or "The design cannot be drawn.")
             )
         raise ExportFailed
+    return report
+
+
+def _blocked(report: dict) -> tuple[BlockedRequest, ...]:
+    return tuple(BlockedRequest(item["url"], item["reason"]) for item in report.get("blocked", []))
+
+
+def _read_result(report: dict, output_path: Path, mime: str) -> RenderResult:
     try:
         data = output_path.read_bytes()
     except OSError:
         raise ExportFailed
+    blocked = _blocked(report)
     return RenderResult(
         data=data,
         mime=mime,
@@ -340,3 +472,66 @@ def _read_result(
         placeholders=int(report.get("placeholders", 0)),
         missing_fonts=tuple(str(name) for name in report.get("missing_fonts", [])),
     )
+
+
+def _read_pages(report: dict, pages_dir: Path, mime: str) -> PagesResult:
+    pages = []
+    try:
+        for item in report["pages"]:
+            name = str(item["file"])
+            if "/" in name or name.startswith("."):
+                raise ExportFailed
+            pages.append(
+                RenderedPage(
+                    data=(pages_dir / name).read_bytes(),
+                    width=float(item.get("width", 0)),
+                    height=float(item.get("height", 0)),
+                    page_id=str(item.get("page_id", "")),
+                    page_index=int(item.get("page_index", 0)),
+                    pixel_width=int(item.get("pixel_width", 0)),
+                    pixel_height=int(item.get("pixel_height", 0)),
+                    placeholders=int(item.get("placeholders", 0)),
+                    missing_fonts=tuple(str(family) for family in item.get("missing_fonts", [])),
+                )
+            )
+    except (OSError, KeyError, TypeError, ValueError):
+        raise ExportFailed
+    if not pages:
+        raise ExportFailed
+    return PagesResult(
+        pages=tuple(pages),
+        mime=mime,
+        font_files=tuple(item for item in report.get("font_files", []) if isinstance(item, dict)),
+        allowed_total=int(report.get("allowed_total", 0)),
+        blocked_total=int(report.get("blocked_total", 0)),
+        blocked=_blocked(report),
+    )
+
+
+def _read_video(report: dict, video_path: Path, mime: str) -> VideoResult:
+    try:
+        data = video_path.read_bytes()
+        result = VideoResult(
+            data=data,
+            mime=str(report["mime"]),
+            width=int(report["width"]),
+            height=int(report["height"]),
+            fps=int(report["fps"]),
+            frames=int(report["frames"]),
+            duration_ms=int(report["duration_ms"]),
+            video=str(report["video"]),
+            audio=str(report["audio"]) if report.get("audio") else None,
+            warnings=tuple(str(code) for code in report.get("warnings", [])),
+            page_ids=tuple(str(item) for item in report.get("page_ids", [])),
+            page_indexes=tuple(int(item) for item in report.get("page_indexes", [])),
+            placeholders=int(report.get("placeholders", 0)),
+            missing_fonts=tuple(str(name) for name in report.get("missing_fonts", [])),
+            allowed_total=int(report.get("allowed_total", 0)),
+            blocked_total=int(report.get("blocked_total", 0)),
+            blocked=_blocked(report),
+        )
+    except (OSError, KeyError, TypeError, ValueError):
+        raise ExportFailed
+    if result.mime not in VIDEO_MIME_TYPES or not data or len(data) != report.get("bytes"):
+        raise ExportFailed
+    return result

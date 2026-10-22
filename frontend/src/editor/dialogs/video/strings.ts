@@ -2,7 +2,6 @@
 const plural = (n: number, one: string, many: string): string => (n === 1 ? one : many)
 
 export const videoStrings = {
-  group: 'Video and animation',
   section: (format: string) => `${format} settings`,
   checking: 'Checking what this browser can make…',
   makeVideo: 'Make video',
@@ -22,7 +21,7 @@ export const videoStrings = {
   quality: 'Quality',
   qualityOptions: { small: 'Smaller file', balanced: 'Balanced', high: 'Best' } as const,
   fit: 'Pages of another shape',
-  fitOptions: { fit: 'Fit, with bars', fill: 'Fill, crop' } as const,
+  fitOptions: { fit: 'Fit, with bars', blur: 'Fit, blurred bars', fill: 'Fill, crop' } as const,
   fitHint: 'Pages that are not the shape of the first page are fitted in the frame with bars, or fill it and are cropped.',
   pageTime: 'Time per page',
   pageTimeOptions: { own: 'As set on each page', same: 'The same for all' } as const,
@@ -99,6 +98,10 @@ export const videoStrings = {
     'encoder-hint': 'Try again, or choose a smaller size.',
     render: 'The file could not be made.',
     'render-hint': 'A picture or a font may not have loaded. Try again.',
+    clip: 'A video clip could not be read.',
+    'clip-hint': 'Try again. If it keeps failing, upload the clip again or remove it.',
+    tainted: 'A video clip could not be put into the file.',
+    'tainted-hint': 'The server that stores the clips does not allow it. Ask the site’s admin to allow range requests from this site (CORS).',
     retry: 'Try again',
     detail: 'Details',
   },
