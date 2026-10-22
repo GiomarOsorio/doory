@@ -1,4 +1,5 @@
 import type { UpscaleWorkerReply, UpscaleWorkerRequest } from './protocol'
+import { t } from '../../strings'
 import { UpscaleError, type UpscaleRequestOptions } from './types'
 
 export type UpscaleProgress = (percent: number) => void
@@ -8,9 +9,10 @@ function abortError(signal: AbortSignal): Error {
 }
 
 /**
- * Runs one upscale in a dedicated worker and returns the encoded image (WebP for photos, PNG for
- * pixel art). Aborting terminates the worker, which is the only way to interrupt a synchronous pixel
- * loop; no partial result is ever applied.
+ * Runs one upscale in a dedicated worker and returns the encoded image: a PNG for pixel art and for
+ * a photo of up to about 12 megapixels whose PNG fits the upload limit, otherwise a WebP (see
+ * `encodeResult`). Aborting terminates the worker, which is the only way to interrupt a synchronous
+ * pixel loop; no partial result is ever applied.
  */
 export function upscaleImage(image: Blob, options: UpscaleRequestOptions, onProgress?: UpscaleProgress, signal?: AbortSignal): Promise<Blob> {
   if (signal?.aborted) return Promise.reject(abortError(signal))
@@ -41,10 +43,11 @@ export function upscaleImage(image: Blob, options: UpscaleRequestOptions, onProg
         return
       }
       if (reply.type === 'done') finish(() => resolve(reply.result))
-      else finish(() => reject(new UpscaleError(reply.message)))
+      else finish(() => reject(new UpscaleError(reply.message || t.errors.upscale)))
     }
-    worker.onerror = (event) => finish(() => reject(new UpscaleError(event.message || 'Upscaling failed.')))
-    worker.onmessageerror = () => finish(() => reject(new UpscaleError('Upscaling failed.')))
+    // An uncaught error in the worker (out of memory, most often) has a browser's wording: say it plainly.
+    worker.onerror = () => finish(() => reject(new UpscaleError(t.errors.upscale)))
+    worker.onmessageerror = () => finish(() => reject(new UpscaleError(t.errors.upscale)))
 
     const request: UpscaleWorkerRequest = { type: 'run', id: 1, image, options }
     worker.postMessage(request)
