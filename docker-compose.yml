@@ -31,6 +31,7 @@ services:
       args:
         INSTALL_CHROMIUM: ${INSTALL_CHROMIUM:-true}
         INSTALL_FFMPEG: ${INSTALL_FFMPEG:-true}
+        INSTALL_IMAGE_OPTIMIZERS: ${INSTALL_IMAGE_OPTIMIZERS:-true}
     restart: unless-stopped
     init: true  # reaps the Chromium child processes of the PDF export
     depends_on:
@@ -77,6 +78,7 @@ services:
       args:
         INSTALL_CHROMIUM: ${INSTALL_CHROMIUM:-true}
         INSTALL_FFMPEG: ${INSTALL_FFMPEG:-true}
+        INSTALL_IMAGE_OPTIMIZERS: ${INSTALL_IMAGE_OPTIMIZERS:-true}
     restart: unless-stopped
     init: true
     # A hostile update can make the CRDT engine allocate a lot of memory; the limit makes the kernel stop this
@@ -141,6 +143,7 @@ services:
       args:
         INSTALL_CHROMIUM: ${INSTALL_CHROMIUM:-true}
         INSTALL_FFMPEG: ${INSTALL_FFMPEG:-true}
+        INSTALL_IMAGE_OPTIMIZERS: ${INSTALL_IMAGE_OPTIMIZERS:-true}
     restart: unless-stopped
     init: true
     # An edit to a design open in the editor replays its whole update log here, so a large or hostile log can

@@ -383,3 +383,229 @@ def test_a_misconfigured_render_page_is_unavailable_without_starting_a_worker(us
     with pytest.raises(ExportUnavailable):
         renderer.render_image({}, render_url=url)
     assert not marker.exists()
+
+
+# ---- pages mode (SVG and PDF of a saved design) ----------------------------------------------------
+
+
+def render_some_pages(payload=None, **options):
+    return renderer.render_pages(
+        payload or {"document": {"pages": []}, "pages": [0, 1], "output": "print"},
+        render_url=RENDER_URL,
+        **options,
+    )
+
+
+def test_pages_come_back_from_their_files_with_what_the_page_reported(use_worker, settings, tmp_path):
+    use_worker(
+        f"""
+        Path({str(tmp_path / "seen.json")!r}).write_text(json.dumps(spec))
+        out = Path(spec["pages_dir"])
+        (out / "page-1.svg").write_bytes(b"<svg>1</svg>")
+        (out / "page-2.svg").write_bytes(b"<svg>2</svg>")
+        Path(spec["report_path"]).write_text(json.dumps({{
+            "status": "ok", "blocked_total": 1, "blocked": [{{"url": "http://x.test/a.png", "reason": "origin"}}],
+            "pages": [
+                {{"file": "page-1.svg", "width": 200.5, "height": 100, "page_id": "a", "page_index": 0}},
+                {{"file": "page-2.svg", "width": 50, "height": 60, "page_id": "b", "page_index": 1,
+                  "placeholders": 2, "missing_fonts": ["Gone Sans"]}},
+            ],
+            "font_files": [{{"family": "F", "url": "/media/f.ttf", "weight": 400, "style": "normal"}}, "junk"],
+        }}))
+        """
+    )
+    result = render_some_pages(timeout=75)
+    seen = json.loads((tmp_path / "seen.json").read_text())
+    assert seen["mode"] == "pages" and seen["timeout_s"] == 75 and seen["render_url"] == RENDER_URL
+    assert result.mime == "image/svg+xml"
+    assert [(page.data, page.width, page.page_id) for page in result.pages] == [
+        (b"<svg>1</svg>", 200.5, "a"),
+        (b"<svg>2</svg>", 50, "b"),
+    ]
+    assert result.pages[1].placeholders == 2 and result.pages[1].missing_fonts == ("Gone Sans",)
+    assert result.font_files == ({"family": "F", "url": "/media/f.ttf", "weight": 400, "style": "normal"},)
+    assert result.blocked_total == 1
+
+
+def test_pictures_are_jpegs_and_the_default_deadline_is_the_setting(use_worker, settings, tmp_path):
+    settings.EXPORT_TIMEOUT_SECONDS = 12
+    use_worker(
+        f"""
+        Path({str(tmp_path / "seen.json")!r}).write_text(json.dumps(spec))
+        (Path(spec["pages_dir"]) / "page-1.jpg").write_bytes(b"jpeg")
+        Path(spec["report_path"]).write_text(json.dumps({{"status": "ok", "pages": [
+            {{"file": "page-1.jpg", "pixel_width": 900, "pixel_height": 300}}]}}))
+        """
+    )
+    result = render_some_pages({"document": {}, "pages": [0], "output": "picture"})
+    assert result.mime == "image/jpeg" and result.pages[0].pixel_width == 900
+    assert json.loads((tmp_path / "seen.json").read_text())["timeout_s"] == 12
+
+
+@pytest.mark.parametrize(
+    "pages", ['[{"file": "../report.json"}]', '[{"file": "page-9.svg"}]', "[]", '"no list"', '[{"width": 1}]']
+)
+def test_a_report_that_names_no_page_file_of_its_own_is_a_failure(use_worker, pages):
+    use_worker(
+        f"""
+        (Path(spec["pages_dir"]) / "page-1.svg").write_bytes(b"<svg/>")
+        Path(spec["report_path"]).write_text(json.dumps({{"status": "ok", "pages": {pages}}}))
+        """
+    )
+    with pytest.raises(ExportFailed):
+        render_some_pages()
+
+
+def test_a_picture_that_cannot_go_into_an_svg_is_an_invalid_export(use_worker):
+    use_worker(
+        """
+        Path(spec["report_path"]).write_text(json.dumps({"status": "error", "kind": "render",
+            "error": {"code": "image_unavailable", "message": "An image could not be embedded."}}))
+        """
+    )
+    with pytest.raises(InvalidExport) as error:
+        render_some_pages()
+    assert error.value.get_codes() == "image_unavailable"
+
+
+def test_a_render_page_without_pages_is_unavailable(use_worker):
+    use_worker(
+        """
+        Path(spec["report_path"]).write_text(json.dumps({"status": "error", "kind": "unavailable",
+            "message": "the render page cannot make pages yet"}))
+        """
+    )
+    with pytest.raises(ExportUnavailable):
+        render_some_pages()
+
+
+def test_a_misconfigured_render_page_makes_no_pages(use_worker, tmp_path):
+    use_worker(f'Path({str(tmp_path / "ran")!r}).write_text("x")')
+    with pytest.raises(ExportUnavailable):
+        renderer.render_pages({}, render_url="file:///srv/render.html")
+    assert not (tmp_path / "ran").exists()
+
+
+# ---- video mode (MP4, WebM and GIF of a saved design) ------------------------------------------------
+
+VIDEO_REPORT = {
+    "status": "ok",
+    "mime": "video/mp4",
+    "bytes": 8,
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "frames": 150,
+    "duration_ms": 5000,
+    "video": "H.264",
+    "audio": "Opus",
+    "warnings": ["audio-fallback"],
+    "page_ids": ["a", "b"],
+    "page_indexes": [0, 1],
+    "placeholders": 1,
+    "missing_fonts": ["Gone Sans"],
+    "blocked_total": 2,
+}
+
+
+def render_a_video(**options):
+    return renderer.render_video(
+        {"document": {"pages": []}, "pages": [0, 1], "format": "mp4"},
+        render_url=RENDER_URL,
+        **({"timeout": 300, "max_bytes": 1000} | options),
+    )
+
+
+def test_a_video_comes_back_from_its_file_with_what_the_page_reported(use_worker, tmp_path):
+    use_worker(
+        f"""
+        spec["payload"] = json.loads(Path(spec["payload_path"]).read_text())
+        Path({str(tmp_path / "seen.json")!r}).write_text(json.dumps(spec))
+        Path(spec["video_path"]).write_bytes(b"ftypmp42")
+        Path(spec["report_path"]).write_text({json.dumps(VIDEO_REPORT)!r})
+        """
+    )
+    result = render_a_video()
+    seen = json.loads((tmp_path / "seen.json").read_text())
+    assert seen["mode"] == "video" and seen["render_url"] == RENDER_URL
+    assert (seen["timeout_s"], seen["max_video_bytes"]) == (300, 1000)
+    # A design's sound files are larger than its pictures may be.
+    assert seen["max_asset_bytes"] == renderer.MAX_SOUND_BYTES > renderer.MAX_ASSET_BYTES
+    assert seen["payload"] == {"document": {"pages": []}, "pages": [0, 1], "format": "mp4"}
+    assert (result.data, result.mime, result.width, result.height) == (b"ftypmp42", "video/mp4", 1920, 1080)
+    assert (result.fps, result.frames, result.duration_ms, result.video, result.audio) == (
+        30,
+        150,
+        5000,
+        "H.264",
+        "Opus",
+    )
+    assert result.warnings == ("audio-fallback",)
+    assert (result.page_ids, result.page_indexes) == (("a", "b"), (0, 1))
+    assert (result.placeholders, result.missing_fonts, result.blocked_total) == (1, ("Gone Sans",), 2)
+
+
+def test_the_other_modes_keep_the_smaller_asset_limit(use_worker, tmp_path):
+    use_worker(
+        f"""
+        Path({str(tmp_path / "seen.json")!r}).write_text(json.dumps(spec))
+        Path(spec["png_path"]).write_bytes(b"png")
+        Path(spec["report_path"]).write_text(json.dumps({{"status": "ok"}}))
+        """
+    )
+    render_png()
+    assert json.loads((tmp_path / "seen.json").read_text())["max_asset_bytes"] == renderer.MAX_ASSET_BYTES
+
+
+@pytest.mark.parametrize(
+    "change",
+    [{"mime": "text/html"}, {"bytes": 9}, {"width": "wide"}, {"fps": None}],
+)
+def test_a_video_report_that_does_not_match_its_file_is_a_failure(use_worker, change):
+    report = VIDEO_REPORT | change
+    use_worker(
+        f"""
+        Path(spec["video_path"]).write_bytes(b"ftypmp42")
+        Path(spec["report_path"]).write_text({json.dumps(report)!r})
+        """
+    )
+    with pytest.raises(ExportFailed):
+        render_a_video()
+
+
+def test_a_video_without_its_file_is_a_failure(use_worker):
+    use_worker(f'Path(spec["report_path"]).write_text({json.dumps(VIDEO_REPORT)!r})')
+    with pytest.raises(ExportFailed):
+        render_a_video()
+
+
+@pytest.mark.parametrize("code", ["too_long", "too_large", "sound_unavailable"])
+def test_a_video_the_render_page_refuses_is_an_invalid_export(use_worker, code):
+    use_worker(
+        f"""
+        Path(spec["report_path"]).write_text(json.dumps({{"status": "error", "kind": "render",
+            "error": {{"code": {code!r}, "message": "No."}}}}))
+        """
+    )
+    with pytest.raises(InvalidExport) as caught:
+        render_a_video()
+    assert caught.value.get_codes() == code
+
+
+def test_a_browser_without_the_encoder_is_unavailable(use_worker):
+    use_worker(
+        """
+        Path(spec["report_path"]).write_text(json.dumps({"status": "error", "kind": "render",
+            "error": {"code": "video_unsupported", "message": "This browser cannot make video files."}}))
+        """
+    )
+    with pytest.raises(ExportUnavailable) as caught:
+        render_a_video()
+    assert "cannot encode" in str(caught.value.detail)
+
+
+def test_a_misconfigured_render_page_makes_no_video(use_worker, tmp_path):
+    use_worker(f'Path({str(tmp_path / "ran")!r}).write_text("x")')
+    with pytest.raises(ExportUnavailable):
+        renderer.render_video({}, render_url="file:///srv/render.html", timeout=10, max_bytes=10)
+    assert not (tmp_path / "ran").exists()

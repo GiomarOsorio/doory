@@ -19,6 +19,10 @@ export interface MenuItem {
   separator?: boolean
   /** A small label over the items that follow it (not focusable). */
   heading?: boolean
+  /** A tile: the label over the hint, in a grid of three with the tiles next to it. */
+  tile?: boolean
+  /** A highlighted row with this short badge at the start (a file type), the hint under the label and the icon at the end. */
+  feature?: string
 }
 
 interface MenuProps {
@@ -28,10 +32,12 @@ interface MenuProps {
   at?: { x: number; y: number }
   anchorRef?: RefObject<HTMLElement | null>
   onClose: () => void
+  /** Extra class for the panel (a wider menu). */
+  className?: string
 }
 
 /** Keyboard-navigable menu (arrow keys, Home/End, Enter, Escape). */
-export function Menu({ items, label, at, anchorRef, onClose }: MenuProps) {
+export function Menu({ items, label, at, anchorRef, onClose, className }: MenuProps) {
   const root = usePortalRoot()
   const ref = useRef<HTMLDivElement>(null)
   const [pos, setPos] = useState<{ left: number; top: number } | null>(null)
@@ -118,41 +124,84 @@ export function Menu({ items, label, at, anchorRef, onClose }: MenuProps) {
       ref={ref}
       role="menu"
       aria-label={label}
-      className={styles.menu}
+      className={`${styles.menu} ${className ?? ''}`}
       style={{ left: pos?.left ?? 0, top: pos?.top ?? 0, opacity: pos ? undefined : 0 }}
       onKeyDown={onKeyDown}
     >
-      {items.map((item) =>
-        item.separator ? (
-          <div key={item.id} role="separator" className={styles.sep} />
-        ) : item.heading ? (
-          <div key={item.id} role="presentation" className={styles.heading}>
-            {item.label}
+      {groupTiles(items).map((entry) =>
+        Array.isArray(entry) ? (
+          <div key={entry[0].id} className={styles.tiles}>
+            {entry.map((item) => renderItem(item, onClose))}
+          </div>
+        ) : entry.separator ? (
+          <div key={entry.id} role="separator" className={styles.sep} />
+        ) : entry.heading ? (
+          <div key={entry.id} role="presentation" className={styles.heading}>
+            {entry.label}
           </div>
         ) : (
-          <button
-            key={item.id}
-            type="button"
-            role={item.checked !== undefined ? 'menuitemcheckbox' : 'menuitem'}
-            aria-checked={item.checked}
-            aria-disabled={item.disabled || undefined}
-            tabIndex={-1}
-            className={`${styles.item} ${item.danger ? styles.danger : ''}`}
-            onClick={() => {
-              if (item.disabled) return
-              onClose()
-              item.onSelect?.()
-            }}
-          >
-            <span className={styles.icon}>{item.checked ? <CheckMark /> : item.icon}</span>
-            <span className={styles.label}>{item.label}</span>
-            {item.hint ? <span className={styles.hint}>{item.hint}</span> : null}
-            {item.shortcut ? <kbd className={styles.kbd}>{formatShortcut(item.shortcut)}</kbd> : null}
-          </button>
+          renderItem(entry, onClose)
         ),
       )}
     </div>,
     root,
+  )
+}
+
+/** Runs of tiles become one group, drawn as a grid. */
+function groupTiles(items: MenuItem[]): (MenuItem | MenuItem[])[] {
+  const out: (MenuItem | MenuItem[])[] = []
+  for (const item of items) {
+    const last = out[out.length - 1]
+    if (item.tile && Array.isArray(last)) last.push(item)
+    else out.push(item.tile ? [item] : item)
+  }
+  return out
+}
+
+function renderItem(item: MenuItem, onClose: () => void) {
+  const className = item.tile ? styles.tile : item.feature !== undefined ? `${styles.item} ${styles.feature}` : `${styles.item} ${item.danger ? styles.danger : ''}`
+  return (
+    <button
+      key={item.id}
+      type="button"
+      role={item.checked !== undefined ? 'menuitemcheckbox' : 'menuitem'}
+      aria-checked={item.checked}
+      aria-disabled={item.disabled || undefined}
+      tabIndex={-1}
+      className={className}
+      data-item={item.id}
+      onClick={() => {
+        if (item.disabled) return
+        onClose()
+        item.onSelect?.()
+      }}
+    >
+      {item.tile ? (
+        <>
+          <span className={styles.tileLabel}>{item.label}</span>
+          {item.hint ? <span className={styles.tileHint}>{item.hint}</span> : null}
+        </>
+      ) : item.feature !== undefined ? (
+        <>
+          <span className={styles.badge} aria-hidden="true">
+            {item.feature}
+          </span>
+          <span className={styles.featureText}>
+            <span className={styles.featureLabel}>{item.label}</span>
+            {item.hint ? <span className={styles.featureHint}>{item.hint}</span> : null}
+          </span>
+          {item.icon ? <span className={styles.icon}>{item.icon}</span> : null}
+        </>
+      ) : (
+        <>
+          <span className={styles.icon}>{item.checked ? <CheckMark /> : item.icon}</span>
+          <span className={styles.label}>{item.label}</span>
+          {item.hint ? <span className={styles.hint}>{item.hint}</span> : null}
+          {item.shortcut ? <kbd className={styles.kbd}>{formatShortcut(item.shortcut)}</kbd> : null}
+        </>
+      )}
+    </button>
   )
 }
 

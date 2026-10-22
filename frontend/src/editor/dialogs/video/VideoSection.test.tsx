@@ -14,6 +14,7 @@ import { t } from '../../strings'
 import { DownloadDialog } from '../DownloadDialog'
 import { saveVideoSettings } from './videoSettings'
 import { defaultVideoOptions } from '../../engine/export/video/options'
+import { setBrowserWebpForTests } from '../../engine/export/raster'
 
 vi.mock('../../engine/export/exporter', async (importOriginal) => ({ ...(await importOriginal<typeof import('../../engine/export/exporter')>()), downloadFiles: vi.fn() }))
 vi.mock('../../engine/export/video/pipeline', () => ({ runVideoExport: vi.fn() }))
@@ -78,17 +79,18 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals())
 
 describe('Download dialog: video formats', () => {
-  it('lists MP4, WebM and GIF under their own heading, after the image and document formats', async () => {
+  it('lists MP4, WebM and GIF with the other formats, after the picture formats', async () => {
+    setBrowserWebpForTests(false)
     const { engine } = setup()
-    expect(within(dialog()).getByText(t.video.group)).toBeInTheDocument()
-    const groups = within(dialog()).getAllByRole('radiogroup')
-    expect(within(groups[0]).getAllByRole('radio').map((r) => r.closest('label')?.querySelector('strong')?.textContent)).toEqual(['PNG', 'JPG', 'PDF', 'SVG'])
-    expect(within(screen.getByRole('radiogroup', { name: t.video.group })).getAllByRole('radio').map((r) => r.closest('label')?.querySelector('strong')?.textContent)).toEqual(['MP4', 'WebM', 'GIF'])
+    const pictures = within(dialog()).getByRole('radiogroup', { name: t.dialog.downloadFormat })
+    expect(within(pictures).getAllByRole('radio').map((r) => r.closest('label')?.querySelector('strong')?.textContent)).toEqual(['PNG', 'JPG'])
+    expect(within(screen.getByRole('radiogroup', { name: t.dialog.downloadMoreFormats })).getAllByRole('radio').map((r) => r.closest('label')?.textContent)).toEqual(['PDF', 'SVG', 'MP4', 'WebM', 'GIF'])
+    setBrowserWebpForTests(null)
     expect(screen.queryByTestId('video-section')).toBeNull()
     engine.dispose()
   })
 
-  it('opens on the format it is asked for (the Download menu\'s Video or GIF), and on PNG when it is not asked or the format is not there', async () => {
+  it('opens on the format it is asked for (the Share menu\'s Video), and on PNG when it is not asked or the format is not there', async () => {
     const asked = setup(design(), 'design-1', { format: 'gif' })
     expect(within(dialog()).getByRole('radio', { name: /^GIF/ })).toBeChecked()
     await section()
@@ -134,6 +136,7 @@ describe('Download dialog: video formats', () => {
     const { engine } = setup()
     await pick(/^MP4/)
     await section()
+    await userEvent.click(within(dialog()).getByRole('button', { name: new RegExp(t.dialog.downloadMoreSettings) }))
     await userEvent.click(within(dialog()).getByRole('radio', { name: t.dialog.downloadCurrentPage }))
     await waitFor(() => expect(screen.getByTestId('video-estimate')).toHaveTextContent('0:04 ·'))
     await userEvent.click(within(dialog()).getByRole('radio', { name: t.dialog.downloadRange }))
@@ -146,6 +149,7 @@ describe('Download dialog: video formats', () => {
     const { engine } = setup()
     await pick(/^MP4/)
     await section()
+    await userEvent.click(within(dialog()).getByRole('button', { name: new RegExp(t.dialog.downloadMoreSettings) }))
     await userEvent.click(within(dialog()).getByRole('radio', { name: t.dialog.downloadRange }))
     await userEvent.type(screen.getByLabelText(t.dialog.downloadRange, { selector: 'input[type=text], input:not([type])' }), 'x')
     expect(screen.getByRole('button', { name: t.video.makeVideo })).toBeDisabled()

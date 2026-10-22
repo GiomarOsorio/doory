@@ -81,10 +81,10 @@ export async function addText(page: Page, preset: 'heading' | 'subheading' | 'bo
 /** The contextual toolbar under the top bar (morphs with the selection). */
 export const toolbarOf = (page: Page) => page.getByRole('toolbar', { name: 'Formatting' })
 
-/** Opens the full Download dialog from the Download menu. */
+/** Opens the full Download dialog from the Share menu. */
 export async function openDownloadDialog(page: Page): Promise<void> {
-  await page.locator('[data-testid="ed-download"]').click()
-  await page.getByRole('menuitem', { name: 'More options…' }).click()
+  await page.locator('[data-testid="ed-share"]').click()
+  await page.getByRole('menuitem', { name: 'All formats and options…' }).click()
 }
 
 /** Clicks an item of the "More" menu in the top bar. */

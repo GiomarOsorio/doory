@@ -177,6 +177,16 @@ EMAIL_SEND_ASYNC = env.bool("EMAIL_SEND_ASYNC", default=True)  # send off the re
 
 # ---- Integrations (all optional) ----
 GOOGLE_CLIENT_ID = env("GOOGLE_CLIENT_ID", default="")
+# OpenID Connect sign-in (apps.accounts.oidc): on when the issuer, client ID and client secret are all set.
+# A setting that is wrong turns it off and `manage.py check` says why. OIDC_TRUST_EMAIL lets a first OIDC
+# sign-in take over an existing account with the same (provider-verified) address; off, existing users
+# connect their account from Settings instead.
+OIDC_ISSUER = env("OIDC_ISSUER", default="")
+OIDC_CLIENT_ID = env("OIDC_CLIENT_ID", default="")
+OIDC_CLIENT_SECRET = env("OIDC_CLIENT_SECRET", default="")
+OIDC_BUTTON_LABEL = env("OIDC_BUTTON_LABEL", default="Sign in with SSO")
+OIDC_SCOPES = env("OIDC_SCOPES", default="openid email profile")
+OIDC_TRUST_EMAIL = env.bool("OIDC_TRUST_EMAIL", default=False)
 UNSPLASH_ACCESS_KEY = env("UNSPLASH_ACCESS_KEY", default="")
 PEXELS_API_KEY = env("PEXELS_API_KEY", default="")
 PIXABAY_API_KEY = env("PIXABAY_API_KEY", default="")
@@ -252,6 +262,7 @@ REST_FRAMEWORK = {
         "bulk_fill": "120/min",  # rows created via bulk-fill (REST)
         "bulk_fill_images": "300/min",  # image URLs fetched by bulk-fill (REST and MCP)
         "export": "30/min",  # server-side image renders (REST and MCP)
+        "optimize": "60/min",  # images the browser drew, converted and optimized (POST /exports/optimize/)
         "ai": "30/min",  # calls to AI image providers (REST and MCP)
     },
     "DEFAULT_RENDERER_CLASSES": ["rest_framework.renderers.JSONRenderer"],
@@ -331,16 +342,45 @@ EXPORT_ALLOWED_ORIGINS = env.list(
     default=["/".join(SITE_URL.split("/")[:3]), "http://127.0.0.1:8000", "http://localhost:8000"],
 )
 
-# Server-side PNG/JPG/WebP export of a saved design page (apps.exports.services.export_image). Off by default:
-# turning it on opens the frontend's headless render page in the export browser with JavaScript enabled and
-# draws the page with the editor's engine. It must be the *built* frontend's `render.html`: the Vite dev
-# server serves modules from paths it may not load.
+# Server-side PNG/JPG/WebP/AVIF export of saved design pages (apps.exports.services.export_image). Off by
+# default: turning it on opens the frontend's headless render page in the export browser with JavaScript
+# enabled and draws the page with the editor's engine. It must be the *built* frontend's `render.html`: the
+# Vite dev server serves modules from paths it may not load.
 SERVER_IMAGE_EXPORT_ENABLED = env.bool("SERVER_IMAGE_EXPORT_ENABLED", default=False)
 EXPORT_RENDER_PAGE_URL = env(
     "EXPORT_RENDER_PAGE_URL", default="/".join(SITE_URL.split("/")[:3]) + "/render.html"
 )
 EXPORT_IMAGE_MAX_PIXELS = env.int("EXPORT_IMAGE_MAX_PIXELS", default=40_000_000)  # output width x height
 EXPORT_IMAGE_MAX_DOCUMENT_BYTES = env.int("EXPORT_IMAGE_MAX_DOCUMENT_BYTES", default=5 * 1024 * 1024)
+# Pages one export may draw (`pages`, sent back as a ZIP). Each page is a render of its own, and the whole
+# export is one request: keep pages x EXPORT_TIMEOUT_SECONDS under the web server's worker timeout.
+EXPORT_IMAGE_MAX_PAGES = env.int("EXPORT_IMAGE_MAX_PAGES", default=10)
+# Server-side MP4, WebM and GIF of saved designs (apps.exports.services.export_video), on the same render page
+# with the editor's video pipeline. Off by default: one video keeps a browser busy for minutes. It also needs
+# SERVER_IMAGE_EXPORT_ENABLED. The deadline covers the whole file; the bundled nginx waits 330 s for it.
+SERVER_VIDEO_EXPORT_ENABLED = env.bool("SERVER_VIDEO_EXPORT_ENABLED", default=False)
+EXPORT_VIDEO_TIMEOUT_SECONDS = env.int("EXPORT_VIDEO_TIMEOUT_SECONDS", default=300)
+EXPORT_VIDEO_MAX_SECONDS = env.int("EXPORT_VIDEO_MAX_SECONDS", default=120)  # the longest video or GIF
+EXPORT_VIDEO_MAX_RESOLUTION = env.int("EXPORT_VIDEO_MAX_RESOLUTION", default=1080)  # shorter side, px
+EXPORT_VIDEO_MAX_BYTES = env.int("EXPORT_VIDEO_MAX_BYTES", default=200 * 1024 * 1024)
+
+# Image optimizers (apps.exports.optimizers): make exported and downloaded images smaller after drawing them.
+# IMAGE_OPTIMIZERS lists the ones people may pick, in order (empty: none). `builtin` runs mozjpeg and oxipng
+# on this server (the Docker image has them; it is left out where they are missing). `tinypng`, `kraken` and
+# `custom` send the image to that service and are left out until their key (or URL) is set. An optimizer
+# that fails or times out leaves the file as it was, and no file is ever made bigger.
+IMAGE_OPTIMIZERS = env.list("IMAGE_OPTIMIZERS", default=["builtin"])
+IMAGE_OPTIMIZER_DEFAULT = env("IMAGE_OPTIMIZER_DEFAULT", default="builtin")  # what `optimize: true` uses
+IMAGE_OPTIMIZER_TIMEOUT = env.int("IMAGE_OPTIMIZER_TIMEOUT", default=30)  # seconds per file
+# Largest file optimized, and the largest image POST /api/v1/exports/optimize/ takes.
+IMAGE_OPTIMIZER_MAX_BYTES = env.int("IMAGE_OPTIMIZER_MAX_BYTES", default=25 * 1024 * 1024)
+TINYPNG_API_KEY = env("TINYPNG_API_KEY", default="")
+KRAKEN_API_KEY = env("KRAKEN_API_KEY", default="")
+KRAKEN_API_SECRET = env("KRAKEN_API_SECRET", default="")
+# Any other optimizer that follows the small HTTP contract in docs/integrations/image-optimization.md.
+IMAGE_OPTIMIZER_CUSTOM_NAME = env("IMAGE_OPTIMIZER_CUSTOM_NAME", default="Custom")
+IMAGE_OPTIMIZER_CUSTOM_URL = env("IMAGE_OPTIMIZER_CUSTOM_URL", default="")
+IMAGE_OPTIMIZER_CUSTOM_KEY = env("IMAGE_OPTIMIZER_CUSTOM_KEY", default="")
 
 # ---- In-browser background removal (apps.core.mlmodels; `manage.py sync_models` installs the model) ----
 BACKGROUND_REMOVAL_ENABLED = env.bool("BACKGROUND_REMOVAL_ENABLED", default=True)

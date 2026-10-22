@@ -1,4 +1,4 @@
-import { ChevronDown, Menu as MenuIcon, Presentation, Share2, Users } from 'lucide-react'
+import { ChevronDown, Copy, Download, History, Menu as MenuIcon, Presentation, Share2, SlidersHorizontal, Users } from 'lucide-react'
 import { useContrast } from '@/lib/contrast'
 import { useSizePresets } from '@/lib/sizePresets'
 import { getPageSize } from './engine/pageSizes'
@@ -10,8 +10,9 @@ import { I } from './chrome/icons'
 import { useChrome, useOpenTool } from './chrome/ChromeContext'
 import { useEditor, useEditorState } from './context'
 import { commands, isCommandEnabled } from './commands'
-import { type ExportFormat, DEFAULT_EXPORT_OPTIONS, exportFormats } from './engine/export/registry'
-import { downloadFiles, runExport } from './engine/export/exporter'
+import { DEFAULT_EXPORT_OPTIONS, exportFormats } from './engine/export/registry'
+import { type ExportChoice, describeChoice, designPreset, loadLastExport, saveLastExport, suggestionFor } from './engine/export/choices'
+import { copyPageAsPng, downloadFiles, runExport } from './engine/export/exporter'
 import { useNotesOpen } from './panels/notesVisibility'
 import { useTimelineView } from './workspace/timelineVisibility'
 import { type PanelDefinition } from './panels/registry'
@@ -115,6 +116,8 @@ function ShareMenu({ onPresent }: { onPresent: () => void }) {
   const mode = useEditorState((s) => s.mode)
   const readOnly = useEditorState((s) => s.readOnly)
   const formats = useSyncExternalStore(exportFormats.subscribe, exportFormats.getSnapshot)
+  // Re-read when the server's size presets arrive: they make the suggestion.
+  useSizePresets()
   const [open, setOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const anchor = useRef<HTMLButtonElement>(null)
@@ -123,12 +126,18 @@ function ShareMenu({ onPresent }: { onPresent: () => void }) {
   const canShare = !readOnly && (mode === 'guest' || !!editor.adapter.services.sharing)
 
   const quick = useCallback(
-    async (format: ExportFormat): Promise<void> => {
+    async (choice: ExportChoice): Promise<void> => {
+      if (exportFormats.get(choice.formatId)?.controls.video) {
+        editor.openDialog('download', { format: choice.formatId })
+        return
+      }
       setBusy(true)
+      const notes: string[] = []
       try {
-        const files = await runExport(editor, { formatId: format.id, pages: { kind: 'all' }, options: format.id === 'png' ? { ...DEFAULT_EXPORT_OPTIONS, transparent: true } : DEFAULT_EXPORT_OPTIONS })
+        const files = await runExport(editor, { formatId: choice.formatId, pages: { kind: 'all' }, options: choice.options, onNote: (note) => notes.push(note) })
         downloadFiles(files)
-        editor.toast(t.dialog.downloadDone, 'success')
+        saveLastExport(choice)
+        editor.toast(notes[0] ?? t.dialog.downloadDone, notes.length > 0 ? 'info' : 'success')
       } catch (err) {
         editor.toast(err instanceof Error && err.message ? err.message : t.dialog.downloadFailed, 'error')
       } finally {
@@ -137,6 +146,13 @@ function ShareMenu({ onPresent }: { onPresent: () => void }) {
     },
     [editor],
   )
+
+  const copy = (): void => {
+    copyPageAsPng(editor).then(
+      () => editor.toast(t.dialog.downloadCopied, 'success'),
+      (err: unknown) => editor.toast(err instanceof Error && err.message ? err.message : t.dialog.downloadFailed, 'error'),
+    )
+  }
 
   const share = (): void => {
     if (sharing.current) return
@@ -147,13 +163,39 @@ function ShareMenu({ onPresent }: { onPresent: () => void }) {
   }
 
   const presentNotes = commands.get('file.presentNotes')
-  const quickFormats = formats.filter((f) => ['jpg', 'png', 'pdf', 'svg'].includes(f.id) && (!f.available || f.available(editor)))
+  const usable = (id: string): boolean => formats.some((f) => f.id === id && (!f.available || f.available(editor)))
+  const preset = open ? designPreset(editor) : null
+  const suggested = preset ? suggestionFor(editor, preset) : null
+  const last = open ? loadLastExport() : null
+  const tile = (id: keyof typeof t.topbar.formatHint): MenuItem[] => {
+    if (!usable(id)) return []
+    const options = id === 'png' ? { ...DEFAULT_EXPORT_OPTIONS, transparent: true } : DEFAULT_EXPORT_OPTIONS
+    return [{ id, label: exportFormats.get(id)?.label ?? id, hint: t.topbar.formatHint[id], tile: true, onSelect: () => void quick({ formatId: id, options }) }]
+  }
   const items: MenuItem[] = [
     ...(canShare ? [{ id: 'share-people', label: t.topbar.shareWithPeople, hint: t.topbar.shareWithPeopleHint, icon: <Users size={16} aria-hidden="true" />, onSelect: share }, { id: 's-share', separator: true }] : []),
     { id: 'h-download', label: t.topbar.downloadHeading, heading: true },
-    ...quickFormats.map((f) => ({ id: f.id, label: f.label, hint: t.topbar.formatHint[f.id as 'jpg'], onSelect: () => void quick(f) })),
-    { id: 'video', label: t.topbar.videoDownload, hint: t.topbar.videoDownloadHint, onSelect: () => editor.openDialog('download', { format: 'mp4' }) },
-    { id: 'more', label: t.topbar.moreDownloadOptions, onSelect: () => editor.openDialog('download') },
+    ...(preset && suggested
+      ? [
+          {
+            id: 'suggested',
+            label: t.topbar.suggestedFor(preset.label),
+            hint: `${describeChoice(suggested)} · ${preset.width} × ${preset.height}`,
+            feature: exportFormats.get(suggested.formatId)?.label ?? suggested.formatId,
+            icon: <Download size={16} aria-hidden="true" />,
+            onSelect: () => void quick(suggested),
+          },
+        ]
+      : []),
+    ...tile('png'),
+    ...tile('jpg'),
+    ...tile('webp'),
+    ...tile('pdf'),
+    ...tile('svg'),
+    ...(formats.some((f) => f.controls.video) ? [{ id: 'video', label: t.topbar.videoDownload, hint: t.topbar.videoDownloadHint, tile: true, onSelect: () => editor.openDialog('download', { format: 'mp4' }) }] : []),
+    ...(last && usable(last.formatId) ? [{ id: 'last', label: t.topbar.lastUsed, hint: describeChoice(last), icon: <History size={16} aria-hidden="true" />, onSelect: () => void quick(last) }] : []),
+    { id: 'more', label: t.topbar.moreDownloadOptions, icon: <SlidersHorizontal size={16} aria-hidden="true" />, shortcut: commands.get('file.download')?.shortcut, onSelect: () => editor.openDialog('download') },
+    { id: 'copy', label: t.topbar.copyImage, icon: <Copy size={16} aria-hidden="true" />, onSelect: copy },
     { id: 's-present', separator: true },
     { id: 'h-present', label: t.topbar.presentHeading, heading: true },
     { id: 'present', label: t.topbar.presentFull, icon: <Presentation size={16} aria-hidden="true" />, onSelect: onPresent },
@@ -181,7 +223,7 @@ function ShareMenu({ onPresent }: { onPresent: () => void }) {
         <span className={styles.btnLabel}>{label}</span>
         <ChevronDown size={14} aria-hidden="true" className={styles.chevron} />
       </button>
-      {open ? <Menu label={label} items={items} anchorRef={anchor} onClose={() => setOpen(false)} /> : null}
+      {open ? <Menu label={label} items={items} anchorRef={anchor} onClose={() => setOpen(false)} className={styles.shareMenu} /> : null}
     </>
   )
 }

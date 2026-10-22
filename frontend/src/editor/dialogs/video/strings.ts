@@ -2,7 +2,6 @@
 const plural = (n: number, one: string, many: string): string => (n === 1 ? one : many)
 
 export const videoStrings = {
-  group: 'Video and animation',
   section: (format: string) => `${format} settings`,
   checking: 'Checking what this browser can make…',
   makeVideo: 'Make video',

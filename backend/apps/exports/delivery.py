@@ -1,4 +1,4 @@
-"""Short-lived download links for exported images (the MCP tool's `delivery="url"`).
+"""Short-lived download links for exported images, SVGs, PDFs, ZIPs and videos (MCP `delivery="url"`).
 
 The image is stored in a private directory outside `MEDIA_ROOT` (`EXPORT_STORAGE_ROOT`, never under `/media/`)
 and served only by `ImageDownloadView` at a URL that carries a signed, timestamped token naming the file:
@@ -24,9 +24,20 @@ from django.urls import reverse
 logger = logging.getLogger("doory.exports")
 
 SALT = "doory.exports.image-link"
-EXTENSIONS = {"image/png": "png", "image/jpeg": "jpg", "image/webp": "webp"}
+EXTENSIONS = {
+    "image/png": "png",
+    "image/jpeg": "jpg",
+    "image/webp": "webp",
+    "image/avif": "avif",
+    "image/svg+xml": "svg",
+    "application/pdf": "pdf",
+    "application/zip": "zip",
+    "video/mp4": "mp4",
+    "video/webm": "webm",
+    "image/gif": "gif",
+}
 MIME_TYPES = {ext: mime for mime, ext in EXTENSIONS.items()}
-_NAME = re.compile(r"^(?P<made>\d{10})-[0-9a-f]{32}\.(?P<ext>png|jpg|webp)$")
+_NAME = re.compile(r"^(?P<made>\d{10})-[0-9a-f]{32}\.(?P<ext>png|jpg|webp|avif|svg|pdf|zip|mp4|webm|gif)$")
 
 
 def export_storage() -> FileSystemStorage:

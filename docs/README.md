@@ -17,6 +17,7 @@ These docs are for people who install, run or develop Doory. The editor's featur
 | Export images and PDFs on the server          | [self-hosting/image-export.md](self-hosting/image-export.md) |
 | Remove backgrounds on a server                | [self-hosting/ai-providers.md](self-hosting/ai-providers.md) |
 | Let people add video clips                    | [self-hosting/video.md](self-hosting/video.md)               |
+| Make exported images smaller                  | [integrations/image-optimization.md](integrations/image-optimization.md) |
 | Upgrade to a newer version                    | [self-hosting/upgrading.md](self-hosting/upgrading.md)       |
 | Back up and restore                           | [self-hosting/backup.md](self-hosting/backup.md)             |
 | Fix a problem                                 | [self-hosting/troubleshooting.md](self-hosting/troubleshooting.md) |

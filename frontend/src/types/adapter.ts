@@ -311,6 +311,60 @@ export interface EditorAdapter {
     /** Called while the request body goes out (0..1). */
     onUploadProgress?: (fraction: number) => void
   }) => Promise<Blob>
+  /** What the server converts and optimizes downloads into (`/config/` `features.image_optimize`). Absent: browser only. */
+  imageOptimize?: ImageOptimizeInfo
+  /** Converts a page the browser drew (PNG) to `format` and optimizes it on the server. Present with `imageOptimize`. */
+  optimizeImage?: (input: OptimizeImageInput) => Promise<OptimizedImage>
+}
+
+export type OptimizeFormat = 'png' | 'jpg' | 'webp' | 'avif'
+
+export interface ImageOptimizerInfo {
+  id: string
+  name: string
+  /** The formats it makes smaller; the others pass through as the conversion made them. */
+  formats: OptimizeFormat[]
+  /** The image leaves the server for an outside service. */
+  sendsOffsite: boolean
+}
+
+export interface ImageOptimizeInfo {
+  /** What the server converts a PNG to (AVIF only where the server has it). */
+  formats: OptimizeFormat[]
+  /** In the admin's order; may be empty (conversion only). */
+  optimizers: ImageOptimizerInfo[]
+  default: string | null
+}
+
+export interface OptimizeImageInput {
+  /** The page as the browser drew it, as a PNG. */
+  file: Blob
+  format: OptimizeFormat
+  /** 1..100. */
+  quality?: number
+  maxBytes?: number
+  pngColors?: 'full' | number
+  transparent?: boolean
+  stripMetadata?: boolean
+  progressive?: boolean
+  /** An optimizer id, `true` for the instance's default, `false` to convert only. */
+  optimize: boolean | string
+  signal?: AbortSignal
+}
+
+export interface OptimizedImage {
+  blob: Blob
+  format: OptimizeFormat
+  width: number
+  height: number
+  /** The quality used, after a `maxBytes` search (lossy formats). */
+  quality: number | null
+  /** The converted file's size before optimizing. */
+  bytesBefore: number
+  /** The optimizer asked ('' for none) and whether its smaller file was kept. */
+  optimizer: string
+  optimized: boolean
+  warnings: string[]
 }
 
 export interface EditorHandle {

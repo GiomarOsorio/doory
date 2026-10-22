@@ -1,6 +1,6 @@
 import pytest
 
-from apps.exports.policy import RequestPolicy, normalize_origin
+from apps.exports.policy import RequestPolicy, normalize_origin, secure_alias, unaliased
 
 ORIGIN = "http://127.0.0.1:8000"
 POLICY = RequestPolicy.build([ORIGIN, "https://doory.example"], ["/media/", "/static/"])
@@ -169,3 +169,44 @@ def test_no_page_url_is_the_pdf_policy(page_url):
 def test_a_bad_render_page_url_is_refused(page_url):
     with pytest.raises(ValueError):
         RequestPolicy.build([ORIGIN], ["/media/"], page_url=page_url)
+
+
+@pytest.mark.parametrize(
+    ("page_url", "alias"),
+    [
+        ("http://doory-web:8080/render.html", "http://doory-web.localhost:8080/render.html"),
+        ("http://Doory-Web/render.html?v=2", "http://doory-web.localhost:80/render.html?v=2"),
+        ("http://10.0.0.5:8080/render.html", "http://10.0.0.5.localhost:8080/render.html"),
+        ("http://127.0.0.1:8080/render.html", "http://127.0.0.1.localhost:8080/render.html"),
+    ],
+)
+def test_a_render_page_at_plain_http_gets_a_secure_localhost_alias(page_url, alias):
+    assert secure_alias(page_url) == alias
+
+
+@pytest.mark.parametrize(
+    "page_url",
+    [
+        "https://doory.example/render.html",
+        "http://localhost:5173/render.html",
+        "http://web.localhost:8080/render.html",
+        "http://[::1]:8080/render.html",
+        "http://doory-web:bad/render.html",
+        "",
+    ],
+)
+def test_a_render_page_that_is_secure_already_or_cannot_be_aliased_gets_none(page_url):
+    assert secure_alias(page_url) is None
+
+
+def test_requests_to_the_alias_go_to_the_real_address_and_others_stay():
+    page_url = "http://doory-web:8080/render.html"
+    alias = secure_alias(page_url)
+    assert unaliased("http://doory-web.localhost:8080/assets/a.js?v=1", alias, page_url) == (
+        "http://doory-web:8080/assets/a.js?v=1"
+    )
+    assert unaliased("http://doory-web.localhost:8080/media/x.ogg", alias, page_url) == (
+        "http://doory-web:8080/media/x.ogg"
+    )
+    for url in ("http://doory-web:8080/media/x.png", "https://cdn.example/x.png", "data:,x"):
+        assert unaliased(url, alias, page_url) == url
