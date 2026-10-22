@@ -40,6 +40,18 @@ sudo systemctl daemon-reload && sudo nginx -t && sudo systemctl reload nginx
 
 Changes that need you to do something, newest first. Changes that need nothing aren't listed here.
 
+### 2026-10-23: video clips
+
+- **Docker:** the `api`, `realtime` and `mcp` images now build ffmpeg in (`INSTALL_FFMPEG=true`, about 250 MB).
+  Rebuild with `docker compose up -d --build`. Set `INSTALL_FFMPEG=false` in `.env` to leave video off.
+- **Without Docker:** `sudo apt install ffmpeg` to turn video on, then copy the new `deploy/nginx.conf`. It
+  allows 210 MB uploads on `/api/v1/assets/` (clips), and other requests keep the 30 MB limit.
+- The site's Content-Security-Policy (`frontend/nginx/security-headers.conf`) now lists the Pexels and Pixabay
+  video CDNs in `media-src`. If you mount your own copy, add them there.
+- With S3-compatible storage, allow range requests in the bucket's CORS rule (see
+  [object-storage.md](../integrations/object-storage.md)).
+- See [video.md](video.md).
+
 ### 2026-10-21: server-side video export (opt-in)
 
 - New settings `SERVER_VIDEO_EXPORT_ENABLED` (off) and `EXPORT_VIDEO_*`; see

@@ -4,6 +4,7 @@
  */
 import { animationStrings } from './animation/strings'
 import { audioStrings } from './audio/strings'
+import { clipStrings } from './clips/strings'
 import { collab } from './collab/strings'
 import { print } from './dialogs/print/strings'
 import { videoStrings } from './dialogs/video/strings'
@@ -280,6 +281,7 @@ export const t = {
     layers: 'Layers',
     comments: 'Comments',
     audio: 'Audio',
+    videos: 'Videos',
   },
 
   panels: {
@@ -694,6 +696,7 @@ export const t = {
     qr: 'QR code',
     element: 'Element',
     placeholder: 'Image placeholder',
+    video: 'Video',
     object: 'Object',
     unavailable: 'Unavailable object',
   },
@@ -1540,4 +1543,5 @@ export const t = {
   video: videoStrings,
   animation: animationStrings,
   audio: audioStrings,
+  clips: clipStrings,
 } as const
