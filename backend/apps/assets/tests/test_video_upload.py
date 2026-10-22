@@ -1,14 +1,17 @@
 """Uploading clips: the real ffprobe and ffmpeg (skipped without them), the conversion in the background."""
 
+import io
 from datetime import timedelta
 from pathlib import Path
 
 import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.utils import timezone
+from PIL import Image, features
 
 from apps.assets import video, video_jobs
 from apps.assets.models import Asset
+from apps.assets.services import looks_like_media
 
 from .audio_helpers import webm_bytes
 from .video_helpers import clip, needs_ffmpeg
@@ -189,3 +192,39 @@ class TestWithoutFfmpeg:
 
         settings.VIDEO_ENABLED = False
         assert post(api, image_bytes(), "a.png").json()["kind"] == "image"
+
+
+@pytest.mark.parametrize(
+    "head",
+    [
+        b"\x00\x00\x00\x1cftypavif\x00\x00\x00\x00avifmif1",
+        b"\x00\x00\x00\x18ftypheic\x00\x00\x00\x00mif1heic",
+        b"\x00\x00\x00\x18ftypmif1\x00\x00\x00\x00mif1avif",
+    ],
+)
+def test_still_pictures_in_a_media_box_are_not_taken_for_clips(head):
+    assert not looks_like_media(head)
+
+
+@pytest.mark.parametrize(
+    "head", [b"\x00\x00\x00\x18ftypisom", b"\x00\x00\x00\x18ftypmp42", b"\x00\x00\x00\x14ftypqt  "]
+)
+def test_clips_in_a_media_box_are(head):
+    assert looks_like_media(head)
+
+
+@pytest.mark.django_db
+def test_an_avif_picture_stays_a_picture_on_a_server_that_takes_clips(api, monkeypatch):
+    if not features.check("avif"):
+        pytest.skip("Pillow was built without AVIF")
+    out = io.BytesIO()
+    Image.new("RGB", (32, 24), (120, 80, 200)).save(out, "AVIF")
+    monkeypatch.setattr(video, "available", lambda: True)
+
+    def never(*args, **kwargs):
+        raise AssertionError("a picture went down the video path")
+
+    monkeypatch.setattr("apps.assets.views.ingest_video_upload", never)
+    res = post(api, out.getvalue(), "photo.avif")
+    assert res.status_code == 201, res.content
+    assert res.json()["kind"] == "image"

@@ -54,11 +54,30 @@ def read_upload(uploaded_file) -> bytes:
 
 # Boxes an ISO base media file (MP4, MOV, M4A, 3GP) may start with; old QuickTime files skip `ftyp`.
 _ISO_FIRST_BOXES = frozenset({b"ftyp", b"moov", b"mdat", b"wide", b"free", b"skip"})
+# Major brands of still pictures in the same box format (AVIF, HEIF/HEIC): they stay pictures, never clips.
+_PICTURE_BRANDS = frozenset(
+    {
+        b"avif",
+        b"avis",
+        b"heic",
+        b"heix",
+        b"heim",
+        b"heis",
+        b"hevc",
+        b"hevx",
+        b"hevm",
+        b"hevs",
+        b"mif1",
+        b"msf1",
+    }
+)
 STAGE_CHUNK = 1024 * 1024
 
 
 def looks_like_media(head: bytes) -> bool:
     """True when the first bytes start a container that may hold a video (ffprobe then decides)."""
+    if head[4:8] == b"ftyp" and head[8:12] in _PICTURE_BRANDS:
+        return False
     if head[4:8] in _ISO_FIRST_BOXES or head[:4] == b"\x1a\x45\xdf\xa3":  # ISO base media, Matroska/WebM
         return True
     return head[:4] == b"RIFF" and head[8:12] == b"AVI "
