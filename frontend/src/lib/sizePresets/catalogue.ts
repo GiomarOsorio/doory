@@ -24,7 +24,7 @@ export interface PresetTreePreset {
   tags?: string[]
   is_quick?: boolean
   aliases?: string[]
-  meta?: { safe_zone?: SafeZone; platforms?: string[] } & Record<string, unknown>
+  meta?: { safe_zone?: SafeZone; platforms?: string[]; formats?: string[]; max_bytes?: number } & Record<string, unknown>
 }
 
 export interface PresetTreeGroup {
@@ -66,6 +66,10 @@ export interface SizePreset {
   safeZone: SafeZone | null
   /** `meta.platforms[0]`: the platform export file names use instead of the group's slug. */
   platform?: string
+  /** `meta.formats`: the file types the platform accepts (`jpg`, `png`…), best first. Absent when not known. */
+  formats?: string[]
+  /** `meta.max_bytes`: the largest file the platform accepts. */
+  maxBytes?: number
   /** The groups the preset sits in, outermost first (Social media → Instagram). */
   path: PresetGroupRef[]
 }
@@ -109,6 +113,14 @@ function safeZone(meta: unknown): SafeZone | null {
   return Object.keys(out).length > 0 ? out : null
 }
 
+/** The platform's upload limits (`meta.formats`, `meta.max_bytes`), when the catalogue knows them. */
+function uploadLimits(meta: unknown): Pick<SizePreset, 'formats' | 'maxBytes'> {
+  if (typeof meta !== 'object' || meta === null) return {}
+  const { formats, max_bytes: maxBytes } = meta as { formats?: unknown; max_bytes?: unknown }
+  const list = textList(formats).map((f) => f.toLowerCase())
+  return { ...(list.length > 0 ? { formats: list } : {}), ...(positive(maxBytes) ? { maxBytes: Math.round(maxBytes) } : {}) }
+}
+
 function platformOf(meta: unknown): string {
   const platforms = typeof meta === 'object' && meta !== null ? (meta as { platforms?: unknown }).platforms : undefined
   return Array.isArray(platforms) && isText(platforms[0]) ? platforms[0] : ''
@@ -137,6 +149,7 @@ function toPreset(raw: PresetTreePreset, path: PresetGroupRef[]): SizePreset | n
     aliases: textList(raw.aliases),
     safeZone: safeZone(raw.meta),
     ...(platform ? { platform } : {}),
+    ...uploadLimits(raw.meta),
     path,
   }
 }

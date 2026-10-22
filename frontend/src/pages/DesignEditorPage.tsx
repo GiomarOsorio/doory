@@ -62,6 +62,7 @@ export default function DesignEditorPage() {
   const exportsConfig = config.exports
   const aiProviders = config.features.ai_providers === true
   const aiConfig = config.ai
+  const imageOptimize = config.features.image_optimize ?? null
   // Keep the last known user id across dropped sessions so the adapter is not rebuilt while editing.
   const [userId, setUserId] = useState(user?.id)
   if (user?.id && user.id !== userId) {
@@ -71,12 +72,12 @@ export default function DesignEditorPage() {
     () =>
       createAccountAdapter(id, () => revision.get(), {
         onRevision: (next) => revision.set(next),
-        config: { features: { stock_photos: false, server_pdf: serverPdf, google_login: false, email_verification: false, realtime, ai_providers: aiProviders }, exports: exportsConfig, ai: aiConfig },
+        config: { features: { stock_photos: false, server_pdf: serverPdf, google_login: false, email_verification: false, realtime, ai_providers: aiProviders, image_optimize: imageOptimize }, exports: exportsConfig, ai: aiConfig },
         userId,
         requireSignIn: () => handlers.get().openAuthModal({ reason: 'generic', tab: 'login' }),
         refreshSession: async () => (await handlers.get().refresh()) !== null,
       }),
-    [id, serverPdf, realtime, exportsConfig, aiProviders, aiConfig, userId, revision, handlers],
+    [id, serverPdf, realtime, exportsConfig, aiProviders, aiConfig, imageOptimize, userId, revision, handlers],
   )
   useEffect(() => {
     if (design) revision.set(design.revision)

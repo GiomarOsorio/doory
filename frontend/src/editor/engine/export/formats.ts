@@ -1,6 +1,6 @@
 /** Built-in export formats, registered through the public registry. */
 import { fontsInObjects, pageSize } from '../docOps'
-import { canvasToBlob, renderPageToCanvas, renderPageToSvg } from '../render'
+import { renderPageToCanvas, renderPageToSvg } from '../render'
 import { mmToPx } from '../units'
 import { documentLanguage } from './language'
 import { MARK_STROKE_PX, type PrintGeometry, cropMarkSegments, printGeometry } from './printGeometry'
@@ -12,6 +12,8 @@ import {
   registerExportFormat,
   sanitizeFilename,
 } from './registry'
+import { type RasterFormat, browserEncodes, hasAlpha, serverConverts } from './raster'
+import { parseSize } from './size'
 import { blobToDataUrl } from './svgEmbed'
 import { t } from '../../strings'
 
@@ -23,19 +25,32 @@ function throwIfAborted(signal: AbortSignal): void {
   if (signal.aborted) throw new DOMException('Export cancelled', 'AbortError')
 }
 
-async function rasterFiles(ctx: ExportContext, mime: 'image/png' | 'image/jpeg', extension: string): Promise<ExportFile[]> {
+/** The scale a page is drawn at: the typed size when it reads as one (per page: `1080w` differs by page width), else `scale`. */
+export function pageMultiplier(options: ExportContext['options'], size: { width: number; height: number }): number {
+  return (options.size ? parseSize(options.size, size.width, size.height) : null) ?? options.scale
+}
+
+async function rasterFiles(ctx: ExportContext, format: RasterFormat): Promise<ExportFile[]> {
+  const { encodeRaster } = await import('./encode')
   const files: ExportFile[] = []
   const total = ctx.pages.length
+  const notes = new Set<string>()
   for (let i = 0; i < total; i++) {
     throwIfAborted(ctx.signal)
     const { page, index } = ctx.pages[i]
     const size = pageSize(ctx.document, page)
     const canvas = await renderPageToCanvas(page, size, ctx.engine.loadContext, {
-      multiplier: ctx.options.scale,
-      transparent: mime === 'image/png' && ctx.options.transparent,
+      multiplier: pageMultiplier(ctx.options, size),
+      transparent: hasAlpha(format) && ctx.options.transparent,
     })
-    const blob = await canvasToBlob(canvas, mime, mime === 'image/jpeg' ? ctx.options.quality : undefined)
-    files.push({ blob, filename: exportFilename(ctx, pageFilename(ctx.title, extension, index + 1, total, ctx.document.pages.length), extension, size, index) })
+    const result = await encodeRaster(canvas, format, ctx.options, ctx.engine.adapter, ctx.signal)
+    if (result.note && !notes.has(result.note)) {
+      notes.add(result.note)
+      ctx.onNote?.(result.note)
+    }
+    // A PNG stands in when neither the browser nor the server could make the format: its name says so.
+    const extension = result.format
+    files.push({ blob: result.blob, filename: exportFilename(ctx, pageFilename(ctx.title, extension, index + 1, total, ctx.document.pages.length), extension, size, index) })
     ctx.onProgress((i + 1) / total)
   }
   return files
@@ -168,8 +183,8 @@ export function registerBuiltinExportFormats(): void {
     extension: 'png',
     mime: 'image/png',
     order: 0,
-    controls: { scale: true, transparent: true },
-    run: (ctx) => rasterFiles(ctx, 'image/png', 'png'),
+    controls: { scale: true, transparent: true, optimize: true },
+    run: (ctx) => rasterFiles(ctx, 'png'),
   })
   registerExportFormat({
     id: 'jpg',
@@ -178,8 +193,31 @@ export function registerBuiltinExportFormats(): void {
     extension: 'jpg',
     mime: 'image/jpeg',
     order: 10,
-    controls: { scale: true, quality: true },
-    run: (ctx) => rasterFiles(ctx, 'image/jpeg', 'jpg'),
+    controls: { scale: true, quality: true, optimize: true },
+    run: (ctx) => rasterFiles(ctx, 'jpg'),
+  })
+  registerExportFormat({
+    id: 'webp',
+    label: 'WebP',
+    description: t.exportFormats.webp,
+    extension: 'webp',
+    mime: 'image/webp',
+    order: 12,
+    controls: { scale: true, quality: true, transparent: true, optimize: true },
+    // Safari can't make WebP from a canvas: there it takes the server.
+    available: (engine) => browserEncodes('webp') || serverConverts(engine.adapter, 'webp'),
+    run: (ctx) => rasterFiles(ctx, 'webp'),
+  })
+  registerExportFormat({
+    id: 'avif',
+    label: 'AVIF',
+    description: t.exportFormats.avif,
+    extension: 'avif',
+    mime: 'image/avif',
+    order: 14,
+    controls: { scale: true, quality: true, transparent: true, optimize: true },
+    available: (engine) => serverConverts(engine.adapter, 'avif'),
+    run: (ctx) => rasterFiles(ctx, 'avif'),
   })
   registerExportFormat({
     id: 'pdf',

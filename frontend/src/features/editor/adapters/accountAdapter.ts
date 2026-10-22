@@ -1,6 +1,6 @@
 import { assetsApi, designsApi, exportsApi, isApiError } from '@/lib/api'
-import type { AppConfig } from '@/types/api'
-import type { EditorAdapter } from '@/types/adapter'
+import type { AppConfig, ImageOptimizeConfig } from '@/types/api'
+import type { EditorAdapter, ImageOptimizeInfo, OptimizeFormat } from '@/types/adapter'
 import { RevisionConflictError } from './errors'
 import { createRealtimeConnection, flushLiveRoom } from './realtime'
 import { assetToRef, createAccountServices, createAiService } from './services'
@@ -25,6 +25,18 @@ function conflictFrom(error: unknown): RevisionConflictError | null {
   if (!isApiError(error) || error.status !== 409 || error.code !== 'revision_conflict') return null
   const current = (error.data as { current?: { revision?: unknown } } | undefined)?.current?.revision
   return new RevisionConflictError(typeof current === 'number' ? current : null)
+}
+
+const OPTIMIZE_FORMATS: readonly OptimizeFormat[] = ['png', 'jpg', 'webp', 'avif']
+const optimizeFormats = (formats: readonly string[]): OptimizeFormat[] => OPTIMIZE_FORMATS.filter((format) => formats.includes(format))
+
+/** `/config/` `features.image_optimize` in the editor's terms; unknown formats are left out. */
+export function imageOptimizeInfo(config: ImageOptimizeConfig): ImageOptimizeInfo {
+  return {
+    formats: optimizeFormats(config.formats),
+    optimizers: config.optimizers.map((o) => ({ id: o.id, name: o.name, formats: optimizeFormats(o.formats), sendsOffsite: o.sends_offsite === true })),
+    default: config.default,
+  }
 }
 
 /** The adapter used at `/design/:id` for a signed-in owner. */
@@ -81,6 +93,11 @@ export function createAccountAdapter(designId: string, getRevision: () => number
   if (options.config?.features.server_pdf) {
     adapter.exportPdf = ({ svgPages, width, height, sizes, bleedMm, cropMarks, title, lang, fonts, signal, onUploadProgress }) =>
       exportsApi.pdf({ pages: svgPages.map((svg) => new Blob([svg], { type: 'image/svg+xml' })), width, height, sizes, bleedMm, cropMarks, title, lang, fonts, signal, onUploadProgress })
+  }
+  const optimize = options.config?.features.image_optimize
+  if (optimize) {
+    adapter.imageOptimize = imageOptimizeInfo(optimize)
+    adapter.optimizeImage = exportsApi.optimize
   }
   return adapter
 }

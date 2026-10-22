@@ -76,6 +76,26 @@ describe('building a catalogue', () => {
     expect(buildCatalogue(null)).toBeNull()
     expect(buildCatalogue({ error: { code: 'x' } })).toBeNull()
   })
+
+  it('reads the upload limits a platform states, and nothing it cannot use', () => {
+    const tree = {
+      version: 1,
+      groups: [
+        {
+          slug: 'social',
+          label: 'Social',
+          presets: [
+            { slug: 'post', label: 'Post', width: 1080, height: 1350, meta: { formats: ['JPG', 'png', 3], max_bytes: 30_000_000 } },
+            { slug: 'plain', label: 'Plain', width: 100, height: 100, meta: { formats: 'jpg', max_bytes: -1 } },
+          ],
+        },
+      ],
+    }
+    const catalogue = buildCatalogue(tree)
+    expect(catalogue?.byId.get('post')).toMatchObject({ formats: ['jpg', 'png'], maxBytes: 30_000_000 })
+    expect(catalogue?.byId.get('plain')?.formats).toBeUndefined()
+    expect(catalogue?.byId.get('plain')?.maxBytes).toBeUndefined()
+  })
 })
 
 describe('finding presets', () => {
