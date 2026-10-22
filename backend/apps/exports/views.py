@@ -31,7 +31,16 @@ from .serializers import (
     PdfExportSerializer,
     validate_page_files,
 )
-from .services import ZIP_MIME, ExportRequest, export_images, export_pdf, optimize_image, page_index
+from .services import (
+    PDF_MIME,
+    SVG_MIME,
+    ZIP_MIME,
+    ExportRequest,
+    export_images,
+    export_pdf,
+    optimize_image,
+    page_index,
+)
 from .throttling import ExportRateThrottle
 
 MULTIPART_OVERHEAD_BYTES = 2 * 1024 * 1024
@@ -109,8 +118,8 @@ def _charge_pages(user, extra: int) -> None:
 
 
 class ImageExportView(APIView):
-    """Render pages of a saved design as PNG, JPG, WebP or AVIF on the server, as the editor draws them;
-    several pages come back as one ZIP."""
+    """Render pages of a saved design as PNG, JPG, WebP, AVIF or SVG on the server, as the editor draws them
+    (several pages come back as one ZIP), or as one PDF of pictures (`pdf`) or vector pages (`pdf-print`)."""
 
     permission_classes = [IsAuthenticated]
     content_negotiation_class = AnyAcceptNegotiation
@@ -123,6 +132,8 @@ class ImageExportView(APIView):
             (200, "image/jpeg"): OpenApiTypes.BINARY,
             (200, "image/webp"): OpenApiTypes.BINARY,
             (200, "image/avif"): OpenApiTypes.BINARY,
+            (200, SVG_MIME): OpenApiTypes.BINARY,
+            (200, PDF_MIME): OpenApiTypes.BINARY,
             (200, ZIP_MIME): OpenApiTypes.BINARY,
         },
         tags=["exports"],
@@ -156,6 +167,9 @@ class ImageExportView(APIView):
             srgb=data["srgb"],
             progressive=data["progressive"],
             optimize=data["optimize"],
+            bleed_mm=data["bleed_mm"],
+            crop_marks=data["crop_marks"],
+            cmyk=data["cmyk"],
         )
         response = HttpResponse(result.data, content_type=result.mime)
         response["X-Doory-Placeholders"] = str(result.placeholders)
@@ -240,4 +254,9 @@ class ImageDownloadView(APIView):
         except FileNotFoundError as exc:
             raise Http404 from exc
         response = FileResponse(stream, content_type=mime)
-        return _file_headers(response, name, attachment=mime == ZIP_MIME)
+        if mime == SVG_MIME:
+            # An SVG may carry markup: never let it run as a page of this site.
+            response["Content-Security-Policy"] = (
+                "sandbox; default-src 'none'; img-src data:; font-src data:; style-src 'unsafe-inline'"
+            )
+        return _file_headers(response, name, attachment=mime in (ZIP_MIME, SVG_MIME))

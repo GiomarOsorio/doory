@@ -27,7 +27,7 @@ import { AudioCredits } from '../panels/AudioCredits'
 import { type ExportFailure, describeExportFailure, isCancellation } from './print/exportFailure'
 import { type PrintSettings, applyPreset, describeSizes, loadPrintSettings, savePrintSettings } from './print/printOptions'
 import { ApiPreview } from './download/ApiPreview'
-import { API_FORMATS, describeCall } from './download/apiCall'
+import { apiFormat, describeCall } from './download/apiCall'
 import { ComparePreview, type Zoom } from './download/ComparePreview'
 import { FormatPicker } from './download/FormatPicker'
 import { MoreSettings } from './download/MoreSettings'
@@ -114,6 +114,7 @@ export function DownloadDialog({ props }: { props?: Record<string, unknown> } = 
   const video = format?.controls.video === true
   const printing = format?.controls.print === true
   const raster = format?.controls.optimize ? (format.id as RasterFormat) : null
+  const apiCallable = !!format && apiFormat(format.id) !== null
   const files = chosen.length
   const zipped = files > 1 && format?.mime !== 'application/pdf' && !video
 
@@ -321,7 +322,7 @@ export function DownloadDialog({ props }: { props?: Record<string, unknown> } = 
             <p className={dl.summary} data-testid="download-summary">
               {summary()}
             </p>
-            {raster && API_FORMATS.includes(raster) ? (
+            {apiCallable ? (
               <Button variant="ghost" size="sm" icon={<Code size={16} />} pressed={apiOpen} aria-expanded={apiOpen} onClick={() => setApiOpen((o) => !o)}>
                 {t.dialog.downloadApi}
               </Button>
@@ -465,10 +466,10 @@ export function DownloadDialog({ props }: { props?: Record<string, unknown> } = 
           </MoreSettings>
         </div>
 
-        {apiOpen && raster ? (
+        {apiOpen && apiCallable && format ? (
           <ApiPreview
             text={describeCall(
-              { designId: editor.designId, formatId: raster, options: effective, pages: scope === 'all' ? 'all' : chosenPages.map((p) => p.index + 1), fileNames: nameStyle },
+              { designId: editor.designId, formatId: format.id, options: effective, pages: scope === 'all' ? 'all' : chosenPages.map((p) => p.index + 1), fileNames: nameStyle },
               window.location.origin,
             )}
           />

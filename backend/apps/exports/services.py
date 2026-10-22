@@ -3,13 +3,17 @@
 * PDF: sanitise every page SVG the browser sent, build one HTML document, print it.
 * Image: draw pages of a saved design on the server with the editor's own engine (the frontend's headless
   render page), one at a time, then convert each PNG to the requested format; several pages go into a ZIP.
+* SVG and PDF of a saved design: the render page makes all pages at once (SVG files, the print server's SVG
+  pages, or pictures of the pages); PDF pages then go through the PDF pipeline above, as the editor's do.
 """
 
 from __future__ import annotations
 
+import base64
 import io
 import json
 import logging
+import math
 import re
 import zipfile
 from collections.abc import Callable, Sequence
@@ -28,12 +32,28 @@ from apps.fonts.serializers import FontFamilySerializer, with_variants
 from apps.fonts.usage import font_names_in_document, uploaded_fonts_used_by
 
 from . import optimizers
-from .exceptions import ExportFailed, ExportUnavailable, ImageExportDisabled, InvalidExport, PayloadTooLarge
-from .filenames import export_filename, page_filename
+from .exceptions import (
+    ExportDisabled,
+    ExportFailed,
+    ExportUnavailable,
+    ImageExportDisabled,
+    InvalidExport,
+    PayloadTooLarge,
+)
+from .filenames import document_filename, export_filename, page_filename
 from .fonts import load_fonts
-from .layout import PageGeometry, build_document_html, prepare_page_svg
+from .layout import MAX_BLEED_MM, PX_PER_MM, PageGeometry, build_document_html, prepare_page_svg
+from .layout import fmt as svg_number
 from .pdfmeta import finalize_pdf
-from .renderer import RenderResult, allowed_origins, render_image, render_pdf, render_slot
+from .renderer import (
+    RenderedPage,
+    RenderResult,
+    allowed_origins,
+    render_image,
+    render_pages,
+    render_pdf,
+    render_slot,
+)
 
 logger = logging.getLogger("doory.exports")
 
@@ -79,19 +99,29 @@ def export_pdf(request: ExportRequest) -> RenderResult:
     ]
     with render_slot(request.owner):
         sanitized = sanitize_pages(request.pages)
-        fonts = load_fonts(request.fonts, allowed_origins())
-        document = build_document_html(
+        result = _print(
             [prepare_page_svg(svg, geometry) for svg, geometry in zip(sanitized, geometries, strict=True)],
             geometries,
-            request.title,
-            fonts,
-            request.lang,
+            title=request.title,
+            lang=request.lang,
+            fonts=request.fonts,
         )
-        result = render_pdf(document, width_px=geometries[0].page_width, height_px=geometries[0].page_height)
-    pdf = finalize_pdf(result.pdf, geometries, title=request.title, lang=request.lang)
+    return _finished(result, geometries, title=request.title, lang=request.lang)
+
+
+def _print(
+    svgs: list[str], geometries: list[PageGeometry], *, title: str, lang: str, fonts: Sequence[dict]
+) -> RenderResult:
+    """Print pages already sized to their artwork box (`prepare_page_svg`) with the `fonts` embedded."""
+    document = build_document_html(svgs, geometries, title, load_fonts(fonts, allowed_origins()), lang)
+    return render_pdf(document, width_px=geometries[0].page_width, height_px=geometries[0].page_height)
+
+
+def _finished(result: RenderResult, geometries: list[PageGeometry], *, title: str, lang: str) -> RenderResult:
+    pdf = finalize_pdf(result.pdf, geometries, title=title, lang=lang)
     logger.info(
         "PDF export: %d page(s), %d byte(s), %d blocked request(s)",
-        len(sanitized),
+        len(geometries),
         len(pdf),
         result.blocked_total,
     )
@@ -148,7 +178,8 @@ class ImageBundle:
     mime: str
     filename: str
     images: tuple[ImageResult, ...]  # one per page, in order
-    filenames: tuple[str, ...]  # the name of each page's file (inside the ZIP)
+    filenames: tuple[str, ...]  # the name of each page's file (inside the ZIP); a PDF's own name
+    options: dict[str, Any] = field(default_factory=dict)  # SVG and PDF: how the file was made
 
     @property
     def placeholders(self) -> int:
@@ -312,10 +343,10 @@ def _page_size(document: dict, page: dict) -> tuple[float, float]:
     return width, height
 
 
-def font_manifest(page: dict, owner) -> list[dict[str, Any]]:
-    """The font families `page` names, in the fonts API's shape: the owner's uploaded ones (which win, as in
-    the editor) and the catalogue's."""
-    single = {"pages": [page]}
+def font_manifest(page: dict | Sequence[dict], owner) -> list[dict[str, Any]]:
+    """The font families `page` (or several pages) names, in the fonts API's shape: the owner's uploaded ones
+    (which win, as in the editor) and the catalogue's."""
+    single = {"pages": [page] if isinstance(page, dict) else list(page)}
     uploaded = uploaded_fonts_used_by(single, owner)
     taken = {family.family.casefold() for family in uploaded}
     wanted = [name.casefold() for name in font_names_in_document(single) if name.casefold() not in taken]
@@ -498,6 +529,17 @@ def _strip_png(png: bytes, encoding: Encoding) -> bytes:
     return b"".join(kept) if at == len(png) else png
 
 
+def _drawing_warnings(placeholders: int, missing_fonts: Sequence[str]) -> list[str]:
+    warnings = []
+    if placeholders:
+        warnings.append(
+            f"{placeholders} object(s) could not be loaded (usually a picture) and are drawn as grey boxes."
+        )
+    if missing_fonts:
+        warnings.append("Drawn in a fallback font: " + ", ".join(missing_fonts) + ".")
+    return warnings
+
+
 def export_image(
     design,
     *,
@@ -580,14 +622,7 @@ def export_image(
     converted = _optimized(
         converted, optimizer, encoding, source=result.data, width=result.width, height=result.height
     )
-    warnings = []
-    if result.placeholders:
-        warnings.append(
-            f"{result.placeholders} object(s) could not be loaded (usually a picture) and are drawn as "
-            "grey boxes."
-        )
-    if result.missing_fonts:
-        warnings.append("Drawn in a fallback font: " + ", ".join(result.missing_fonts) + ".")
+    warnings = _drawing_warnings(result.placeholders, result.missing_fonts)
     warnings.extend(converted.warnings)
     data = converted.data
     logger.info(
@@ -732,7 +767,10 @@ def pick_pages(design, pages: str | Sequence[int | str | None] | None) -> list[i
     """The 0-based indexes of `pages` in the design as it is now: "all", or indexes and page ids as
     `export_image` takes them (None: the first page). Repeats are dropped; more than `EXPORT_IMAGE_MAX_PAGES`
     pages are refused."""
-    document = current_document(design)
+    return _page_indexes(current_document(design), pages)
+
+
+def _page_indexes(document: dict, pages: str | Sequence[int | str | None] | None) -> list[int]:
     if pages is None:
         pages = [None]
     if isinstance(pages, str) and pages.strip().lower() == "all":
@@ -758,18 +796,42 @@ def export_images(
     filename_style: str | None = None,
     unix: int | None = None,
     charge: Callable[[int], None] | None = None,
+    bleed_mm: float = 0,
+    crop_marks: bool = False,
+    cmyk: bool = False,
     **options: Any,
 ) -> ImageBundle:
     """Draw `pages` (see `pick_pages`) of `design` with `export_image` and its `options`, one render at a
     time, and pack them into a ZIP; a single page comes back as its own file. Before anything is drawn,
     `charge` is called with the number of pages after the first (to count them against a rate limit). The
     files are named by `filenames.page_filename` in `filename_style` (default `EXPORT_FILENAME_STYLE`), the
-    ZIP after the design's title."""
+    ZIP after the design's title.
+
+    The formats svg, pdf and pdf-print go to `export_document` with `bleed_mm` and `crop_marks` (which
+    images leave out); the image options are not used for them. `cmyk` is refused for every format."""
+    fmt = str(options.get("format", "png")).lower()
+    bleed, marks = _print_options(bleed_mm, crop_marks, cmyk)
+    if fmt in DOCUMENT_FORMATS:
+        return export_document(
+            design,
+            format=fmt,
+            pages=pages,
+            bleed_mm=bleed,
+            crop_marks=marks,
+            filename_style=filename_style,
+            unix=unix,
+            charge=charge,
+        )
     indexes = pick_pages(design, pages)
     if charge is not None and len(indexes) > 1:
         charge(len(indexes) - 1)
     style = filename_style or settings.EXPORT_FILENAME_STYLE
     images = tuple(export_image(design, page=index, **options) for index in indexes)
+    return _bundle(design, images, style=style, unix=unix)
+
+
+def _bundle(design, images: tuple[ImageResult, ...], *, style: str, unix: int | None) -> ImageBundle:
+    """One page as its own file, several in a ZIP named after the design."""
     names = tuple(page_filename(design.title, image, style=style, unix=unix) for image in images)
     if len(images) == 1:
         return ImageBundle(images[0].data, images[0].format, images[0].mime, names[0], images, names)
@@ -778,7 +840,214 @@ def export_images(
     with zipfile.ZipFile(out, "w") as archive:
         for name, image in zip(names, images, strict=True):
             entry = zipfile.ZipInfo(name, date_time=made)
-            entry.compress_type = zipfile.ZIP_STORED  # PNG, JPG, WebP and AVIF are compressed already
+            # PNG, JPG, WebP and AVIF are compressed already; SVG is text.
+            entry.compress_type = zipfile.ZIP_DEFLATED if image.format == "svg" else zipfile.ZIP_STORED
             entry.external_attr = 0o644 << 16
             archive.writestr(entry, image.data)
     return ImageBundle(out.getvalue(), "zip", ZIP_MIME, export_filename(design.title, "zip"), images, names)
+
+
+# ---- SVG and PDF of a saved design ---------------------------------------------------------------
+
+SVG_MIME = "image/svg+xml"
+PDF_MIME = "application/pdf"
+# pdf: a picture of each page (the editor's PDF download); pdf-print: vector pages through the print server
+# (the editor's print-quality PDF); svg: an SVG file per page (the editor's SVG download).
+DOCUMENT_FORMATS = {"pdf": PDF_MIME, "pdf-print": PDF_MIME, "svg": SVG_MIME}
+_PAGE_OUTPUT = {"svg": "svg", "pdf": "picture", "pdf-print": "print"}
+PDF_DPI = 300  # the pictures of a `pdf`, as in the editor
+PX_PER_INCH = 96
+PDF_LANG = "en"
+
+
+def _print_options(bleed_mm, crop_marks, cmyk) -> tuple[float, bool]:
+    """The checked bleed and crop marks of a PDF; CMYK is refused (the print pipeline makes RGB files)."""
+    if cmyk:
+        raise InvalidExport(
+            "cmyk_unavailable",
+            "This server exports colours as RGB, as they look on screen; it has no CMYK conversion. Ask your "
+            "printer whether they accept RGB files.",
+        )
+    try:
+        bleed = float(bleed_mm or 0)
+    except (TypeError, ValueError):
+        bleed = -1.0
+    if isinstance(bleed_mm, bool) or not (math.isfinite(bleed) and 0 <= bleed <= MAX_BLEED_MM):
+        raise InvalidExport("invalid_bleed", f"bleed_mm must be between 0 and {MAX_BLEED_MM}.")
+    return bleed, bool(crop_marks)
+
+
+def _font_specs(files: Sequence[dict]) -> list[dict]:
+    """The font files the render page listed for the print pages, as the print export takes them
+    (`load_fonts` checks that each is a font in this server's media storage)."""
+    specs = []
+    for item in files:
+        family, url, weight = item.get("family"), item.get("url"), item.get("weight")
+        if not isinstance(family, str) or not isinstance(url, str) or not family.strip():
+            continue
+        specs.append(
+            {
+                "family": family[:100],
+                "url": url,
+                "weight": weight if _whole(weight, 1, 1000) else 400,
+                "style": "italic" if item.get("style") == "italic" else "normal",
+            }
+        )
+    return specs
+
+
+def _picture_svg(page: RenderedPage, geometry: PageGeometry) -> str:
+    """The artwork box of a page filled with its picture (a JPEG of the page and its bleed)."""
+    try:
+        with Image.open(io.BytesIO(page.data)) as image:
+            if image.format != "JPEG":
+                raise ExportFailed
+    except (UnidentifiedImageError, Image.DecompressionBombError, OSError) as exc:
+        logger.error("PDF export: the render page sent an unreadable picture (%s)", exc)
+        raise ExportFailed from exc
+    width, height = svg_number(geometry.art_width), svg_number(geometry.art_height)
+    data = base64.b64encode(page.data).decode("ascii")
+    return (
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" '
+        f'viewBox="0 0 {width} {height}"><image width="{width}" height="{height}" preserveAspectRatio="none" '
+        f'href="data:image/jpeg;base64,{data}"/></svg>'
+    )
+
+
+def export_document(
+    design,
+    *,
+    format: str,
+    pages: str | Sequence[int | str | None] | None = None,
+    bleed_mm: float = 0,
+    crop_marks: bool = False,
+    cmyk: bool = False,
+    filename_style: str | None = None,
+    unix: int | None = None,
+    charge: Callable[[int], None] | None = None,
+) -> ImageBundle:
+    """`pages` (see `pick_pages`) of `design` as the editor's Download makes them: `svg` (one file per page,
+    with its pictures and fonts inside; several in a ZIP), `pdf` (one PDF, a 300 dpi picture of each page) or
+    `pdf-print` (one vector PDF through the print pipeline). PDFs take `bleed_mm` (0-10) and `crop_marks`;
+    `cmyk` is refused. The render page makes every page in one browser, within `EXPORT_TIMEOUT_SECONDS` per
+    page; a PDF is then printed within another. Both hold one render slot of the owner. `charge` is called
+    with the number of pages after the first before anything is drawn. Raises `InvalidExport`,
+    `PayloadTooLarge` and the `Export*` exceptions."""
+    fmt_id = str(format).lower()
+    if fmt_id not in DOCUMENT_FORMATS:
+        raise InvalidExport("invalid_format", "The format must be " + ", ".join(DOCUMENT_FORMATS) + ".")
+    bleed, marks = _print_options(bleed_mm, crop_marks, cmyk)
+    if not settings.SERVER_IMAGE_EXPORT_ENABLED:
+        raise ImageExportDisabled
+    if fmt_id != "svg" and not settings.SERVER_PDF_ENABLED:
+        raise ExportDisabled
+    if not settings.EXPORT_RENDER_PAGE_URL:
+        raise ExportUnavailable
+    document = current_document(design)
+    if len(json.dumps(document, separators=(",", ":"))) > settings.EXPORT_IMAGE_MAX_DOCUMENT_BYTES:
+        raise PayloadTooLarge("The design is too large to export on the server.")
+    indexes = _page_indexes(document, pages)
+    chosen = [document["pages"][index] for index in indexes]
+    sizes = [_page_size(document, page) for page in chosen]
+    if charge is not None and len(indexes) > 1:
+        charge(len(indexes) - 1)
+    output = _PAGE_OUTPUT[fmt_id]
+    payload: dict[str, Any] = {
+        "document": document,
+        "pages": indexes,
+        "output": output,
+        "fonts": font_manifest(chosen, design.owner),
+    }
+    if output != "svg":
+        payload["bleed"] = bleed * PX_PER_MM
+    if output == "picture":
+        payload |= {"multiplier": PDF_DPI / PX_PER_INCH, "maxPixels": settings.EXPORT_IMAGE_MAX_PIXELS}
+    geometries = [PageGeometry.create(width, height, bleed, marks) for width, height in sizes]
+    with render_slot(design.owner_id):
+        drawn = render_pages(
+            payload,
+            render_url=settings.EXPORT_RENDER_PAGE_URL,
+            timeout=settings.EXPORT_TIMEOUT_SECONDS * len(indexes),
+        )
+        if [page.page_index for page in drawn.pages] != indexes:
+            logger.error("Page export: the render page sent other pages than asked for")
+            raise ExportFailed
+        printed = None
+        if output == "print":
+            svgs = sanitize_pages([page.data for page in drawn.pages])
+            printed = _print(
+                [prepare_page_svg(svg, geometry) for svg, geometry in zip(svgs, geometries, strict=True)],
+                geometries,
+                title=design.title,
+                lang=PDF_LANG,
+                fonts=_font_specs(drawn.font_files),
+            )
+        elif output == "picture":
+            printed = _print(
+                [
+                    _picture_svg(page, geometry)
+                    for page, geometry in zip(drawn.pages, geometries, strict=True)
+                ],
+                geometries,
+                title=design.title,
+                lang=PDF_LANG,
+                fonts=(),
+            )
+    preset = _preset_id(document) or design.preset
+    images = []
+    for page, geometry in zip(drawn.pages, geometries, strict=True):
+        warnings = _drawing_warnings(page.placeholders, page.missing_fonts)
+        options: dict[str, Any] = {"format": fmt_id}
+        if output == "picture":
+            options["dpi"] = round(page.pixel_width / geometry.art_width * PX_PER_INCH)
+            if options["dpi"] < PDF_DPI - 1:
+                warnings.append(
+                    f"Drawn at {options['dpi']} dpi: at {PDF_DPI} dpi the page would have more than "
+                    f"{settings.EXPORT_IMAGE_MAX_PIXELS} pixels."
+                )
+        data = page.data if output == "svg" else b""
+        images.append(
+            ImageResult(
+                data=data,
+                format="svg" if output == "svg" else "pdf",
+                mime=DOCUMENT_FORMATS[fmt_id],
+                width=round(page.width),
+                height=round(page.height),
+                page_id=page.page_id,
+                page_index=page.page_index,
+                placeholders=page.placeholders,
+                missing_fonts=page.missing_fonts,
+                warnings=tuple(warnings),
+                blocked_total=drawn.blocked_total,
+                page_width=page.width,
+                page_height=page.height,
+                page_count=len(document["pages"]),
+                preset=preset,
+                bytes_before=len(data),
+                options_used=options,
+            )
+        )
+    style = filename_style or settings.EXPORT_FILENAME_STYLE
+    logger.info(
+        "%s export: design=%s %d page(s), %d placeholder(s), %d blocked request(s)",
+        fmt_id.upper(),
+        design.pk,
+        len(images),
+        sum(image.placeholders for image in images),
+        drawn.blocked_total,
+    )
+    if printed is None:
+        return _bundle(design, tuple(images), style=style, unix=unix)
+    result = _finished(printed, geometries, title=design.title, lang=PDF_LANG)
+    name = document_filename(
+        design.title,
+        "pdf",
+        images[0],
+        style=style,
+        unix=unix,
+        suffix="print" if fmt_id == "pdf-print" else None,
+    )
+    options = {"format": fmt_id, "bleed_mm": bleed, "crop_marks": marks, "cmyk": False}
+    if output == "picture":
+        options["dpi"] = min(image.options_used["dpi"] for image in images)
+    return ImageBundle(result.data, "pdf", PDF_MIME, name, tuple(images), (name,), options)

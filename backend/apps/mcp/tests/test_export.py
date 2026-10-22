@@ -363,3 +363,76 @@ def test_expired_files_are_purged_by_name(settings):
     finally:
         for name in (fresh, stray):
             storage.delete(name)
+
+
+# ---- SVG and PDF -----------------------------------------------------------------------------------
+
+
+@pytest.fixture
+def documents(monkeypatch) -> list[dict]:
+    calls: list[dict] = []
+
+    def fake_export_document(design, **options):
+        calls.append(options)
+        fmt = "svg" if options["format"] == "svg" else "pdf"
+        mime = services.DOCUMENT_FORMATS[options["format"]]
+        images = tuple(
+            ImageResult(
+                b"<svg/>" if fmt == "svg" else b"",
+                fmt,
+                mime,
+                400,
+                200,
+                page["id"],
+                index,
+                options_used={
+                    "format": options["format"],
+                    **({"dpi": 300} if options["format"] == "pdf" else {}),
+                },
+            )
+            for index, page in enumerate(design.document["pages"])
+        )
+        name = f"{design.title}.{fmt}"
+        if fmt == "svg":
+            return services.ImageBundle(b"<svg/>", "svg", mime, name, images[:1], (name,))
+        options_used = {
+            "format": options["format"],
+            "bleed_mm": options["bleed_mm"],
+            "crop_marks": False,
+            "cmyk": False,
+        }
+        return services.ImageBundle(b"%PDF-1.7 fake", "pdf", mime, name, images, (name,), options_used)
+
+    monkeypatch.setattr(services, "export_document", fake_export_document)
+    return calls
+
+
+def test_a_pdf_is_a_link_with_its_pages(as_caller, design, documents, renders):
+    content = export.export_design(str(design.pk), pages="all", format="pdf", bleed_mm=3)
+    assert [type(block) for block in content] == [TextContent]
+    info = info_of(content)
+    assert (info["format"], info["filename"], info["bytes"]) == ("pdf", "Poster.pdf", len(b"%PDF-1.7 fake"))
+    assert [(p["page"], p["width"], p["dpi"]) for p in info["pages"]] == [(1, 400, 300), (2, 400, 300)]
+    assert info["options"]["bleed_mm"] == 3 and "always sent as a link" in info["note"]
+    assert documents[0]["bleed_mm"] == 3 and renders == []
+    response = APIClient().get(info["url"].removeprefix("http://localhost:5173"))
+    assert response["Content-Type"] == "application/pdf"
+    assert response["Content-Disposition"].startswith("inline;")
+    assert b"".join(response.streaming_content) == b"%PDF-1.7 fake"
+
+
+def test_an_svg_is_a_sandboxed_download(as_caller, design, documents):
+    info = info_of(export.export_design(str(design.pk), format="svg"))
+    assert (info["format"], info["page"], info["filename"]) == ("svg", 1, "Poster.svg")
+    response = APIClient().get(info["url"].removeprefix("http://localhost:5173"))
+    assert response["Content-Type"] == "image/svg+xml"
+    assert response["Content-Disposition"].startswith("attachment;")
+    assert response["Content-Security-Policy"].startswith("sandbox;")
+
+
+def test_the_print_pdf_takes_crop_marks_and_refuses_cmyk(as_caller, design, documents):
+    export.export_design(str(design.pk), format="pdf-print", crop_marks=True)
+    assert documents[0]["format"] == "pdf-print" and documents[0]["crop_marks"] is True
+    with pytest.raises(ToolError, match="no CMYK conversion"):
+        export.export_design(str(design.pk), format="pdf-print", cmyk=True)
+    assert len(documents) == 1

@@ -3,12 +3,14 @@
 Usage: `python -m apps.exports.chromium_worker <spec.json>`. The spec names the mode, the input, the output
 and report files and the policy. No Django here: only the standard library and Playwright's sync API.
 
-Two modes share one locked-down browser:
+Three modes share one locked-down browser:
  * `pdf` (the default) prints static HTML. JavaScript is disabled for page content (the evaluate calls below
    are DevTools calls).
  * `image` opens the frontend's headless render page (`render.html`) and draws one design page with the
    editor's own engine, so JavaScript is on, for that page's own bundle. The design goes in through
    `page.evaluate` and the PNG comes back the same way: the page needs no API, cookies or tokens.
+ * `pages` opens the same page and makes several pages at once for the SVG and PDF exports (SVG files, the
+   print server's SVG pages or JPEG pictures, `window.__dooryRenderPages`), one file per page.
 
 For both:
  * every request goes through `context.route`: `data:` URLs pass, same-origin `/media/` and `/static/`
@@ -46,7 +48,17 @@ RENDER_IMAGE = """
   )),
 ])
 """
+RENDER_PAGES = """
+([input, timeoutMs]) => Promise.race([
+  window.__dooryRenderPages(input),
+  new Promise((resolve) => setTimeout(
+    () => resolve({ ok: false, error: { code: "timeout", message: "render deadline exceeded" } }), timeoutMs,
+  )),
+])
+"""
 RENDER_READY = "() => window.__dooryRenderReady === true && typeof window.__dooryRender === 'function'"
+HAS_RENDER_PAGES = "() => typeof window.__dooryRenderPages === 'function'"
+PAGE_SUFFIXES = {"svg": "svg", "print": "svg", "picture": "jpg"}
 MAX_RECORDED_REQUESTS = 50
 LAUNCH_ARGS = (
     "--disable-dev-shm-usage",
@@ -75,6 +87,8 @@ def run(spec: dict[str, Any]) -> dict[str, Any]:
     """Render as `spec["mode"]` says and return the report."""
     if spec.get("mode", "pdf") == "image":
         return _with_page(spec, js=True, work=_render_image)
+    if spec.get("mode") == "pages":
+        return _with_page(spec, js=True, work=_render_pages)
     return _with_page(spec, js=False, work=_print_pdf)
 
 
@@ -104,13 +118,7 @@ def _render_image(
     page.wait_for_function(RENDER_READY, timeout=remaining_ms())
     answer = page.evaluate(RENDER_IMAGE, [payload, remaining_ms()])
     remaining_ms()
-    if not isinstance(answer, dict) or not answer.get("ok"):
-        error = answer.get("error") if isinstance(answer, dict) else None
-        error = error if isinstance(error, dict) else {}
-        code, message = str(error.get("code") or "render_failed"), str(error.get("message") or "")[:500]
-        if code == "timeout":
-            raise RenderTimeout
-        report.update(status="error", kind="render", error={"code": code[:64], "message": message})
+    if not _answered(answer, report):
         return
     try:
         png = base64.b64decode(answer["png"], validate=True)
@@ -126,6 +134,73 @@ def _render_image(
         placeholders=int(answer.get("placeholders") or 0),
         missing_fonts=[str(name)[:120] for name in answer.get("missingFonts") or []][:64],
     )
+
+
+def _answered(answer, report: dict[str, Any]) -> bool:
+    """Whether the render page answered `ok`; else its error goes into the report (a timeout is raised)."""
+    if isinstance(answer, dict) and answer.get("ok"):
+        return True
+    error = answer.get("error") if isinstance(answer, dict) else None
+    error = error if isinstance(error, dict) else {}
+    code, message = str(error.get("code") or "render_failed"), str(error.get("message") or "")[:500]
+    if code == "timeout":
+        raise RenderTimeout
+    report.update(status="error", kind="render", error={"code": code[:64], "message": message})
+    return False
+
+
+def _render_pages(
+    page, spec: dict[str, Any], remaining_ms: Callable[[], int], report: dict[str, Any]
+) -> None:
+    """Open `spec["render_url"]`, make the pages of the payload in `spec["payload_path"]` and write one file
+    per page into `spec["pages_dir"]` (`page-1.svg`, ...), in the order the page answered them."""
+    payload = json.loads(Path(spec["payload_path"]).read_text(encoding="utf-8"))
+    page.goto(spec["render_url"], wait_until="load", timeout=remaining_ms())
+    page.wait_for_function(RENDER_READY, timeout=remaining_ms())
+    if not page.evaluate(HAS_RENDER_PAGES):
+        report.update(status="error", kind="unavailable", message="the render page cannot make pages yet")
+        return
+    answer = page.evaluate(RENDER_PAGES, [payload, remaining_ms()])
+    remaining_ms()
+    if not _answered(answer, report):
+        return
+    suffix = PAGE_SUFFIXES.get(payload.get("output"), "svg")
+    pages, out = answer.get("pages"), Path(spec["pages_dir"])
+    if not isinstance(pages, list) or not pages or not all(isinstance(item, dict) for item in pages):
+        report.update(status="error", kind="failed", message="the render page sent no pages")
+        return
+    report["pages"] = []
+    for number, item in enumerate(pages, start=1):
+        try:
+            data = (
+                base64.b64decode(item["data"], validate=True)
+                if suffix == "jpg"
+                else str(item["data"]).encode("utf-8")
+            )
+        except (KeyError, TypeError, binascii.Error):
+            report.update(status="error", kind="failed", message=f"the render page sent no page {number}")
+            return
+        name = f"page-{number}.{suffix}"
+        (out / name).write_bytes(data)
+        report["pages"].append(
+            {
+                "file": name,
+                "width": float(item.get("width") or 0),
+                "height": float(item.get("height") or 0),
+                "pixel_width": int(item.get("pixelWidth") or 0),
+                "pixel_height": int(item.get("pixelHeight") or 0),
+                "page_id": str(item.get("pageId") or ""),
+                "page_index": int(item.get("pageIndex") or 0),
+                "placeholders": int(item.get("placeholders") or 0),
+                "missing_fonts": [str(family)[:120] for family in item.get("missingFonts") or []][:64],
+            }
+        )
+    files = answer.get("fontFiles") if isinstance(answer.get("fontFiles"), list) else []
+    report["font_files"] = [
+        {key: item.get(key) for key in ("family", "url", "weight", "style")}
+        for item in files[:64]
+        if isinstance(item, dict)
+    ]
 
 
 def _with_page(spec: dict[str, Any], *, js: bool, work: Work) -> dict[str, Any]:

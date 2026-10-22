@@ -5,13 +5,13 @@ from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from .filenames import FILE_NAMES, STYLES
-from .services import QUALITY_PRESETS
+from .layout import MAX_BLEED_MM
+from .services import DOCUMENT_FORMATS, QUALITY_PRESETS
 
 MAX_PAGES = 100
 MAX_PAGE_BYTES = 5 * 1024 * 1024
 MAX_TOTAL_BYTES = 40 * 1024 * 1024
 MAX_DIMENSION_PX = 20_000
-MAX_BLEED_MM = 10
 MAX_FONT_SPECS = 32
 MAX_TITLE_LENGTH = 200
 MAX_SIZES_BYTES = 16 * 1024
@@ -243,7 +243,9 @@ class OptimizeField(serializers.Field):
 class ImageExportSerializer(serializers.Serializer):
     page = PageRefField(required=False, default=None, allow_null=True)
     pages = PagesField(required=False, default=None, allow_null=True)
-    format = serializers.ChoiceField(choices=["png", "jpg", "jpeg", "webp", "avif", "auto"], default="png")
+    format = serializers.ChoiceField(
+        choices=["png", "jpg", "jpeg", "webp", "avif", "auto", *DOCUMENT_FORMATS], default="png"
+    )
     quality = QualityField(default=90)
     max_bytes = serializers.IntegerField(min_value=1, required=False, default=None, allow_null=True)
     scale = FiniteFloatField(min_value=0.1, max_value=4, default=1)
@@ -257,6 +259,9 @@ class ImageExportSerializer(serializers.Serializer):
     filename_style = serializers.ChoiceField(choices=list(STYLES), required=False)
     filename_timestamp = serializers.BooleanField(required=False)
     optimize = OptimizeField(default=False)
+    bleed_mm = FiniteFloatField(min_value=0, max_value=MAX_BLEED_MM, default=0)
+    crop_marks = serializers.BooleanField(default=False)
+    cmyk = serializers.BooleanField(default=False)
 
 
 class ImageOptimizeSerializer(serializers.Serializer):

@@ -256,3 +256,69 @@ def test_the_schema_documents_the_new_formats(client, db):
     schema = client.get("/api/v1/schema/", {"format": "json"}).json()
     operation = schema["paths"]["/api/v1/designs/{id}/export/image/"]["post"]
     assert set(operation["responses"]["200"]["content"]) >= {"image/avif", "application/zip"}
+
+
+# ---- SVG and PDF ---------------------------------------------------------------------------------
+
+
+@pytest.fixture
+def documents(monkeypatch) -> list[dict]:
+    """`export_document` stubbed out: records its options and answers with a one-file bundle."""
+    calls: list[dict] = []
+
+    def fake_export_document(design, **options):
+        calls.append(options)
+        fmt = "svg" if options["format"] == "svg" else "pdf"
+        mime = services.DOCUMENT_FORMATS[options["format"]]
+        name = f"{design.title}.{fmt}"
+        image = ImageResult(b"", fmt, mime, 10, 10, "p", 0, placeholders=2)
+        return services.ImageBundle(b"%PDF-or-svg", fmt, mime, name, (image,), (name,))
+
+    monkeypatch.setattr(services, "export_document", fake_export_document)
+    return calls
+
+
+def test_pdf_and_svg_with_the_print_options(client, design, documents, renders):
+    response = client.post(
+        url(design), {"format": "pdf-print", "pages": "all", "bleed_mm": 3, "crop_marks": True}, format="json"
+    )
+    assert response.status_code == 200 and response.content == b"%PDF-or-svg"
+    assert response["Content-Type"] == "application/pdf"
+    assert response["Content-Disposition"] == 'attachment; filename="Summer sale.pdf"'
+    assert response["X-Doory-Placeholders"] == "2"
+    assert documents[0] | {"charge": None} == {
+        "format": "pdf-print",
+        "pages": "all",
+        "bleed_mm": 3.0,
+        "crop_marks": True,
+        "filename_style": "simple",
+        "unix": None,
+        "charge": None,
+    }
+    response = client.post(url(design), {"format": "svg", "page": 1}, format="json")
+    assert response["Content-Type"] == "image/svg+xml" and documents[1]["pages"] == [0]
+    assert documents[1]["bleed_mm"] == 0 and documents[1]["crop_marks"] is False
+    assert renders == []
+
+
+@pytest.mark.parametrize(
+    "body", [{"bleed_mm": 11}, {"bleed_mm": -1}, {"crop_marks": "maybe"}, {"format": "eps"}]
+)
+def test_bad_print_options_are_refused(client, design, documents, body):
+    response = client.post(url(design), {"format": "pdf", **body}, format="json")
+    assert response.status_code == 400 and documents == []
+
+
+def test_cmyk_is_refused_with_a_reason(client, design, documents, renders):
+    for fmt in ("pdf-print", "png"):
+        response = client.post(url(design), {"format": fmt, "cmyk": True}, format="json")
+        assert response.status_code == 400 and "no CMYK conversion" in response.content.decode()
+    assert documents == [] and renders == []
+
+
+def test_the_schema_documents_pdf_and_svg(client, db):
+    schema = client.get("/api/v1/schema/", {"format": "json"}).json()
+    operation = schema["paths"]["/api/v1/designs/{id}/export/image/"]["post"]
+    assert set(operation["responses"]["200"]["content"]) >= {"application/pdf", "image/svg+xml"}
+    body = schema["components"]["schemas"]["ImageExportRequest"]["properties"]
+    assert {"bleed_mm", "crop_marks", "cmyk"} <= set(body)

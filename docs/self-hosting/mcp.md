@@ -6,7 +6,7 @@ clients can then list, create and edit designs on a user's behalf, using a token
 ## Requirements
 
 - An MCP client that supports the HTTP transport.
-- For `export_design` (an image of a page), [server-side image export](image-export.md).
+- For `export_design` (an image, SVG or PDF of pages), [server-side export](image-export.md).
 - Optional: Redis (`REDIS_URL`), so edits appear in open editors immediately instead of within a few seconds.
 
 ## Turn it on
@@ -36,8 +36,8 @@ workers.
 ## Settings
 
 See [MCP server in configuration.md](configuration.md#mcp-server): call rate per user, request size, copying
-images from URLs, and how `export_design` returns large images. AVIF images and ZIPs always come back as a
-download link, and each page after the first counts as one more call. The number of tokens per user is
+images from URLs, and how `export_design` returns large images. AVIF images, SVG files, PDFs and ZIPs always come
+back as a download link, and each page after the first counts as one more call. The number of tokens per user is
 `MAX_API_TOKENS_PER_USER`.
 
 ## Connect a client
@@ -66,8 +66,9 @@ Assistants can work with designs and their contents:
 - **Search:** templates, elements, fonts and stock photos.
 
 They can also handle comments, brand kits, share links and earlier versions, and export pages as PNG, JPG,
-WebP or AVIF images, or several pages as a ZIP, optionally [optimized](../integrations/image-optimization.md)
-(`export_design`, with the options in [image-export.md](image-export.md#image-options)). Designs are also available as MCP resources (`doory://designs/{id}`), and the server offers
+WebP or AVIF images, or several pages as a ZIP, optionally [optimized](../integrations/image-optimization.md),
+or as SVG files, a PDF or a print PDF with bleed and crop marks (`export_design`, with the options in
+[image-export.md](image-export.md#image-options)). Designs are also available as MCP resources (`doory://designs/{id}`), and the server offers
 two prompts.
 
 Some actions are protected:

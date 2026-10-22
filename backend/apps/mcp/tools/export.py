@@ -1,4 +1,5 @@
-"""See a design: render pages on the server with the editor's own engine and return them as images."""
+"""See a design: render pages on the server with the editor's own engine and return them as images, or hand
+them on as SVG files or a PDF."""
 
 from __future__ import annotations
 
@@ -14,13 +15,13 @@ from apps.apitokens.scopes import DESIGNS_READ
 from apps.designs.doc.ops import PageRef
 from apps.exports.delivery import store_image
 from apps.exports.filenames import FILE_NAMES, unix_now
-from apps.exports.services import ImageResult, export_images, page_index
+from apps.exports.services import ImageBundle, ImageResult, export_images, page_index
 from apps.exports.throttling import ExportRateThrottle
 
 from ..registry import charge_call, throttle, tool
 from .designs import DesignId, _design, editor_url
 
-ALWAYS_LINKED = ("avif", "zip")  # clients can't show these inline
+ALWAYS_LINKED = ("avif", "svg", "pdf", "zip")  # clients can't show these inline
 
 
 def _charge_pages(extra: int) -> None:
@@ -52,7 +53,27 @@ def _page_info(image: ImageResult, filename: str) -> dict[str, Any]:
     }
 
 
-@tool(scope=DESIGNS_READ, title="Export a design as an image", read_only=True)
+def _pdf_info(bundle: ImageBundle) -> dict[str, Any]:
+    pages = [
+        {
+            "page": image.page_index + 1,
+            "page_id": image.page_id,
+            "width": image.width,
+            "height": image.height,
+            **({"dpi": image.options_used["dpi"]} if "dpi" in image.options_used else {}),
+        }
+        for image in bundle.images
+    ]
+    return {
+        "format": "pdf",
+        "bytes": len(bundle.data),
+        "filename": bundle.filename,
+        "pages": pages,
+        "options": bundle.options,
+    }
+
+
+@tool(scope=DESIGNS_READ, title="Export a design", read_only=True)
 def export_design(
     design_id: DesignId,
     page: PageRef = None,
@@ -66,9 +87,15 @@ def export_design(
         ),
     ] = None,
     format: Annotated[
-        Literal["png", "jpg", "webp", "avif", "auto"],
+        Literal["png", "jpg", "webp", "avif", "auto", "svg", "pdf", "pdf-print"],
         Field(
-            description="auto: the smallest file of all formats (no JPG when transparent). AVIF is a link."
+            description=(
+                "auto: the smallest image of all formats (no JPG when transparent). svg: one vector file per "
+                "page, with its pictures and fonts inside. pdf: one PDF of all pages, each a 300 dpi picture "
+                "(as the editor's PDF download). pdf-print: one vector PDF for printing (the editor's "
+                "print-quality PDF). AVIF, SVG and PDF are links; the image options (quality to optimize) "
+                "do not apply to SVG and PDF."
+            )
         ),
     ] = "png",
     quality: Annotated[
@@ -111,6 +138,15 @@ def export_design(
             )
         ),
     ] = False,
+    bleed_mm: Annotated[
+        float,
+        Field(ge=0, le=10, description="PDF: the bleed around every page, in mm (3 is usual for print)."),
+    ] = 0,
+    crop_marks: Annotated[bool, Field(description="PDF: crop marks in a margin around the bleed.")] = False,
+    cmyk: Annotated[
+        bool,
+        Field(description="CMYK colours. Not offered: PDFs are RGB, as on screen; true is refused."),
+    ] = False,
     file_names: Annotated[
         Literal["simple", "detailed"] | None,
         Field(description="simple: the title and page; detailed: with platform, preset and size."),
@@ -120,15 +156,15 @@ def export_design(
         Field(
             description=(
                 "inline: the image itself, to look at. url: a download link that expires after a few "
-                "minutes, for large images or to hand on. Images too large to send inline, AVIF images and "
-                "ZIPs become a link."
+                "minutes, for large images or to hand on. Images too large to send inline, AVIF images, SVG, "
+                "PDF and ZIPs become a link."
             )
         ),
     ] = "inline",
 ) -> list[ImageContent | TextContent]:
     """Render pages of a design as images, exactly as the editor draws them, to check how they look (after
-    edit_design, for example) or to hand them on. It shows the live state when the design is open in the
-    editor."""
+    edit_design, for example) or to hand them on; or export them as SVG files or a PDF, as the editor's
+    Download makes them. It shows the live state when the design is open in the editor."""
     throttle(ExportRateThrottle())
     design = _design(design_id)
     bundle = export_images(
@@ -148,9 +184,14 @@ def export_design(
         srgb=srgb,
         progressive=progressive,
         optimize=optimize,
+        bleed_mm=bleed_mm,
+        crop_marks=crop_marks,
+        cmyk=cmyk,
     )
     info: dict[str, Any] = {"design_id": str(design.pk)}
-    if bundle.format == "zip":
+    if bundle.format == "pdf":
+        info |= _pdf_info(bundle)
+    elif bundle.format == "zip":
         info |= {
             "format": "zip",
             "bytes": len(bundle.data),
@@ -166,7 +207,7 @@ def export_design(
     if bundle.warnings:
         info["warnings"] = list(bundle.warnings)
     if delivery == "inline" and bundle.format in ALWAYS_LINKED:
-        info["note"] = "AVIF images and ZIPs of several pages are always sent as a link."
+        info["note"] = "AVIF images, SVG files, PDFs and ZIPs of several pages are always sent as a link."
         delivery = "url"
     if delivery == "inline" and len(bundle.data) > settings.MCP_EXPORT_INLINE_MAX_BYTES:
         info["note"] = (

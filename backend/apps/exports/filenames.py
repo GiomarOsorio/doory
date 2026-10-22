@@ -113,3 +113,30 @@ def page_filename(title: str | None, result, *, style: str, unix: int | None = N
         pages=result.page_count,
         unix=unix,
     )
+
+
+def document_filename(
+    title: str | None,
+    extension: str,
+    first,
+    *,
+    style: str,
+    unix: int | None = None,
+    suffix: str | None = None,
+) -> str:
+    """The download name of a file of all pages (a PDF), as the editor names it: `<title>[-<suffix>].pdf`, or
+    structured with the size of the first page (`first`, an `export_image`-like result) and no page number."""
+    if style != "structured":
+        name = export_filename(title, extension)
+        return f"{name[: -len(extension) - 1]}-{suffix}.{extension}" if suffix else name
+    platform, preset = preset_parts(first.preset, first.page_width, first.page_height)
+    return structured_filename(
+        title,
+        extension,
+        platform=platform,
+        preset=preset,
+        width=first.page_width,
+        height=first.page_height,
+        unix=unix,
+        suffix=suffix,
+    )

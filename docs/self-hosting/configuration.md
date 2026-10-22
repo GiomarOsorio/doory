@@ -103,13 +103,13 @@ See [image-export.md](image-export.md).
 | Setting | Default | What it does |
 |---------|---------|--------------|
 | `SERVER_PDF_ENABLED` | `true` | Make print PDFs on the server. Needs Chromium; set to `false` if you don't have it |
-| `SERVER_IMAGE_EXPORT_ENABLED` | `false` | Make PNG, JPG, WebP and AVIF images of pages on the server (used by the REST API and the MCP tool `export_design`) |
+| `SERVER_IMAGE_EXPORT_ENABLED` | `false` | Make PNG, JPG, WebP and AVIF images, SVG files and PDFs of saved designs on the server (used by the REST API and the MCP tool `export_design`; the PDFs also need `SERVER_PDF_ENABLED`) |
 | `EXPORT_RENDER_PAGE_URL` | `SITE_URL/render.html` | The built frontend's `render.html`, at an address the API and MCP services can reach. Docker: `http://doory-web:8080/render.html` |
 | `EXPORT_IMAGE_MAX_PIXELS` | `40000000` | Largest image, as width × height after scaling |
 | `EXPORT_IMAGE_MAX_DOCUMENT_BYTES` | `5242880` | Largest design document the export will draw |
-| `EXPORT_IMAGE_MAX_PAGES` | `10` | Most pages one image export draws (they come back as a ZIP). Each page is a render of its own in the same request |
+| `EXPORT_IMAGE_MAX_PAGES` | `10` | Most pages one image, SVG or PDF export draws (several images or SVGs come back as a ZIP). Each image page is a render of its own in the same request |
 | `EXPORT_MAX_CONCURRENCY` | `2` | Exports running at the same time in each API process |
-| `EXPORT_TIMEOUT_SECONDS` | `30` | Time limit for one export |
+| `EXPORT_TIMEOUT_SECONDS` | `30` | Time limit for one export. SVG and PDF exports of a saved design get it once per page to draw them, and a PDF once more to print |
 | `EXPORT_CHROMIUM_PATH` | | Path to a Chromium binary. Empty: the one Playwright installed |
 | `EXPORT_CHROMIUM_NO_SANDBOX` | `false` | Run Chromium without its sandbox. The Docker image sets this |
 | `EXPORT_WORK_DIR` | system temp folder | Where each export gets its own temporary folder |

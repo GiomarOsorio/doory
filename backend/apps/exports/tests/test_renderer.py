@@ -383,3 +383,104 @@ def test_a_misconfigured_render_page_is_unavailable_without_starting_a_worker(us
     with pytest.raises(ExportUnavailable):
         renderer.render_image({}, render_url=url)
     assert not marker.exists()
+
+
+# ---- pages mode (SVG and PDF of a saved design) ----------------------------------------------------
+
+
+def render_some_pages(payload=None, **options):
+    return renderer.render_pages(
+        payload or {"document": {"pages": []}, "pages": [0, 1], "output": "print"},
+        render_url=RENDER_URL,
+        **options,
+    )
+
+
+def test_pages_come_back_from_their_files_with_what_the_page_reported(use_worker, settings, tmp_path):
+    use_worker(
+        f"""
+        Path({str(tmp_path / "seen.json")!r}).write_text(json.dumps(spec))
+        out = Path(spec["pages_dir"])
+        (out / "page-1.svg").write_bytes(b"<svg>1</svg>")
+        (out / "page-2.svg").write_bytes(b"<svg>2</svg>")
+        Path(spec["report_path"]).write_text(json.dumps({{
+            "status": "ok", "blocked_total": 1, "blocked": [{{"url": "http://x.test/a.png", "reason": "origin"}}],
+            "pages": [
+                {{"file": "page-1.svg", "width": 200.5, "height": 100, "page_id": "a", "page_index": 0}},
+                {{"file": "page-2.svg", "width": 50, "height": 60, "page_id": "b", "page_index": 1,
+                  "placeholders": 2, "missing_fonts": ["Gone Sans"]}},
+            ],
+            "font_files": [{{"family": "F", "url": "/media/f.ttf", "weight": 400, "style": "normal"}}, "junk"],
+        }}))
+        """
+    )
+    result = render_some_pages(timeout=75)
+    seen = json.loads((tmp_path / "seen.json").read_text())
+    assert seen["mode"] == "pages" and seen["timeout_s"] == 75 and seen["render_url"] == RENDER_URL
+    assert result.mime == "image/svg+xml"
+    assert [(page.data, page.width, page.page_id) for page in result.pages] == [
+        (b"<svg>1</svg>", 200.5, "a"),
+        (b"<svg>2</svg>", 50, "b"),
+    ]
+    assert result.pages[1].placeholders == 2 and result.pages[1].missing_fonts == ("Gone Sans",)
+    assert result.font_files == ({"family": "F", "url": "/media/f.ttf", "weight": 400, "style": "normal"},)
+    assert result.blocked_total == 1
+
+
+def test_pictures_are_jpegs_and_the_default_deadline_is_the_setting(use_worker, settings, tmp_path):
+    settings.EXPORT_TIMEOUT_SECONDS = 12
+    use_worker(
+        f"""
+        Path({str(tmp_path / "seen.json")!r}).write_text(json.dumps(spec))
+        (Path(spec["pages_dir"]) / "page-1.jpg").write_bytes(b"jpeg")
+        Path(spec["report_path"]).write_text(json.dumps({{"status": "ok", "pages": [
+            {{"file": "page-1.jpg", "pixel_width": 900, "pixel_height": 300}}]}}))
+        """
+    )
+    result = render_some_pages({"document": {}, "pages": [0], "output": "picture"})
+    assert result.mime == "image/jpeg" and result.pages[0].pixel_width == 900
+    assert json.loads((tmp_path / "seen.json").read_text())["timeout_s"] == 12
+
+
+@pytest.mark.parametrize(
+    "pages", ['[{"file": "../report.json"}]', '[{"file": "page-9.svg"}]', "[]", '"no list"', '[{"width": 1}]']
+)
+def test_a_report_that_names_no_page_file_of_its_own_is_a_failure(use_worker, pages):
+    use_worker(
+        f"""
+        (Path(spec["pages_dir"]) / "page-1.svg").write_bytes(b"<svg/>")
+        Path(spec["report_path"]).write_text(json.dumps({{"status": "ok", "pages": {pages}}}))
+        """
+    )
+    with pytest.raises(ExportFailed):
+        render_some_pages()
+
+
+def test_a_picture_that_cannot_go_into_an_svg_is_an_invalid_export(use_worker):
+    use_worker(
+        """
+        Path(spec["report_path"]).write_text(json.dumps({"status": "error", "kind": "render",
+            "error": {"code": "image_unavailable", "message": "An image could not be embedded."}}))
+        """
+    )
+    with pytest.raises(InvalidExport) as error:
+        render_some_pages()
+    assert error.value.get_codes() == "image_unavailable"
+
+
+def test_a_render_page_without_pages_is_unavailable(use_worker):
+    use_worker(
+        """
+        Path(spec["report_path"]).write_text(json.dumps({"status": "error", "kind": "unavailable",
+            "message": "the render page cannot make pages yet"}))
+        """
+    )
+    with pytest.raises(ExportUnavailable):
+        render_some_pages()
+
+
+def test_a_misconfigured_render_page_makes_no_pages(use_worker, tmp_path):
+    use_worker(f'Path({str(tmp_path / "ran")!r}).write_text("x")')
+    with pytest.raises(ExportUnavailable):
+        renderer.render_pages({}, render_url="file:///srv/render.html")
+    assert not (tmp_path / "ran").exists()

@@ -632,6 +632,21 @@ describe('Download dialog: pictures', () => {
     expect(api).toHaveTextContent('/api/v1/designs/design-9/export/image/')
   })
 
+  it('shows the API call for the PDFs with their print options, and for SVG', async () => {
+    ;({ engine } = setup({ doc: story(), id: 'design-9' }))
+    await pick(/Print-quality PDF/)
+    await pick(new RegExp(t.print.presets.standard))
+    await userEvent.click(within(dialog()).getByRole('button', { name: t.dialog.downloadApi }))
+    const api = screen.getByTestId('download-api')
+    expect(api).toHaveTextContent('"format": "pdf-print"')
+    expect(api).toHaveTextContent('"bleed_mm": 3')
+    expect(api).toHaveTextContent('"crop_marks": true')
+    expect(api).not.toHaveTextContent('quality')
+    await pick(/^SVG/)
+    expect(screen.getByTestId('download-api')).toHaveTextContent('"format": "svg"')
+    expect(screen.getByTestId('download-api')).not.toHaveTextContent('bleed_mm')
+  })
+
   it('sums up the files in the footer and names the button by their number', async () => {
     ;({ engine } = setup())
     await pick(/^PNG/)
