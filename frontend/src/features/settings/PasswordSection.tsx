@@ -44,7 +44,7 @@ export function PasswordSection() {
   }
 
   return (
-    <SettingsCard id="password" title={hasPassword ? 'Change password' : 'Set a password'} description={hasPassword ? 'Use a long, unique password.' : 'You signed in with Google. Add a password to also log in with your email.'}>
+    <SettingsCard id="password" title={hasPassword ? 'Change password' : 'Set a password'} description={hasPassword ? 'Use a long, unique password.' : user.google_linked ? 'You signed in with Google. Add a password to also log in with your email.' : 'Add a password to also log in with your email.'}>
       <form className={styles.form} onSubmit={submit} noValidate>
         {formError ? (
           <p className={styles.error} role="alert">

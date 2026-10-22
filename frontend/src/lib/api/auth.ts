@@ -1,5 +1,5 @@
 import type { ApiUser, GoogleLoginResult, RegisterInput } from '@/types/api'
-import { http } from './client'
+import { API_BASE, buildQuery, http } from './client'
 
 export const authApi = {
   csrf: () => http.get<void>('/auth/csrf/'),
@@ -9,6 +9,11 @@ export const authApi = {
   login: (input: { email: string; password: string }) => http.post<{ user: ApiUser }>('/auth/login/', { json: input, silentUnauthorized: true }),
   logout: () => http.post<void>('/auth/logout/', { silentUnauthorized: true }),
   google: (credential: string) => http.post<GoogleLoginResult>('/auth/google/', { json: { credential }, silentUnauthorized: true }),
+  /** Where the browser goes to sign in with the server's OpenID Connect provider; it comes back to `next`. */
+  oidcStartUrl: (next: string) => `${API_BASE}/auth/oidc/start/${buildQuery({ next })}`,
+  /** Confirms it is the account's owner and returns the provider URL that connects their account there. */
+  oidcConnect: (input: { password?: string; confirm_email?: string }) => http.post<{ redirect_url: string }>('/auth/oidc/connection/', { json: input }),
+  oidcDisconnect: () => http.delete<{ user: ApiUser }>('/auth/oidc/connection/'),
   updateProfile: (input: { display_name: string }) => http.patch<{ user: ApiUser }>('/auth/me/', { json: input }),
   uploadAvatar: (file: Blob, filename = 'avatar') => {
     const form = new FormData()

@@ -34,11 +34,14 @@ export interface BackgroundRemovalModel {
 
 export interface AppConfig {
   google_client_id: string
+  /** Text of the single sign-on button; absent on servers that predate it. */
+  oidc_button_label?: string
   /** `background_removal` (and `ai_providers`, …) are absent on servers that predate them. */
   features: {
     stock_photos: boolean
     server_pdf: boolean
     google_login: boolean
+    oidc_login?: boolean
     email_verification: boolean
     background_removal?: boolean
     realtime?: boolean
@@ -102,6 +105,7 @@ export interface ApiUser {
   is_email_verified: boolean
   has_password: boolean
   google_linked: boolean
+  oidc_linked: boolean
   created_at: string
 }
 
