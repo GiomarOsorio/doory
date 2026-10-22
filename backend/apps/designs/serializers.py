@@ -228,3 +228,33 @@ class FieldSerializer(serializers.Serializer):
     current = serializers.JSONField(allow_null=True)
     fit = serializers.JSONField(allow_null=True)
     overflow = serializers.BooleanField()
+
+
+class FillSerializer(serializers.Serializer):
+    values = serializers.DictField(child=serializers.JSONField(allow_null=True), allow_empty=False)
+    as_copy = serializers.BooleanField(default=True)
+    name = TitleField(required=False)
+
+
+class BulkFillSerializer(serializers.Serializer):
+    rows = serializers.ListField(
+        child=serializers.DictField(child=serializers.JSONField(allow_null=True)), min_length=1
+    )
+    row_numbers = serializers.ListField(
+        child=serializers.IntegerField(min_value=1), required=False, allow_null=True
+    )
+    name_pattern = serializers.CharField(max_length=200, required=False, allow_blank=True)
+    folder = OwnedFolderField(queryset=Folder.objects.none(), required=False, allow_null=True)
+    export = serializers.ChoiceField(choices=["png", "jpg"], required=False, allow_null=True)
+
+    def validate(self, attrs):
+        rows = attrs.get("rows", [])
+        row_numbers = attrs.get("row_numbers")
+        if row_numbers is not None and len(row_numbers) != len(rows):
+            raise serializers.ValidationError({"row_numbers": "Must have one entry per row when provided."})
+        return attrs
+
+    def validate_rows(self, rows):
+        if len(rows) > settings.BULK_FILL_MAX_ROWS:
+            raise serializers.ValidationError(f"At most {settings.BULK_FILL_MAX_ROWS} rows at a time.")
+        return rows

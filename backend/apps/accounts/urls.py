@@ -18,4 +18,7 @@ urlpatterns = [
     path("auth/email/verify/", views.EmailVerifyView.as_view(), name="auth-email-verify"),
     path("auth/email/resend/", views.EmailResendView.as_view(), name="auth-email-resend"),
     path("auth/google/", views.GoogleLoginView.as_view(), name="auth-google"),
+    path("auth/oidc/start/", views.OidcStartView.as_view(), name="auth-oidc-start"),
+    path("auth/oidc/callback/", views.OidcCallbackView.as_view(), name="auth-oidc-callback"),
+    path("auth/oidc/connection/", views.OidcConnectionView.as_view(), name="auth-oidc-connection"),
 ]

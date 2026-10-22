@@ -1,6 +1,7 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
+import { CONTRAST_KEY, setContrastPreference } from '@/lib/contrast'
 import { renderApp } from '@/test/app'
 import { makeConfig, makeDesign, makeUser, page } from '@/test/factories'
 
@@ -138,6 +139,24 @@ describe('settings: password', () => {
   })
 })
 
+describe('settings: accessibility', () => {
+  afterEach(() => setContrastPreference('system'))
+
+  it('matches the device by default and switches high contrast on and off in this browser', async () => {
+    renderApp('/settings', { user: makeUser() })
+    const card = within(await screen.findByRole('region', { name: 'Accessibility' }))
+    expect(card.getByRole('radio', { name: 'Match my device' })).toBeChecked()
+    expect(card.getByRole('radio', { name: 'Match my device' })).toHaveAccessibleDescription('Uses high contrast when your device asks for more contrast.')
+    expect(document.documentElement.hasAttribute('data-contrast')).toBe(false)
+    await userEvent.click(card.getByRole('radio', { name: 'High contrast' }))
+    expect(document.documentElement.dataset.contrast).toBe('more')
+    expect(localStorage.getItem(CONTRAST_KEY)).toBe('more')
+    await userEvent.click(card.getByRole('radio', { name: 'Match my device' }))
+    expect(document.documentElement.hasAttribute('data-contrast')).toBe(false)
+    expect(localStorage.getItem(CONTRAST_KEY)).toBeNull()
+  })
+})
+
 describe('settings: sign out and account deletion', () => {
   it('requires the typed phrase and password before deleting the account', async () => {
     const bodies: unknown[] = []
@@ -218,7 +237,7 @@ describe('dashboard home and navigation', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Create a design' }))
     const menu = await screen.findByRole('menu', { name: 'Create a design' })
     expect(within(menu).getByRole('menuitem', { name: 'Presentation (16:9)' })).toBeInTheDocument()
-    await userEvent.click(within(menu).getByRole('menuitem', { name: 'More sizes…' }))
+    await userEvent.click(within(menu).getByRole('menuitem', { name: 'All sizes…' }))
     expect(await screen.findByRole('dialog', { name: 'Create a design' })).toBeInTheDocument()
   })
 

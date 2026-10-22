@@ -19,6 +19,7 @@ import {
   Italic,
   Keyboard,
   Lock,
+  Maximize,
   Redo2,
   Replace,
   Save,
@@ -32,10 +33,12 @@ import {
   ArrowUpToLine,
   ArrowDownToLine,
 } from 'lucide-react'
+import { toggleContrast } from '@/lib/contrast'
 import { t } from '../strings'
 import { openAccountDialog } from '../chrome/accountGate'
 import { registerCommand } from '../commands'
 import type { EditorEngine } from '../engine/editor'
+import { playbackOf } from '../animation/playback'
 import { isBold, textValue } from './textState'
 
 const hasSelection = (e: EditorEngine): boolean => e.state.selection.ids.length > 0
@@ -72,6 +75,7 @@ export function registerBuiltinCommands(): void {
   registerCommand({ id: 'file.shortcuts', label: t.cmd.fileShortcuts, shortcut: '?', group: t.cmdGroup.file, icon: <Keyboard size={18} />, run: (e) => e.openDialog('shortcuts') })
   registerCommand({ id: 'file.share', label: t.cmd.fileShare, group: t.cmdGroup.file, icon: <Share2 size={18} />, enabled: ({ state }) => !state.readOnly, run: (e) => openAccountDialog(e, 'share', 'share', (x) => !!x.adapter.services.sharing, t.share.unavailable) })
   registerCommand({ id: 'file.history', label: t.cmd.fileHistory, group: t.cmdGroup.file, icon: <History size={18} />, enabled: ({ state }) => !state.readOnly, run: (e) => openAccountDialog(e, 'version-history', 'versions', (x) => !!x.adapter.services.versions, t.versions.unavailable) })
+  registerCommand({ id: 'file.bulkCreate', label: t.cmd.fileBulkCreate, group: t.cmdGroup.file, enabled: ({ state }) => !state.readOnly, run: (e) => openAccountDialog(e, 'save', 'bulk-create', (x) => !!x.adapter.services.bulkFill, t.bulk.unavailable) })
   registerCommand({ id: 'file.resize', label: t.cmd.fileResize, group: t.cmdGroup.file, run: (e) => e.openDialog('resize') })
   registerCommand({ id: 'file.reset', label: t.cmd.fileReset, group: t.cmdGroup.file, run: (e) => e.resetDesign(), enabled: ({ editor }) => editor.canResetDesign })
   registerCommand({ id: 'file.rename', label: t.cmd.fileRename, group: t.cmdGroup.file, run: (e) => e.openDialog('rename') })
@@ -88,6 +92,7 @@ export function registerBuiltinCommands(): void {
   registerCommand({ id: 'edit.group', label: t.cmd.editGroup, shortcut: 'Mod+G', group: t.cmdGroup.edit, icon: <Group size={18} />, run: (e) => e.arrange.group(), enabled: ({ state }) => state.selection.ids.length > 1 })
   registerCommand({ id: 'edit.ungroup', label: t.cmd.editUngroup, shortcut: 'Mod+Shift+G', group: t.cmdGroup.edit, icon: <Ungroup size={18} />, run: (e) => e.arrange.ungroup(), enabled: ({ state }) => state.selection.ids.length === 1 && state.selection.kinds.includes('group') })
   registerCommand({ id: 'edit.lock', label: t.cmd.editLock, shortcut: 'Mod+L|Alt+Shift+L', group: t.cmdGroup.edit, icon: <Lock size={18} />, run: (e) => e.arrange.toggleLock(), enabled: ({ state }) => state.selection.ids.length > 0 })
+  registerCommand({ id: 'arrange.fitToPage', label: t.toolbar.fitToPage, group: t.cmdGroup.edit, icon: <Maximize size={18} />, run: (e) => e.arrange.fitToPage(), enabled: ({ state }) => state.selection.ids.length === 1 && !state.selection.locked && !state.selection.kinds.includes('text') })
   registerCommand({ id: 'edit.flipH', label: t.cmd.editFlipH, group: t.cmdGroup.edit, icon: <FlipHorizontal2 size={18} />, run: (e) => e.arrange.flip('horizontal'), enabled: ({ state }) => state.selection.ids.length > 0 })
   registerCommand({ id: 'edit.flipV', label: t.cmd.editFlipV, group: t.cmdGroup.edit, icon: <FlipVertical2 size={18} />, run: (e) => e.arrange.flip('vertical'), enabled: ({ state }) => state.selection.ids.length > 0 })
 
@@ -121,6 +126,8 @@ export function registerBuiltinCommands(): void {
   registerCommand({ id: 'view.grid', label: t.cmd.viewGrid, shortcut: "Mod+'", group: t.cmdGroup.view, run: (e) => e.patchUi({ grid: !e.state.ui.grid }) })
   registerCommand({ id: 'view.guides', label: t.cmd.viewGuides, group: t.cmdGroup.view, run: (e) => e.patchUi({ guides: !e.state.ui.guides }) })
   registerCommand({ id: 'view.snapping', label: t.cmd.viewSnapping, group: t.cmdGroup.view, run: (e) => e.patchUi({ snapping: !e.state.ui.snapping }) })
+  // The viewer's own chrome, not the design: a view. command, so it also works on view-only and comment links.
+  registerCommand({ id: 'view.highContrast', label: t.cmd.viewHighContrast, group: t.cmdGroup.view, run: () => toggleContrast() })
 
   registerCommand({ id: 'page.add', label: t.cmd.pageAdd, group: t.cmdGroup.pages, run: (e) => void e.pages.add() })
   registerCommand({ id: 'page.duplicate', label: t.cmd.pageDuplicate, group: t.cmdGroup.pages, run: (e) => e.pages.duplicate(e.state.activePageId) })
@@ -129,7 +136,40 @@ export function registerBuiltinCommands(): void {
   registerCommand({ id: 'page.next', label: t.cmd.pageNext, shortcut: 'PageDown', group: t.cmdGroup.pages, run: (e) => stepPage(e, 1) })
 
   registerCommand({ id: 'image.replace', label: t.cmd.imageReplace, group: t.cmdGroup.image, icon: <Replace size={18} />, run: (e) => void e.insert.pickAndReplaceImage(), enabled: ({ state }) => !state.readOnly && state.selection.ids.length === 1 && (state.selection.kinds.includes('image') || state.selection.kinds.includes('placeholder')) && !state.selection.editing })
-  registerCommand({ id: 'image.crop', label: t.cmd.imageCrop, shortcut: 'Enter', group: t.cmdGroup.image, run: (e) => (e.state.ui.cropping ? e.crop.apply() : e.crop.start()), enabled: ({ state }) => state.ui.cropping !== null || (state.selection.ids.length === 1 && state.selection.kinds.includes('image') && !state.selection.editing) })
+  const oneClip = ({ state }: { state: EditorEngine['state'] }): boolean => state.selection.ids.length === 1 && state.selection.kinds[0] === 'video'
+  registerCommand({
+    id: 'video.split',
+    label: t.clips.menu.split,
+    shortcut: 'S',
+    group: t.cmdGroup.image,
+    run: (e) => {
+      if (!e.videos.split(undefined, playbackOf(e).state.timeMs)) e.toast(t.clips.toolbar.splitHint, 'info')
+    },
+    enabled: oneClip,
+  })
+  registerCommand({ id: 'video.replace', label: t.clips.menu.replace, group: t.cmdGroup.image, run: (e) => void e.videos.startReplace(), enabled: oneClip })
+  registerCommand({
+    id: 'video.blurredBackground',
+    label: t.clips.menu.blurredBackground,
+    group: t.cmdGroup.image,
+    run: (e) => void e.videos.blurredBackground(),
+    enabled: ({ editor, state }) => oneClip({ state }) && !editor.videos.get()?.backdropOf,
+  })
+  registerCommand({
+    id: 'video.detachAudio',
+    label: t.clips.menu.detachAudio,
+    group: t.cmdGroup.image,
+    run: (e) => void e.videos.detachAudio(),
+    enabled: ({ editor, state }) => state.selection.ids.length === 1 && state.selection.kinds[0] === 'video' && !!editor.videos.get()?.audioSrc && editor.videos.get()?.muted !== true,
+  })
+  registerCommand({
+    id: 'video.background',
+    label: t.clips.menu.setAsBackground,
+    group: t.cmdGroup.image,
+    run: (e) => void e.videos.setAsBackground(),
+    enabled: ({ state }) => state.selection.ids.length === 1 && state.selection.kinds[0] === 'video' && !state.selection.locked,
+  })
+  registerCommand({ id: 'image.crop', label: t.cmd.imageCrop, shortcut: 'Enter', group: t.cmdGroup.image, run: (e) => (e.state.ui.cropping ? e.crop.apply() : e.crop.start()), enabled: ({ state }) => state.ui.cropping !== null || (state.selection.ids.length === 1 && (state.selection.kinds.includes('image') || state.selection.kinds.includes('video')) && !state.selection.editing) })
 }
 
 function stepPage(e: EditorEngine, delta: number): void {

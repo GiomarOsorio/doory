@@ -16,7 +16,7 @@ ADMIN_PASSWORD ?=
 export ADMIN_EMAIL ADMIN_PASSWORD
 
 .DEFAULT_GOAL := help
-.PHONY: help setup dev-api dev-web test test-api test-web lint fmt seed content migrate docker-up docker-down
+.PHONY: help setup dev-api dev-web test test-api test-web lint docs-check fmt seed content migrate docker-up docker-down
 
 help: ## List the available targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-12s %s\n", $$1, $$2}'
@@ -46,9 +46,12 @@ test-api: ## Backend tests (pytest)
 test-web: ## Frontend tests (vitest)
 	cd frontend && npm test
 
-lint: ## Ruff, TypeScript and ESLint checks (no changes)
+lint: docs-check ## Ruff, TypeScript, ESLint and docs checks (no changes)
 	cd backend && $(abspath $(PY)) -m ruff check . && $(abspath $(PY)) -m ruff format --check .
 	cd frontend && npm run lint && npm run typecheck
+
+docs-check: ## Check that every setting is documented in docs/self-hosting/configuration.md
+	sh docs/check-settings.sh
 
 fmt: ## Auto-fix and format the backend code
 	cd backend && $(abspath $(PY)) -m ruff check --fix . && $(abspath $(PY)) -m ruff format .

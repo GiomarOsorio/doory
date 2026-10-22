@@ -11,6 +11,7 @@ import { getSizePresets, loadSizePresets, subscribeSizePresets, type SafeZone } 
 import { migrateDocument } from './migrations'
 import { AnimationApi } from './api/animation'
 import { AudioApi } from './api/audio'
+import { VideosApi } from './api/videos'
 import { ArrangeApi } from './api/arrange'
 import { ClipboardApi } from './api/clipboard'
 import { CropApi } from './api/crop'
@@ -117,6 +118,7 @@ export class EditorEngine implements PageCanvasHost {
   readonly pages: PagesApi
   readonly animation: AnimationApi
   readonly audio: AudioApi
+  readonly videos: VideosApi
   readonly clipboard: ClipboardApi
   readonly crop: CropApi
   readonly view: ViewApi
@@ -163,6 +165,7 @@ export class EditorEngine implements PageCanvasHost {
     this.pages = new PagesApi(this)
     this.animation = new AnimationApi(this)
     this.audio = new AudioApi(this)
+    this.videos = new VideosApi(this)
     this.clipboard = new ClipboardApi(this)
     this.crop = new CropApi(this)
     this.view = new ViewApi(this)
@@ -808,7 +811,7 @@ export class EditorEngine implements PageCanvasHost {
       for (const v of this.allViews()) v.setTheme(this.themeValue)
     }
     const mo = new MutationObserver(update)
-    mo.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme', 'class'] })
+    mo.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme', 'class', 'data-contrast'] })
     const mq = typeof matchMedia === 'function' ? matchMedia('(prefers-color-scheme: dark)') : null
     mq?.addEventListener('change', update)
     return () => {

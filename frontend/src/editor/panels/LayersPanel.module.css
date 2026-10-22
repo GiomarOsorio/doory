@@ -1,7 +1,18 @@
 .tree {
   display: flex;
+  flex: 1;
   flex-direction: column;
   gap: 2px;
+  min-height: 0;
+  margin: 0 -14px;
+  padding: 0 14px 18px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--ed-border) transparent;
+}
+.tree > * {
+  flex: none;
 }
 
 .empty {
@@ -95,6 +106,11 @@
 }
 .chev:hover {
   background: var(--color-border);
+}
+/* High contrast: the border colour is a mid-tone there, too dark to put icons on. */
+:global(:root[data-contrast='more']) .chev:hover,
+:global(:root[data-contrast='more']) .toggle:hover {
+  background: var(--color-brand-soft-hover);
 }
 
 .icon,

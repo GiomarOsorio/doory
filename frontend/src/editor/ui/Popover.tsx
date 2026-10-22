@@ -1,7 +1,9 @@
 import {
   type ReactNode,
   type RefObject,
+  createContext,
   useCallback,
+  useContext,
   useEffect,
   useId,
   useLayoutEffect,
@@ -11,6 +13,20 @@ import {
 import { createPortal } from 'react-dom'
 import { usePortalRoot } from '../context'
 import styles from './Popover.module.css'
+
+/** Id of the popover a nested popover was opened from (portals put them side by side in the DOM). */
+const ParentPopover = createContext<string | null>(null)
+
+/** True when `target` sits in a popover opened from popover `id`, at any depth. */
+function inChildOf(target: Node, id: string): boolean {
+  let el = (target instanceof Element ? target : target.parentElement)?.closest<HTMLElement>('[data-popover]')
+  while (el) {
+    const parent = el.dataset.popoverParent
+    if (parent === id) return true
+    el = parent ? document.querySelector<HTMLElement>(`[data-popover="${CSS.escape(parent)}"]`) : null
+  }
+  return false
+}
 
 export type Placement = 'bottom-start' | 'bottom-end' | 'bottom' | 'top-start' | 'top' | 'right-start' | 'left-start'
 
@@ -83,6 +99,7 @@ export function Popover({ open, onClose, anchorRef, placement = 'bottom-start', 
   const root = usePortalRoot()
   const panelRef = useRef<HTMLDivElement>(null)
   const id = useId()
+  const parentId = useContext(ParentPopover)
 
   /** Positions the panel next to its anchor. Done on the DOM node so measuring never triggers a render. */
   const reposition = useCallback(() => {
@@ -113,6 +130,7 @@ export function Popover({ open, onClose, anchorRef, placement = 'bottom-start', 
       const target = e.target as Node
       if (panelRef.current?.contains(target) || anchorRef.current?.contains(target)) return
       if (keepOpenRefs?.some((r) => r.current?.contains(target))) return
+      if (inChildOf(target, id)) return
       if (cover) {
         // The dismissing click belongs to the popover alone: nothing behind it may react.
         e.preventDefault()
@@ -153,7 +171,7 @@ export function Popover({ open, onClose, anchorRef, placement = 'bottom-start', 
       window.removeEventListener('resize', onScroll)
       window.removeEventListener('scroll', onScroll, true)
     }
-  }, [open, onClose, anchorRef, reposition, keepOpenRefs, cover])
+  }, [open, onClose, anchorRef, reposition, keepOpenRefs, cover, id])
 
   if (!open || !root) return null
   return createPortal(
@@ -162,13 +180,15 @@ export function Popover({ open, onClose, anchorRef, placement = 'bottom-start', 
       <div
         ref={panelRef}
         id={id}
+        data-popover={id}
+        data-popover-parent={parentId ?? undefined}
         role="dialog"
         aria-label={label}
         className={`${styles.panel} ${variant === 'plain' ? styles.plain : ''} ${className ?? ''}`}
         style={{ width }}
         tabIndex={-1}
       >
-        {children}
+        <ParentPopover.Provider value={id}>{children}</ParentPopover.Provider>
       </div>
     </>,
     root,

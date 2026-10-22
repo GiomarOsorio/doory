@@ -453,9 +453,8 @@ def _to_px(value: str | None) -> float | None:
     return float(m.group(1)) * _UNIT_PX[(m.group(2) or "").lower() or None]
 
 
-def svg_info(sanitized: bytes) -> SvgInfo:
-    """Intrinsic size of an (already sanitised) SVG from width/height or viewBox; falls back to 300x150."""
-    root = SafeET.fromstring(sanitized, forbid_dtd=True, forbid_entities=True, forbid_external=True)
+def _svg_info_from_root(root) -> SvgInfo:
+    """Intrinsic size from an already-parsed root element; falls back to 300x150."""
     w, h = _to_px(root.get("width")), _to_px(root.get("height"))
     vb = (root.get("viewBox") or "").replace(",", " ").split()
     if len(vb) == 4:
@@ -471,6 +470,37 @@ def svg_info(sanitized: bytes) -> SvgInfo:
         except ValueError:
             pass
     return SvgInfo(width=round(w or 300, 2), height=round(h or 150, 2))
+
+
+def svg_info(sanitized: bytes) -> SvgInfo:
+    """Intrinsic size of an (already sanitised) SVG from width/height or viewBox; falls back to 300x150."""
+    root = SafeET.fromstring(sanitized, forbid_dtd=True, forbid_entities=True, forbid_external=True)
+    return _svg_info_from_root(root)
+
+
+def _viewbox_size(value: str | None) -> tuple[float, float] | None:
+    parts = (value or "").replace(",", " ").split()
+    if len(parts) != 4:
+        return None
+    try:
+        width, height = float(parts[2]), float(parts[3])
+    except ValueError:
+        return None
+    return (width, height) if width > 0 and height > 0 else None
+
+
+def with_intrinsic_size(sanitized: bytes, width: int, height: int) -> bytes:
+    """`sanitized` with its root `width`/`height` set to `width` x `height` px. A browser draws an SVG at its
+    own root size, and one without an absolute size at a default 300x150 (cut to that window when it has no
+    `viewBox`), so this makes the drawn size the one Doory stores. A root without a `viewBox` gets one for
+    its original size, so the drawing scales to the new size instead of being cut."""
+    root = SafeET.fromstring(sanitized, forbid_dtd=True, forbid_entities=True, forbid_external=True)
+    if _viewbox_size(root.get("viewBox")) is None:
+        info = _svg_info_from_root(root)
+        root.set("viewBox", f"0 0 {info.width:g} {info.height:g}")
+    root.set("width", str(width))
+    root.set("height", str(height))
+    return ET.tostring(root, encoding="utf-8", xml_declaration=False)
 
 
 _COLOR = re.compile(r"#[0-9a-fA-F]{3}(?:[0-9a-fA-F]{3})?\b")

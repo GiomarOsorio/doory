@@ -34,13 +34,68 @@ export interface BackgroundRemovalModel {
 
 export interface AppConfig {
   google_client_id: string
-  /** `background_removal` is absent on servers that predate it. */
-  features: { stock_photos: boolean; server_pdf: boolean; google_login: boolean; email_verification: boolean; background_removal?: boolean; realtime?: boolean; mcp?: boolean }
-  limits: { max_upload_bytes: number; max_pages: number; max_document_bytes: number; realtime_max_participants?: number }
+  /** Text of the single sign-on button; absent on servers that predate it. */
+  oidc_button_label?: string
+  /** Name of the button's logo in `src/assets/sso-icons/`; "" or absent: a key icon. */
+  oidc_button_icon?: string
+  /** `background_removal` (and `ai_providers`, …) are absent on servers that predate them. */
+  features: {
+    stock_photos: boolean
+    server_pdf: boolean
+    google_login: boolean
+    oidc_login?: boolean
+    email_verification: boolean
+    background_removal?: boolean
+    realtime?: boolean
+    mcp?: boolean
+    ai_providers?: boolean
+    /** Converting and optimizing downloads on the server; absent on servers that predate it. */
+    image_optimize?: ImageOptimizeConfig | null
+  }
+  limits: { max_upload_bytes: number; max_pages: number; max_document_bytes: number; realtime_max_participants?: number; bulk_fill_max_rows?: number }
   /** Files the browser downloads at run time; absent on servers that predate it. */
   assets?: { background_removal_model: BackgroundRemovalModel | null }
   /** The instance's default export file names; absent on servers that predate them (simple, no timestamp). */
   exports?: { filename_style: 'simple' | 'structured'; filename_timestamp: boolean }
+  /** Remote AI image providers; absent on servers that predate them. */
+  ai?: AiConfig
+}
+
+/** `features.image_optimize` as `/config/` writes it. */
+export interface ImageOptimizeConfig {
+  formats: string[]
+  optimizers: { id: string; name: string; formats: string[]; sends_offsite: boolean }[]
+  default: string | null
+}
+
+/** Who may add their own AI servers in Settings (`staff`: staff accounts only). */
+export type AiUserProviders = 'off' | 'staff' | 'everyone'
+
+/** The `ai` part of `/config/`: per task, the options every signed-in user has and the one to start with. */
+export interface AiConfig {
+  user_providers: AiUserProviders
+  /** The operator's wording of the notice under options that send the image away; empty: the editor's own. */
+  offsite_notice?: string
+  background_removal?: AiTaskOptions
+}
+
+export interface AiTaskOptions {
+  /** The option to start with; `null` when there is none. */
+  default: string | null
+  models: AiOption[]
+}
+
+/** One option a user may pick for an AI task (`GET /ai/models/`): the browser model, or a server's model. */
+export interface AiOption {
+  /** `device`, or `<provider id>:<model name>`. */
+  id: string
+  label: string
+  task: string
+  kind: 'device' | 'server'
+  provider_name: string
+  owner: 'device' | 'operator' | 'user'
+  /** The image leaves this installation. */
+  sends_offsite: boolean
 }
 
 export interface ApiUser {
@@ -52,6 +107,7 @@ export interface ApiUser {
   is_email_verified: boolean
   has_password: boolean
   google_linked: boolean
+  oidc_linked: boolean
   created_at: string
 }
 
@@ -120,7 +176,7 @@ export interface FolderT {
   created_at: string
 }
 
-export type AssetKind = 'image' | 'svg' | 'audio'
+export type AssetKind = 'image' | 'svg' | 'audio' | 'video'
 export interface Asset {
   id: string
   kind: AssetKind
@@ -134,9 +190,64 @@ export interface Asset {
   tags: string[]
   /** Credit for imported stock photos; null for the user's own uploads. */
   attribution: { provider: string; author: string; author_url: string; source_url: string } | null
-  /** Length of an audio file when the container says (null for images and for audio that does not say). */
+  /** Length of an audio file when the container says, or of a video clip (null for images and for audio that does not say). */
   duration_ms?: number | null
+  /** `processing` while the server converts a video clip; `failed` (with `error`) when that went wrong. Else `ready`. */
+  status?: AssetStatus
+  error?: string
+  /** Video only: the still every surface that can't play the clip shows. Empty for other kinds. */
+  poster_url?: string
+  /** Video only: the clip's sound as a file of its own (empty for a silent clip). */
+  audio_url?: string
+  /** Video only (null for other kinds). */
+  video?: AssetVideo | null
   created_at: string
+}
+
+export type AssetStatus = 'ready' | 'processing' | 'failed'
+
+/** A strip of frames from a clip, side by side in one image, for the timeline. */
+export interface VideoFilmstrip {
+  url: string
+  frames: number
+  interval_ms: number
+  tile_width: number
+  tile_height: number
+}
+
+export interface AssetVideo {
+  fps: number
+  has_audio: boolean
+  filmstrip: VideoFilmstrip | null
+}
+
+export interface StockVideo {
+  id: string
+  provider: string
+  /** A still, for the grid. */
+  thumb_url: string
+  /** A small rendition from the provider's CDN that plays while the pointer rests on the result. */
+  preview_url: string
+  width: number
+  height: number
+  duration_ms: number
+  author: string
+  author_url: string
+  source_url: string
+}
+
+export interface StockVideoPage extends Omit<StockPage, 'results'> {
+  results: StockVideo[]
+}
+
+export type VideoOrientation = 'landscape' | 'portrait' | 'square'
+export type VideoLength = 'short' | 'medium' | 'long'
+
+/** Whether the server takes clips at all (it needs ffmpeg), its limits, and the stock video providers. */
+export interface VideoInfo extends StockProviders {
+  enabled: boolean
+  max_upload_bytes: number
+  max_duration_ms: number
 }
 
 export interface StockPhoto {
@@ -175,6 +286,59 @@ export interface StockProviderInfo {
   attribution: string
   url: string
 }
+/** What the Audio tool's Freesound tab needs; `configured: false` hides the tab. */
+export type AudioStockInfo =
+  | { configured: false }
+  | {
+      configured: true
+      provider: string
+      label: string
+      url: string
+      /** Licences sounds may have: `cc0`, and `by` when the server also allows CC BY. */
+      licenses: string[]
+      /** Freesound subcategories per type (music, effects, ambience). */
+      types: Record<string, string[]>
+      lengths: string[]
+      sorts: string[]
+    }
+
+/** Where a sound came from and how it must be credited (CC BY) or may be (CC0). */
+export interface SoundCredit {
+  source: string
+  id: string
+  title: string
+  author: string
+  author_url?: string
+  url: string
+  license: string
+  license_url?: string
+  required: boolean
+}
+
+export interface StockSound {
+  id: string
+  provider: string
+  title: string
+  author: string
+  author_url: string
+  source_url: string
+  duration_ms: number
+  type: 'music' | 'effects' | 'ambience' | 'other'
+  subcategory: string
+  license: string
+  license_url: string
+  credit_required: boolean
+  tags: string[]
+}
+
+export interface StockSoundPage {
+  configured: boolean
+  total: number
+  next_page: number | null
+  results: StockSound[]
+  stale?: boolean
+}
+
 export interface StockProviders {
   providers: StockProviderInfo[]
   /** The providers the "All" tab searches; empty when there is no "All" tab. */
@@ -464,4 +628,82 @@ export interface IssuedApiToken extends ApiToken {
 export interface ApiTokenScope {
   id: string
   description: string
+}
+
+/** The API styles a provider can speak (see the backend's `apps.ai.styles`). */
+export type AiProviderStyle = 'doory' | 'multipart' | 'json' | 'mask' | 'custom'
+
+/** A model a user's provider offers for a task, as they picked and labelled it. */
+export interface AiProviderModel {
+  id?: string
+  task: string
+  /** Sent to the server as the model; empty: the server's default. */
+  remote_name: string
+  label: string
+  enabled: boolean
+  sort_order?: number
+}
+
+/** A user's own AI server (`/ai/providers/`). The secret is write-only: only `has_secret` comes back. */
+export interface AiProvider {
+  id: string
+  name: string
+  base_url: string
+  style: AiProviderStyle
+  style_config: Record<string, unknown>
+  auth_header: string
+  has_secret: boolean
+  tasks: string[]
+  timeout_seconds: number
+  max_image_bytes: number
+  sends_offsite: boolean
+  enabled: boolean
+  sort_order: number
+  models: AiProviderModel[]
+  created_at: string
+  updated_at: string
+}
+
+/** What `POST`/`PATCH /ai/providers/` accept: `secret` omitted keeps the stored one, `''` removes it. */
+export type AiProviderInput = Partial<Pick<AiProvider, 'name' | 'base_url' | 'style' | 'style_config' | 'auth_header' | 'tasks' | 'timeout_seconds' | 'sends_offsite' | 'enabled'>> & { secret?: string }
+
+/** `POST /ai/providers/{id}/test/`: a built-in sample picture sent to the server. */
+export interface AiProviderTestResult {
+  ok: boolean
+  duration_ms: number
+  task: string
+  model: string
+  /** `data:` URL of the result (PNG, at most 256 px) when it worked. */
+  preview: string
+  error: { code: string; message: string } | null
+}
+
+/** A template field of a design (`GET /designs/{id}/fields/`). `key: null`: a photo placeholder without a tag. */
+export interface TemplateField {
+  key: string | null
+  type: 'text' | 'image' | 'color'
+  label: string | null
+  pages: number[]
+  object_ids: string[]
+  current: unknown
+  fit: { mode: 'shrink'; minFontSize?: number } | null
+  overflow: boolean
+}
+
+export type FieldValue = string | { asset_id?: string; element_id?: string; url?: string; focal?: [number, number] } | null
+
+export interface BulkFillInput {
+  rows: Record<string, FieldValue>[]
+  row_numbers?: number[]
+  name_pattern?: string
+  folder?: string | null
+}
+
+export type BulkFillRow =
+  | { row: number; ok: true; design_id: string; title: string; filled: string[]; skipped: string[]; overflow: string[] }
+  | { row: number; ok: false; error: string }
+
+export interface BulkFillResult {
+  created: number
+  rows: BulkFillRow[]
 }

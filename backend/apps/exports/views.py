@@ -1,3 +1,5 @@
+import json
+
 from django.conf import settings
 from django.core.exceptions import SuspiciousOperation, TooManyFilesSent
 from django.http import FileResponse, Http404, HttpResponse
@@ -13,20 +15,33 @@ from rest_framework.settings import api_settings
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
+from apps.designs.fill import charge
 from apps.designs.models import Design
 
 from . import delivery
 from .exceptions import ExportDisabled, PayloadTooLarge
-from .filenames import page_filename, pdf_filename, unix_now
+from .filenames import FILE_NAMES, pdf_filename, unix_now
 from .serializers import (
     MAX_PAGES,
     MAX_TOTAL_BYTES,
     ImageExportSerializer,
+    ImageOptimizeDocumentation,
+    ImageOptimizeSerializer,
     PdfExportDocumentation,
     PdfExportSerializer,
     validate_page_files,
 )
-from .services import ExportRequest, export_image, export_pdf, page_index
+from .services import (
+    PDF_MIME,
+    SVG_MIME,
+    VIDEO_FORMATS,
+    ZIP_MIME,
+    ExportRequest,
+    export_images,
+    export_pdf,
+    optimize_image,
+    page_index,
+)
 from .throttling import ExportRateThrottle
 
 MULTIPART_OVERHEAD_BYTES = 2 * 1024 * 1024
@@ -97,8 +112,16 @@ def _file_headers(response: HttpResponse, filename: str, *, attachment: bool) ->
     return response
 
 
+def _charge_pages(user, extra: int) -> None:
+    """Each page after the first is one more render, counted against the `export` rate."""
+    for _ in range(extra):
+        charge(ExportRateThrottle(), user)
+
+
 class ImageExportView(APIView):
-    """Render one page of a saved design as PNG, JPG or WebP on the server, as the editor draws it."""
+    """Render pages of a saved design as PNG, JPG, WebP, AVIF or SVG on the server, as the editor draws them
+    (several pages come back as one ZIP), as one PDF of pictures (`pdf`) or vector pages (`pdf-print`), or as
+    a video: MP4, WebM or GIF (all pages unless `pages` or `page` says otherwise)."""
 
     permission_classes = [IsAuthenticated]
     content_negotiation_class = AnyAcceptNegotiation
@@ -110,6 +133,11 @@ class ImageExportView(APIView):
             (200, "image/png"): OpenApiTypes.BINARY,
             (200, "image/jpeg"): OpenApiTypes.BINARY,
             (200, "image/webp"): OpenApiTypes.BINARY,
+            (200, "image/avif"): OpenApiTypes.BINARY,
+            (200, SVG_MIME): OpenApiTypes.BINARY,
+            (200, PDF_MIME): OpenApiTypes.BINARY,
+            (200, ZIP_MIME): OpenApiTypes.BINARY,
+            **{(200, mime): OpenApiTypes.BINARY for mime in VIDEO_FORMATS.values()},
         },
         tags=["exports"],
     )
@@ -118,20 +146,106 @@ class ImageExportView(APIView):
         body = ImageExportSerializer(data=request.data)
         body.is_valid(raise_exception=True)
         data = body.validated_data
-        result = export_image(
+        pages = data["pages"]
+        if data["format"] in VIDEO_FORMATS and pages is None and data["page"] is None:
+            pages = "all"
+        style = (
+            data.get("filename_style")
+            or FILE_NAMES.get(data.get("file_names"))
+            or settings.EXPORT_FILENAME_STYLE
+        )
+        stamp = data.get("filename_timestamp", settings.EXPORT_FILENAME_TIMESTAMP)
+        result = export_images(
             design,
-            page=page_index(data["page"]),
+            pages=pages if pages == "all" else [page_index(p) for p in pages or [data["page"]]],
+            filename_style=style,
+            unix=unix_now() if stamp else None,
+            charge=lambda extra: _charge_pages(request.user, extra),
             format=data["format"],
             quality=data["quality"],
             scale=data["scale"],
+            size=data["size"],
             transparent=data["transparent"],
+            max_bytes=data["max_bytes"],
+            png_colors=data["png_colors"],
+            strip_metadata=data["strip_metadata"],
+            srgb=data["srgb"],
+            progressive=data["progressive"],
+            optimize=data["optimize"],
+            bleed_mm=data["bleed_mm"],
+            crop_marks=data["crop_marks"],
+            cmyk=data["cmyk"],
+            resolution=data["resolution"],
+            fps=data["fps"],
+            fit=data["fit"],
+            sound=data["sound"],
+            loop=data["loop"],
+            dither=data["dither"],
+            page_seconds=data["page_seconds"],
         )
-        style = data.get("filename_style") or settings.EXPORT_FILENAME_STYLE
-        stamp = data.get("filename_timestamp", settings.EXPORT_FILENAME_TIMESTAMP)
-        filename = page_filename(design.title, result, style=style, unix=unix_now() if stamp else None)
         response = HttpResponse(result.data, content_type=result.mime)
         response["X-Doory-Placeholders"] = str(result.placeholders)
-        return _file_headers(response, filename, attachment=True)
+        return _file_headers(response, result.filename, attachment=True)
+
+
+OPTIMIZE_OVERHEAD_BYTES = 64 * 1024  # the multipart framing and the option fields
+
+
+class ImageOptimizeView(APIView):
+    """Convert a page the browser drew (PNG) to the format asked for and optimize it, for downloads from the
+    editor: AVIF, WebP where the browser can't make it, and the optimizers (`apps.exports.optimizers`).
+
+    The answer is the file, with `X-Doory-Format`, `X-Doory-Width`, `X-Doory-Height`, `X-Doory-Quality`
+    (lossy formats, after a `max_bytes` search), `X-Doory-Bytes-Before` (the converted file before
+    optimizing), `X-Doory-Optimizer` (the optimizer asked, empty for none), `X-Doory-Optimized` (whether its
+    smaller file was kept) and `X-Doory-Warnings` (a JSON list)."""
+
+    parser_classes = [MultiPartParser]
+    permission_classes = [IsAuthenticated]
+    content_negotiation_class = AnyAcceptNegotiation
+    throttle_classes = [*api_settings.DEFAULT_THROTTLE_CLASSES, ScopedRateThrottle]
+    throttle_scope = "optimize"
+
+    @extend_schema(
+        request={"multipart/form-data": ImageOptimizeDocumentation},
+        responses={
+            (200, "image/png"): OpenApiTypes.BINARY,
+            (200, "image/jpeg"): OpenApiTypes.BINARY,
+            (200, "image/webp"): OpenApiTypes.BINARY,
+            (200, "image/avif"): OpenApiTypes.BINARY,
+        },
+        tags=["exports"],
+    )
+    def post(self, request):
+        limit = settings.IMAGE_OPTIMIZER_MAX_BYTES
+        if int(request.META.get("CONTENT_LENGTH") or 0) > limit + OPTIMIZE_OVERHEAD_BYTES:
+            raise PayloadTooLarge(f"The image must be at most {limit} bytes.")
+        try:
+            file = request.FILES.get("file")
+            fields = request.data
+        except SuspiciousOperation:  # request data limits of the Django settings
+            raise PayloadTooLarge()
+        if file is None or file.size == 0:
+            raise ValidationError({"file": ["Send the image (a PNG) in the file field."]})
+        if file.size > limit:
+            raise PayloadTooLarge(f"The image must be at most {limit} bytes.")
+        body = ImageOptimizeSerializer(data=fields)
+        body.is_valid(raise_exception=True)
+        data = body.validated_data
+        result = optimize_image(file.read(), owner=request.user.pk, **data)
+        response = HttpResponse(result.data, content_type=result.mime)
+        response["X-Doory-Format"] = result.format
+        response["X-Doory-Width"] = str(result.width)
+        response["X-Doory-Height"] = str(result.height)
+        if "quality" in result.options_used:
+            response["X-Doory-Quality"] = str(result.options_used["quality"])
+        response["X-Doory-Bytes-Before"] = str(result.bytes_before_optimizing)
+        response["X-Doory-Optimizer"] = result.optimizer
+        response["X-Doory-Optimized"] = "true" if result.optimized else "false"
+        response["X-Doory-Warnings"] = json.dumps(list(result.warnings))
+        response["Cache-Control"] = "no-store"
+        response["X-Content-Type-Options"] = "nosniff"
+        return response
 
 
 class ImageDownloadView(APIView):
@@ -152,4 +266,9 @@ class ImageDownloadView(APIView):
         except FileNotFoundError as exc:
             raise Http404 from exc
         response = FileResponse(stream, content_type=mime)
-        return _file_headers(response, name, attachment=False)
+        if mime == SVG_MIME:
+            # An SVG may carry markup: never let it run as a page of this site.
+            response["Content-Security-Policy"] = (
+                "sandbox; default-src 'none'; img-src data:; font-src data:; style-src 'unsafe-inline'"
+            )
+        return _file_headers(response, name, attachment=mime in (ZIP_MIME, SVG_MIME))

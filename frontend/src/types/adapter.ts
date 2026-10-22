@@ -4,9 +4,13 @@
  */
 import type { ReactNode } from 'react'
 import type {
+  AiTaskOptions,
   Asset,
   AssetQuery,
+  AssetStatus,
   BrandKit,
+  BulkFillInput,
+  BulkFillResult,
   CommentInput,
   CommentMove,
   CommentT,
@@ -21,17 +25,35 @@ import type {
   ShareLinkInput,
   ShareRole,
   StockPage,
+  AudioStockInfo,
+  SoundCredit,
+  StockSoundPage,
   StockPhoto,
   StockProviders,
   TemplateCategory,
   TemplateDetail,
+  TemplateField,
   TemplateQuery,
   TemplateSummary,
   UserFontUploadInput,
   UserFontUploadOptions,
   VersionSummary,
+  StockVideo,
+  StockVideoPage,
+  VideoFilmstrip,
+  VideoInfo,
+  VideoLength,
+  VideoOrientation,
 } from './api'
 import type { DoryDocument } from './document'
+
+export interface AudioStockQuery {
+  type?: string
+  subcategory?: string
+  length?: string
+  sort?: string
+  page?: number
+}
 
 export type EditorMode = 'guest' | 'account' | 'shared-view' | 'shared-comment' | 'shared-edit'
 
@@ -52,7 +74,23 @@ export interface AssetRef {
   width: number
   height: number
   name: string
-  kind: 'image' | 'svg' | 'audio'
+  kind: 'image' | 'svg' | 'audio' | 'video'
+  /** Video clips only. */
+  video?: VideoAssetInfo
+}
+
+/** What the editor knows of a video clip asset: enough to place it, play it and draw it on the timeline. */
+export interface VideoAssetInfo {
+  status: AssetStatus
+  /** Why the conversion failed (`status: 'failed'`). */
+  error: string
+  /** The still: what the clip object shows wherever it can't play (its `src`). */
+  posterUrl: string
+  /** The clip's sound on its own; empty for a silent clip. */
+  audioUrl: string
+  durationMs: number
+  fps: number
+  filmstrip: VideoFilmstrip | null
 }
 
 export interface SaveInput {
@@ -66,7 +104,7 @@ export interface SaveResult {
   revision?: number
 }
 
-export type AccountReason = 'save' | 'share' | 'brand-kit' | 'version-history' | 'comment'
+export type AccountReason = 'save' | 'share' | 'brand-kit' | 'version-history' | 'comment' | 'video'
 
 export type SaveState =
   | { status: 'idle' }
@@ -91,6 +129,26 @@ export interface UserFontsService {
   /** Rejects with the server's `ApiError` (`variant_exists`, `font_name_taken`, `font_limit_reached`, `font_storage_limit`, validation). */
   upload(input: UserFontUploadInput, options?: UserFontUploadOptions): Promise<FontFamily>
   remove(id: string): Promise<void>
+}
+
+/**
+ * Remote AI image tasks (`background-removal` first). Signed-in users only; without it the editor offers the
+ * in-browser model alone.
+ */
+export interface AiService {
+  /** The options this user may pick for `task` and the one to start with. */
+  options(task: string): Promise<AiTaskOptions>
+  /**
+   * Runs `task` with the server option `model` on an image and resolves with the new asset. `assetId` is the
+   * image's asset when it has one; otherwise (or when it is not this user's) `image` is uploaded first.
+   * Rejects with the server's `ApiError` (`ai_timeout`, `ai_quota`, …).
+   */
+  run(task: string, input: { model: string; image: Blob | (() => Promise<Blob>); assetId?: string; signal?: AbortSignal }): Promise<AssetRef>
+  /** The option this user last picked for `task`, if any. */
+  remembered(task: string): string | null
+  remember(task: string, option: string): void
+  /** The operator's wording of the notice for options that send the image away; empty: the editor's own. */
+  offsiteNotice?: string
 }
 
 /** The person looking at the comments: `owner` is true for the design's owner, who may delete and move every comment. */
@@ -128,6 +186,23 @@ export interface EditorServices {
     search(q: string, page: number | string, provider?: string): Promise<StockPage>
     importPhoto(photo: StockPhoto): Promise<AssetRef>
   } | null
+  /** Remote AI image tasks; `null` or absent: only the in-browser model (guests, shared links). */
+  ai?: AiService | null
+  /**
+   * Video clips: uploads and stock videos, converted on the server. Optional: absent or null (guests, shared links,
+   * adapters without it) turns the Videos tool into a sign-up prompt, and so does `info()` answering `enabled: false`.
+   */
+  video?: VideoService | null
+  /**
+   * Freesound sounds for the Audio tool, through the server. Optional: absent or null (guests, adapters without it)
+   * hides the Freesound tab, and so does `info()` answering `configured: false`.
+   */
+  audioStock?: {
+    info(): Promise<AudioStockInfo>
+    search(q: string, options: AudioStockQuery): Promise<StockSoundPage>
+    previewUrl(id: string): string
+    importSound(id: string): Promise<{ ref: AssetRef; credit: SoundCredit | null; durationMs: number | null }>
+  } | null
   versions: {
     list(): Promise<VersionSummary[]>
     create(label: string): Promise<VersionSummary>
@@ -158,6 +233,16 @@ export interface EditorServices {
     move?(id: string, to: CommentMove): Promise<CommentT>
     /** Who is looking, to tell their comments from the others'. `null`: not signed in. Absent: treated as the owner. */
     viewer?(): Promise<CommentViewer | null>
+  } | null
+  /** Bulk create from this design's template fields (signed-in owner only); `null` or absent hides it. */
+  bulkFill?: {
+    /** The fields as saved (the editor's changes are saved first). */
+    fields(): Promise<TemplateField[]>
+    /** A new folder for the created designs. */
+    createFolder(name: string): Promise<{ id: string; name: string }>
+    /** Remove a created empty folder if creation fails. */
+    removeFolder?(id: string): Promise<void>
+    run(input: BulkFillInput): Promise<BulkFillResult>
   } | null
 }
 
@@ -226,6 +311,60 @@ export interface EditorAdapter {
     /** Called while the request body goes out (0..1). */
     onUploadProgress?: (fraction: number) => void
   }) => Promise<Blob>
+  /** What the server converts and optimizes downloads into (`/config/` `features.image_optimize`). Absent: browser only. */
+  imageOptimize?: ImageOptimizeInfo
+  /** Converts a page the browser drew (PNG) to `format` and optimizes it on the server. Present with `imageOptimize`. */
+  optimizeImage?: (input: OptimizeImageInput) => Promise<OptimizedImage>
+}
+
+export type OptimizeFormat = 'png' | 'jpg' | 'webp' | 'avif'
+
+export interface ImageOptimizerInfo {
+  id: string
+  name: string
+  /** The formats it makes smaller; the others pass through as the conversion made them. */
+  formats: OptimizeFormat[]
+  /** The image leaves the server for an outside service. */
+  sendsOffsite: boolean
+}
+
+export interface ImageOptimizeInfo {
+  /** What the server converts a PNG to (AVIF only where the server has it). */
+  formats: OptimizeFormat[]
+  /** In the admin's order; may be empty (conversion only). */
+  optimizers: ImageOptimizerInfo[]
+  default: string | null
+}
+
+export interface OptimizeImageInput {
+  /** The page as the browser drew it, as a PNG. */
+  file: Blob
+  format: OptimizeFormat
+  /** 1..100. */
+  quality?: number
+  maxBytes?: number
+  pngColors?: 'full' | number
+  transparent?: boolean
+  stripMetadata?: boolean
+  progressive?: boolean
+  /** An optimizer id, `true` for the instance's default, `false` to convert only. */
+  optimize: boolean | string
+  signal?: AbortSignal
+}
+
+export interface OptimizedImage {
+  blob: Blob
+  format: OptimizeFormat
+  width: number
+  height: number
+  /** The quality used, after a `maxBytes` search (lossy formats). */
+  quality: number | null
+  /** The converted file's size before optimizing. */
+  bytesBefore: number
+  /** The optimizer asked ('' for none) and whether its smaller file was kept. */
+  optimizer: string
+  optimized: boolean
+  warnings: string[]
 }
 
 export interface EditorHandle {
@@ -249,4 +388,22 @@ export interface EditorAppProps {
   /** Slots in the editor's top bar. */
   topBarStart?: ReactNode
   topBarEnd?: ReactNode
+}
+
+export interface VideoUploadOptions {
+  signal?: AbortSignal
+  /** Called while the file goes up (0..1). */
+  onProgress?: (fraction: number) => void
+}
+
+export interface VideoService {
+  info(): Promise<VideoInfo>
+  /** The user's clips, newest first. */
+  list(page: number): Promise<Page<AssetRef>>
+  /** One clip again: how the editor follows a clip the server is still converting. */
+  get(id: string): Promise<AssetRef>
+  upload(file: File, options?: VideoUploadOptions): Promise<AssetRef>
+  /** `page` is a page number, or the cursor an `all` search returned; `provider` is a name or `all`. */
+  search(q: string, page: number | string, options: { provider?: string; orientation?: VideoOrientation; length?: VideoLength; signal?: AbortSignal }): Promise<StockVideoPage>
+  importVideo(video: StockVideo): Promise<AssetRef>
 }

@@ -6,9 +6,13 @@ credential-handling ones share the per-IP `auth` throttle scope.
 
 from __future__ import annotations
 
+import logging
+from urllib.parse import urlencode
+
 from django.conf import settings
 from django.contrib.auth import authenticate, login, logout, update_session_auth_hash
 from django.db import IntegrityError, transaction
+from django.http import HttpResponseRedirect
 from django.middleware.csrf import get_token
 from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework import status
@@ -26,6 +30,7 @@ from apps.core.exceptions import ApiError
 from apps.core.images import ImageError
 from apps.core.parsers import BoundedJSONParser
 
+from . import oidc
 from .emails import send_password_reset_email, send_verification_email
 from .google import GoogleSignInError, verify_google_credential
 from .lockout import PasswordAttemptGuard, claim_email_slot
@@ -36,6 +41,8 @@ from .serializers import (
     GoogleLoginSerializer,
     GoogleResultSerializer,
     LoginSerializer,
+    OidcConnectSerializer,
+    OidcRedirectSerializer,
     OptionalUserEnvelopeSerializer,
     PasswordChangeSerializer,
     PasswordResetConfirmSerializer,
@@ -46,12 +53,21 @@ from .serializers import (
     UserSerializer,
     check_new_password,
 )
-from .services import build_avatar, replace_avatar, sign_in_with_google
+from .services import (
+    build_avatar,
+    connect_oidc,
+    disconnect_oidc,
+    replace_avatar,
+    sign_in_with_google,
+    sign_in_with_oidc,
+)
 from .tokens import (
     decode_uid,
     email_verification_token_generator,
     password_reset_token_generator,
 )
+
+logger = logging.getLogger(__name__)
 
 TAGS = ["auth"]
 NO_CONTENT = OpenApiResponse(description="Done; no body.")
@@ -266,6 +282,9 @@ class PasswordResetConfirmView(AuthView):
         if user is None or not password_reset_token_generator.check_token(user, data["token"]):
             raise _invalid_link()
         check_new_password(data["new_password"], user)
+        # Like the old password and the API tokens, a connected OIDC account may belong to whoever claimed the
+        # address before its owner: the reset ends it too, and the owner connects theirs again from Settings.
+        user.oidc_identities.all().delete()
         user.set_password(data["new_password"])
         user.is_email_verified = True  # the reset link proves control of the mailbox
         user.save(update_fields=["password", "is_email_verified", "updated_at"])
@@ -321,3 +340,138 @@ class GoogleLoginView(AuthView):
         user, created = sign_in_with_google(identity)
         login(request, user)
         return Response({"user": UserSerializer(user).data, "created": created})
+
+
+# --- OpenID Connect --------------------------------------------------------------------------------------
+#
+# The browser leaves for the provider from `start/` (sign in) or after `connection/` (connect to the signed-in
+# account) and comes back to `callback/`, which always answers with a redirect into the app. Failures land on
+# the sign-in or settings page with `?sso_error=<code>`; the provider's own words only reach the log.
+
+LOGIN_PATH = "/login"
+SETTINGS_PATH = "/settings"
+DEFAULT_NEXT = "/dashboard"
+
+
+def safe_next_path(value: object) -> str:
+    """`value` when it is an in-app path (no scheme, host or control characters), else the dashboard."""
+    if not isinstance(value, str) or len(value) > 2000:
+        return DEFAULT_NEXT
+    if not value.startswith("/") or value.startswith(("//", "/\\")):
+        return DEFAULT_NEXT
+    if any(ord(char) < 32 or ord(char) == 127 for char in value):
+        return DEFAULT_NEXT
+    return value
+
+
+def _app_redirect(path: str, **params: str) -> HttpResponseRedirect:
+    query = f"?{urlencode(params)}" if params else ""
+    return HttpResponseRedirect(settings.SITE_URL.rstrip("/") + path + query)
+
+
+def _login_failed(code: str, next_path: str = DEFAULT_NEXT) -> HttpResponseRedirect:
+    """Back to the sign-in page with the error, still knowing where the user was going."""
+    params = {"sso_error": code} | ({"next": next_path} if next_path != DEFAULT_NEXT else {})
+    return _app_redirect(LOGIN_PATH, **params)
+
+
+def _log_failure(stage: str, exc: oidc.OidcError) -> None:
+    # Someone changing their mind, or an old tab, is routine; anything else is for the admin to look at.
+    level = logging.INFO if exc.code in (oidc.CANCELLED, oidc.EXPIRED) else logging.WARNING
+    logger.log(level, "OIDC %s failed (%s): %s", stage, exc.code, exc)
+
+
+@extend_schema(
+    responses={302: OpenApiResponse(description="To the provider, or back to the sign-in page.")}, tags=TAGS
+)
+class OidcStartView(APIView):
+    """Sign in with the OIDC provider. `?next=` is where to land afterwards (an in-app path)."""
+
+    permission_classes = [AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "auth"
+
+    def get(self, request):
+        next_path = safe_next_path(request.query_params.get("next"))
+        if not oidc.enabled():
+            return _login_failed(oidc.UNAVAILABLE, next_path)
+        try:
+            url = oidc.begin(request.session, next_path=next_path, mode="login")
+        except oidc.OidcError as exc:
+            _log_failure("start", exc)
+            return _login_failed(exc.code, next_path)
+        return HttpResponseRedirect(url)
+
+
+class OidcConnectionView(AuthView):
+    """Connect the signed-in account to an account at the OIDC provider, or disconnect it."""
+
+    permission_classes = [IsAuthenticated]
+    serializer_class = OidcConnectSerializer
+
+    @extend_schema(request=OidcConnectSerializer, responses={200: OidcRedirectSerializer}, tags=TAGS)
+    def post(self, request):
+        if not oidc.enabled():
+            raise ApiError("oidc_not_configured", "Single sign-on is not configured on this server.")
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        confirm_identity(request.user, serializer.validated_data)
+        try:
+            url = oidc.begin(
+                request.session, next_path=SETTINGS_PATH, mode="connect", user_id=str(request.user.pk)
+            )
+        except oidc.OidcError as exc:
+            _log_failure("connect", exc)
+            raise ApiError(
+                exc.code, "The sign-in provider can't be reached right now.", status_code=503
+            ) from None
+        return Response({"redirect_url": url})
+
+    @extend_schema(request=None, responses={200: UserEnvelopeSerializer}, tags=TAGS)
+    def delete(self, request):
+        disconnect_oidc(request.user)
+        return Response(_user_payload(request.user))
+
+
+@extend_schema(responses={302: OpenApiResponse(description="Back into the app.")}, tags=TAGS)
+class OidcCallbackView(APIView):
+    """Where the provider sends the browser back to, with `code` and `state` (or `error`)."""
+
+    permission_classes = [AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "auth"
+
+    def get(self, request):
+        params = request.query_params
+        flow = oidc.take_flow(request.session, params.get("state"))
+        if flow is None:
+            # Also what it looks like when the session cookie doesn't come back: Doory opened at an address
+            # other than SITE_URL.
+            logger.info("OIDC callback without a sign-in to finish (unknown, used or expired state).")
+            return _login_failed(oidc.EXPIRED)
+        connecting = flow["mode"] == "connect"
+        try:
+            if not oidc.enabled():
+                raise oidc.OidcError(oidc.UNAVAILABLE, "OIDC sign-in was turned off.")
+            if "error" in params:
+                error, description = params.get("error"), params.get("error_description", "")
+                code = oidc.CANCELLED if error == "access_denied" else oidc.FAILED
+                raise oidc.OidcError(code, f"The provider answered error={error!r:.100} {description!r:.200}")
+            if not params.get("code"):
+                raise oidc.OidcError(oidc.FAILED, "The callback has no code.")
+            if connecting and str(request.user.pk) != flow["user"]:
+                raise oidc.OidcError(oidc.EXPIRED, "The session changed while connecting.")
+            claims = oidc.complete(flow, code=params["code"], iss=params.get("iss"))
+            if connecting:
+                connect_oidc(request.user, claims)
+                return _app_redirect(SETTINGS_PATH, sso="connected")
+            user, created = sign_in_with_oidc(claims)
+        except oidc.OidcError as exc:
+            _log_failure("callback", exc)
+            if connecting:
+                return _app_redirect(SETTINGS_PATH, sso_error=exc.code)
+            return _login_failed(exc.code, flow["next"])
+        login(request, user)
+        if created and not user.is_email_verified:
+            send_verification_email(user)
+        return _app_redirect(flow["next"])

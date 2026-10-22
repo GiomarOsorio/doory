@@ -1,14 +1,16 @@
 import { assetsApi, designsApi, exportsApi, isApiError } from '@/lib/api'
-import type { AppConfig } from '@/types/api'
-import type { EditorAdapter } from '@/types/adapter'
+import type { AppConfig, ImageOptimizeConfig } from '@/types/api'
+import type { EditorAdapter, ImageOptimizeInfo, OptimizeFormat } from '@/types/adapter'
 import { RevisionConflictError } from './errors'
 import { createRealtimeConnection, flushLiveRoom } from './realtime'
-import { assetToRef, createAccountServices } from './services'
+import { assetToRef, createAccountServices, createAiService } from './services'
 
 export interface AccountAdapterOptions {
   /** Called with the revision the server assigned after each successful save. */
   onRevision?(revision: number): void
-  config?: Pick<AppConfig, 'features' | 'exports'>
+  config?: Pick<AppConfig, 'features' | 'exports' | 'ai'>
+  /** The signed-in user, so the editor remembers choices (e.g. the background-removal option) per user. */
+  userId?: string | (() => string | undefined)
   /** Minimum gap between thumbnail uploads (ms). */
   thumbnailIntervalMs?: number
   /** Opens the shell's sign-in flow when the live room needs a session; resolves `true` once the user is signed in. */
@@ -23,6 +25,18 @@ function conflictFrom(error: unknown): RevisionConflictError | null {
   if (!isApiError(error) || error.status !== 409 || error.code !== 'revision_conflict') return null
   const current = (error.data as { current?: { revision?: unknown } } | undefined)?.current?.revision
   return new RevisionConflictError(typeof current === 'number' ? current : null)
+}
+
+const OPTIMIZE_FORMATS: readonly OptimizeFormat[] = ['png', 'jpg', 'webp', 'avif']
+const optimizeFormats = (formats: readonly string[]): OptimizeFormat[] => OPTIMIZE_FORMATS.filter((format) => formats.includes(format))
+
+/** `/config/` `features.image_optimize` in the editor's terms; unknown formats are left out. */
+export function imageOptimizeInfo(config: ImageOptimizeConfig): ImageOptimizeInfo {
+  return {
+    formats: optimizeFormats(config.formats),
+    optimizers: config.optimizers.map((o) => ({ id: o.id, name: o.name, formats: optimizeFormats(o.formats), sendsOffsite: o.sends_offsite === true })),
+    default: config.default,
+  }
 }
 
 /** The adapter used at `/design/:id` for a signed-in owner. */
@@ -67,7 +81,11 @@ export function createAccountAdapter(designId: string, getRevision: () => number
       return assetToRef(await assetsApi.upload(file, { name: opts?.name }))
     },
     resolveSrc: async (src) => src,
-    services: createAccountServices(designId, () => flushLiveRoom(realtime)),
+    services: createAccountServices(
+      designId,
+      () => flushLiveRoom(realtime),
+      options.config?.ai && options.config.features.ai_providers === true ? createAiService({ config: options.config.ai, userId: options.userId }) : null,
+    ),
     realtime,
   }
   const exports = options.config?.exports
@@ -75,6 +93,11 @@ export function createAccountAdapter(designId: string, getRevision: () => number
   if (options.config?.features.server_pdf) {
     adapter.exportPdf = ({ svgPages, width, height, sizes, bleedMm, cropMarks, title, lang, fonts, signal, onUploadProgress }) =>
       exportsApi.pdf({ pages: svgPages.map((svg) => new Blob([svg], { type: 'image/svg+xml' })), width, height, sizes, bleedMm, cropMarks, title, lang, fonts, signal, onUploadProgress })
+  }
+  const optimize = options.config?.features.image_optimize
+  if (optimize) {
+    adapter.imageOptimize = imageOptimizeInfo(optimize)
+    adapter.optimizeImage = exportsApi.optimize
   }
   return adapter
 }

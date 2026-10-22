@@ -224,6 +224,16 @@ export type AudioTrackKind = 'music' | 'voiceover' | 'sfx' | 'upload'
 /** What a track is counted from: the start of the design, or the start of one page. */
 export type AudioScope = { type: 'design' } | { type: 'page'; pageId: string }
 
+export interface TrackCredit {
+  source: string
+  id: string
+  title: string
+  author: string
+  url: string
+  license: string
+  required: boolean
+}
+
 export interface AudioTrack {
   id: string
   kind: AudioTrackKind
@@ -234,6 +244,8 @@ export interface AudioTrack {
   assetId?: string
   /** The catalogue id, when the track came from the audio library. */
   libraryId?: string
+  /** Where a sound from an online library (Freesound) came from; `required` when it must be credited (CC BY). */
+  credit?: TrackCredit
   scope: AudioScope
   /** >= 0: where the track starts, counted from the start of its scope. */
   startMs: number

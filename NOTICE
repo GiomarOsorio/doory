@@ -1,5 +1,5 @@
 Doory
-Copyright (c) 2026 Siam, creator and maintainer of Doory
+Copyright (c) 2026 Siam, creator and maintainer of Doory, and the Doory contributors (see AUTHORS.md)
 https://github.com/shaongitbd/doory
 
 Doory is released under the Attribution Assurance License (see LICENSE). Anyone who redistributes it must keep
@@ -32,6 +32,13 @@ Code served to browsers
   The remaining packages of the bundle (MIT, ISC, BSD-3-Clause, Apache-2.0) are reproduced in
   licenses/bundled-licenses.txt.
 
+Sign-in button logos (frontend/src/assets/sso-icons/, sources in sources.json there)
+  dashboard-icons (Apache-2.0)   Copyright the homarr-labs dashboard-icons contributors
+  Keycloak, Authelia, Dex, Rauthy logos (Apache-2.0), Copyright their authors
+  Gitea logo (MIT)               Copyright (c) 2016 The Gitea Authors
+  GitLab logo (MIT)              Copyright (c) 2011-present GitLab Inc.
+  Simple Icons (CC0-1.0) need no notice. The logos are trademarks of their owners.
+
 Fonts served to every visitor (SIL Open Font License 1.1, https://openfontlicense.org)
   Inter                          Copyright 2016 The Inter Project Authors (https://github.com/rsms/inter)
   Plus Jakarta Sans              Copyright 2020 The Plus Jakarta Sans Project Authors
@@ -59,4 +66,5 @@ Artwork and models downloaded by the operator (never part of this repository)
 Original content of this repository
   The shapes, graphics, starter templates, audio library, logo and test fonts were made for Doory. The shapes,
   graphics, audio and test fonts are dedicated to the public domain under CC0 1.0
-  (https://creativecommons.org/publicdomain/zero/1.0/); the rest is MIT, like the code.
+  (https://creativecommons.org/publicdomain/zero/1.0/); the rest is under the Attribution
+  Assurance License, like the code.

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import type { DocObject, DocPage } from '@/types/document'
 import { context2d } from '../animation/canvasFx'
-import { RenderError, renderDesignPage } from './render'
+import { RenderError, renderDesignPage, renderDesignPages } from './render'
 
 const rect = (id: string, fill: string, left: number, top: number): DocObject => ({
   id,
@@ -90,5 +90,44 @@ describe('renderDesignPage', () => {
       expect(out.placeholders).toBe(1)
       expect(pixelAt(out.canvas, 110, 20)).toEqual([255, 0, 0, 255])
     })
+  })
+})
+
+describe('renderDesignPages', () => {
+  const doc = design(page('a', [rect('r', '#ff0000', 10, 10)], '#00ff00'), page('b', [], '#0000ff', { width: 50, height: 60 }))
+
+  it('makes an SVG file per page asked for, in that order, at each page size', async () => {
+    const out = await renderDesignPages({ document: doc, pages: ['b', 0], output: 'svg' })
+    expect(out.pages.map((p) => [p.pageId, p.pageIndex, p.width, p.height])).toEqual([
+      ['b', 1, 50, 60],
+      ['a', 0, 200, 100],
+    ])
+    expect(out.pages[0].data).toMatch(/^<\?xml/)
+    expect(out.pages[0].data).toContain('viewBox="0 0 50 60"')
+    expect(out.pages[1].data).toContain('rgb(255,0,0)')
+    expect(out.fontFiles).toEqual([])
+  })
+
+  it('makes the print server’s pages: no preamble, the bleed around the page', async () => {
+    const out = await renderDesignPages({ document: doc, output: 'print', bleed: 10 })
+    expect(out.pages).toHaveLength(1)
+    expect(out.pages[0].data.startsWith('<svg')).toBe(true)
+    expect(out.pages[0].data).toContain('viewBox="-10 -10 220 120"')
+  })
+
+  it('makes a JPEG of each page and its bleed, smaller when it would have too many pixels', async () => {
+    // The second page and its bleed (60 x 70) fit at 2x; the first (210 x 110) only at less.
+    const out = await renderDesignPages({ document: doc, pages: [0, 1], output: 'picture', bleed: 5, multiplier: 2, maxPixels: 120 * 140 })
+    const [first, second] = out.pages
+    expect([second.pixelWidth, second.pixelHeight]).toEqual([120, 140])
+    expect(first.pixelWidth).toBeLessThan(420)
+    expect((first.pixelWidth ?? 0) * (first.pixelHeight ?? 0)).toBeLessThanOrEqual(120 * 140 + 300)
+    expect(atob(first.data).slice(0, 3)).toBe('\xff\xd8\xff')
+  })
+
+  it('refuses unknown outputs, a negative bleed and a missing page with a code', async () => {
+    expect((await renderError(renderDesignPages({ document: doc, output: 'eps' as 'svg' }))).code).toBe('invalid_options')
+    expect((await renderError(renderDesignPages({ document: doc, output: 'print', bleed: -1 }))).code).toBe('invalid_options')
+    expect((await renderError(renderDesignPages({ document: doc, output: 'svg', pages: [0, 5] }))).code).toBe('page_not_found')
   })
 })

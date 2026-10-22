@@ -50,6 +50,14 @@ function TrackCard({ track, pages, open, readOnly, onToggle }: { track: AudioTra
           <span className={styles.cardName}>{name}</span>
           <span className={styles.cardMeta}>
             {t.audio.tracks.kinds[track.kind]} · <span data-gone={gone || undefined}>{scopeLabel(track, pages.map((p) => p.id))}</span> · {formatSeconds(trimmedLengthMs(track))}
+            {track.credit?.required ? (
+              <>
+                {' · '}
+                <span className={styles.creditFlag} title={t.audio.credits.neededHint(track.credit.license)} data-testid="audio-track-credit">
+                  {t.audio.credits.needed}
+                </span>
+              </>
+            ) : null}
           </span>
         </button>
         <IconButton

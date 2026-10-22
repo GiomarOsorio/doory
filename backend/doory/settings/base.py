@@ -43,6 +43,7 @@ INSTALLED_APPS = [
     "apps.presets",
     "apps.apitokens",
     "apps.mcp",
+    "apps.ai",
 ]
 
 MIDDLEWARE = [
@@ -126,7 +127,22 @@ USER_STORAGE_QUOTA_BYTES = env.int("USER_STORAGE_QUOTA_BYTES", default=2 * 1024*
 MAX_DESIGNS_PER_USER = env.int("MAX_DESIGNS_PER_USER", default=5000)
 MAX_API_TOKENS_PER_USER = env.int("MAX_API_TOKENS_PER_USER", default=20)
 MAX_DESIGN_PAGES = 100
+BULK_FILL_MAX_ROWS = env.int("BULK_FILL_MAX_ROWS", default=100)  # rows per bulk fill (MCP and REST)
 MAX_AVATAR_BYTES = 5 * 1024 * 1024
+
+# ---- Video clips (apps.assets.video). Uploads and stock clips are checked and made web-ready with the ffmpeg
+# and ffprobe commands; without them the server takes no video. ----
+VIDEO_ENABLED = env.bool("VIDEO_ENABLED", default=True)  # the Docker image sets it from INSTALL_FFMPEG
+FFMPEG_PATH = env("FFMPEG_PATH", default="ffmpeg")
+FFPROBE_PATH = env("FFPROBE_PATH", default="ffprobe")
+MAX_VIDEO_UPLOAD_BYTES = env.int("MAX_VIDEO_UPLOAD_BYTES", default=200 * 1024 * 1024)  # per clip, as uploaded
+MAX_VIDEO_DURATION_SECONDS = env.int("MAX_VIDEO_DURATION_SECONDS", default=600)  # the video export's limit
+VIDEO_MAX_CONCURRENCY = env.int("VIDEO_MAX_CONCURRENCY", default=2)  # ffmpeg runs per API process
+VIDEO_TRANSCODE_TIMEOUT_SECONDS = env.int("VIDEO_TRANSCODE_TIMEOUT_SECONDS", default=900)
+VIDEO_DOWNLOAD_DEADLINE_SECONDS = env.int("VIDEO_DOWNLOAD_DEADLINE_SECONDS", default=90)  # stock clips
+# Where a clip is converted (the upload, the converted copy and its stills live there until stored).
+# Empty: the system temporary directory.
+VIDEO_WORK_DIR = env("VIDEO_WORK_DIR", default="")
 
 # ---- Security headers (Permissions-Policy comes from apps.core.middleware) ----
 X_FRAME_OPTIONS = "DENY"
@@ -161,9 +177,30 @@ EMAIL_SEND_ASYNC = env.bool("EMAIL_SEND_ASYNC", default=True)  # send off the re
 
 # ---- Integrations (all optional) ----
 GOOGLE_CLIENT_ID = env("GOOGLE_CLIENT_ID", default="")
+# OpenID Connect sign-in (apps.accounts.oidc): on when the issuer, client ID and client secret are all set.
+# A setting that is wrong turns it off and `manage.py check` says why. OIDC_TRUST_EMAIL lets a first OIDC
+# sign-in take over an existing account with the same (provider-verified) address; off, existing users
+# connect their account from Settings instead.
+OIDC_ISSUER = env("OIDC_ISSUER", default="")
+OIDC_CLIENT_ID = env("OIDC_CLIENT_ID", default="")
+OIDC_CLIENT_SECRET = env("OIDC_CLIENT_SECRET", default="")
+OIDC_BUTTON_LABEL = env("OIDC_BUTTON_LABEL", default="Sign in with SSO")
+# Logo on the button, by name (e.g. "authentik"); the frontend has the icons. Empty or unknown: a key icon.
+OIDC_BUTTON_ICON = env("OIDC_BUTTON_ICON", default="")
+OIDC_SCOPES = env("OIDC_SCOPES", default="openid email profile")
+OIDC_TRUST_EMAIL = env.bool("OIDC_TRUST_EMAIL", default=False)
 UNSPLASH_ACCESS_KEY = env("UNSPLASH_ACCESS_KEY", default="")
 PEXELS_API_KEY = env("PEXELS_API_KEY", default="")
 PIXABAY_API_KEY = env("PIXABAY_API_KEY", default="")
+# Stock videos use keys of their own, so clip searches and photo searches don't share one quota; each falls
+# back to the photo key of the same provider.
+PEXELS_VIDEO_API_KEY = env("PEXELS_VIDEO_API_KEY", default="")
+PIXABAY_VIDEO_API_KEY = env("PIXABAY_VIDEO_API_KEY", default="")
+# Freesound (apps.assets.freesound): the Audio tool's Freesound tab is on when the key is set. Licences a
+# sound may have: cc0 (default), or cc0,by to add Creative Commons Attribution (the editor asks for credits).
+# Freesound's API terms cover non-commercial use; a commercial service needs an agreement with Freesound.
+FREESOUND_API_KEY = env("FREESOUND_API_KEY", default="")
+FREESOUND_LICENSES = env.list("FREESOUND_LICENSES", default=["cc0"])
 
 # ---- Stock photos (apps.assets.stock). A provider is on when its key is set and it is listed here; the
 # order is the order of the tabs. The per-key limits and cache times only hold across workers with a shared
@@ -175,14 +212,27 @@ STOCK_DEFAULT_TAB = env("STOCK_DEFAULT_TAB", default="all")  # "all" or a provid
 STOCK_LANG_FROM_UI = env.bool("STOCK_LANG_FROM_UI", default=True)
 # photo, illustration, vector or all
 STOCK_PIXABAY_IMAGE_TYPE = env("STOCK_PIXABAY_IMAGE_TYPE", default="photo")
+# Stock videos (apps.assets.video_stock): on when the provider has a key and is listed here, in tab order.
+STOCK_VIDEO_PROVIDERS = env.list("STOCK_VIDEO_PROVIDERS", default=["pexels_video", "pixabay_video"])
 # Per provider: search cache time; calls allowed per API key, all users together ("100/m", "5000/h"; empty: no
 # cap of our own, Doory still pauses a provider when it answers 429 or reports its quota used up); safe search
 # (Unsplash: content_filter=high; Pixabay: safesearch). Unsplash keeps its previous unfiltered default.
-_STOCK_DEFAULTS = {"unsplash": (3600, False), "pexels": (3600, True), "pixabay": (86400, True)}
+_STOCK_DEFAULTS = {
+    "unsplash": (3600, False),
+    "pexels": (3600, True),
+    "pixabay": (86400, True),
+    "freesound": (86400, False),
+    "pexels_video": (3600, True),
+    "pixabay_video": (86400, True),  # Pixabay asks for results to be cached for 24 h
+}
+_STOCK_RATES = {
+    "freesound": "60/m",  # Freesound allows 60 calls a minute (and 2000 a day) per key
+    "pexels_video": "200/h",  # Pexels' free key: 200 an hour (and 20,000 a month)
+}
 STOCK_PROVIDER_SETTINGS = {
     name: {
         "cache_seconds": env.int(f"STOCK_{name.upper()}_CACHE_SECONDS", default=cache_seconds),
-        "rate": env(f"STOCK_{name.upper()}_RATE", default=""),
+        "rate": env(f"STOCK_{name.upper()}_RATE", default=_STOCK_RATES.get(name, "")),
         "safesearch": env.bool(f"STOCK_{name.upper()}_SAFESEARCH", default=safesearch),
     }
     for name, (cache_seconds, safesearch) in _STOCK_DEFAULTS.items()
@@ -209,7 +259,13 @@ REST_FRAMEWORK = {
         "auth": "20/min",  # login / register / password reset
         "upload": "60/min",
         "stock": "60/min",
+        "video_upload": "20/min",  # clips uploaded or imported: each one runs ffmpeg
+        "stock_preview": "300/min",  # listening to Freesound previews; searches keep the `stock` budget
+        "bulk_fill": "120/min",  # rows created via bulk-fill (REST)
+        "bulk_fill_images": "300/min",  # image URLs fetched by bulk-fill (REST and MCP)
         "export": "30/min",  # server-side image renders (REST and MCP)
+        "optimize": "60/min",  # images the browser drew, converted and optimized (POST /exports/optimize/)
+        "ai": "30/min",  # calls to AI image providers (REST and MCP)
     },
     "DEFAULT_RENDERER_CLASSES": ["rest_framework.renderers.JSONRenderer"],
     "DEFAULT_PARSER_CLASSES": [
@@ -288,20 +344,93 @@ EXPORT_ALLOWED_ORIGINS = env.list(
     default=["/".join(SITE_URL.split("/")[:3]), "http://127.0.0.1:8000", "http://localhost:8000"],
 )
 
-# Server-side PNG/JPG/WebP export of a saved design page (apps.exports.services.export_image). Off by default:
-# turning it on opens the frontend's headless render page in the export browser with JavaScript enabled and
-# draws the page with the editor's engine. It must be the *built* frontend's `render.html`: the Vite dev
-# server serves modules from paths it may not load.
+# Server-side PNG/JPG/WebP/AVIF export of saved design pages (apps.exports.services.export_image). Off by
+# default: turning it on opens the frontend's headless render page in the export browser with JavaScript
+# enabled and draws the page with the editor's engine. It must be the *built* frontend's `render.html`: the
+# Vite dev server serves modules from paths it may not load.
 SERVER_IMAGE_EXPORT_ENABLED = env.bool("SERVER_IMAGE_EXPORT_ENABLED", default=False)
 EXPORT_RENDER_PAGE_URL = env(
     "EXPORT_RENDER_PAGE_URL", default="/".join(SITE_URL.split("/")[:3]) + "/render.html"
 )
 EXPORT_IMAGE_MAX_PIXELS = env.int("EXPORT_IMAGE_MAX_PIXELS", default=40_000_000)  # output width x height
 EXPORT_IMAGE_MAX_DOCUMENT_BYTES = env.int("EXPORT_IMAGE_MAX_DOCUMENT_BYTES", default=5 * 1024 * 1024)
+# Pages one export may draw (`pages`, sent back as a ZIP). Each page is a render of its own, and the whole
+# export is one request: keep pages x EXPORT_TIMEOUT_SECONDS under the web server's worker timeout.
+EXPORT_IMAGE_MAX_PAGES = env.int("EXPORT_IMAGE_MAX_PAGES", default=10)
+# Server-side MP4, WebM and GIF of saved designs (apps.exports.services.export_video), on the same render page
+# with the editor's video pipeline. Off by default: one video keeps a browser busy for minutes. It also needs
+# SERVER_IMAGE_EXPORT_ENABLED. The deadline covers the whole file; the bundled nginx waits 330 s for it.
+SERVER_VIDEO_EXPORT_ENABLED = env.bool("SERVER_VIDEO_EXPORT_ENABLED", default=False)
+EXPORT_VIDEO_TIMEOUT_SECONDS = env.int("EXPORT_VIDEO_TIMEOUT_SECONDS", default=300)
+EXPORT_VIDEO_MAX_SECONDS = env.int("EXPORT_VIDEO_MAX_SECONDS", default=120)  # the longest video or GIF
+EXPORT_VIDEO_MAX_RESOLUTION = env.int("EXPORT_VIDEO_MAX_RESOLUTION", default=1080)  # shorter side, px
+EXPORT_VIDEO_MAX_BYTES = env.int("EXPORT_VIDEO_MAX_BYTES", default=200 * 1024 * 1024)
+
+# Image optimizers (apps.exports.optimizers): make exported and downloaded images smaller after drawing them.
+# IMAGE_OPTIMIZERS lists the ones people may pick, in order (empty: none). `builtin` runs mozjpeg and oxipng
+# on this server (the Docker image has them; it is left out where they are missing). `tinypng`, `kraken` and
+# `custom` send the image to that service and are left out until their key (or URL) is set. An optimizer
+# that fails or times out leaves the file as it was, and no file is ever made bigger.
+IMAGE_OPTIMIZERS = env.list("IMAGE_OPTIMIZERS", default=["builtin"])
+IMAGE_OPTIMIZER_DEFAULT = env("IMAGE_OPTIMIZER_DEFAULT", default="builtin")  # what `optimize: true` uses
+IMAGE_OPTIMIZER_TIMEOUT = env.int("IMAGE_OPTIMIZER_TIMEOUT", default=30)  # seconds per file
+# Largest file optimized, and the largest image POST /api/v1/exports/optimize/ takes.
+IMAGE_OPTIMIZER_MAX_BYTES = env.int("IMAGE_OPTIMIZER_MAX_BYTES", default=25 * 1024 * 1024)
+TINYPNG_API_KEY = env("TINYPNG_API_KEY", default="")
+KRAKEN_API_KEY = env("KRAKEN_API_KEY", default="")
+KRAKEN_API_SECRET = env("KRAKEN_API_SECRET", default="")
+# Any other optimizer that follows the small HTTP contract in docs/integrations/image-optimization.md.
+IMAGE_OPTIMIZER_CUSTOM_NAME = env("IMAGE_OPTIMIZER_CUSTOM_NAME", default="Custom")
+IMAGE_OPTIMIZER_CUSTOM_URL = env("IMAGE_OPTIMIZER_CUSTOM_URL", default="")
+IMAGE_OPTIMIZER_CUSTOM_KEY = env("IMAGE_OPTIMIZER_CUSTOM_KEY", default="")
 
 # ---- In-browser background removal (apps.core.mlmodels; `manage.py sync_models` installs the model) ----
 BACKGROUND_REMOVAL_ENABLED = env.bool("BACKGROUND_REMOVAL_ENABLED", default=True)
 BACKGROUND_REMOVAL_MODEL = env("BACKGROUND_REMOVAL_MODEL", default="")  # empty: the best installed model
+
+# ---- AI image providers (apps.ai): remote servers for background removal and later image tasks ----
+AI_PROVIDERS_ENABLED = env.bool("AI_PROVIDERS_ENABLED", default=True)
+# Whether users may add their own servers ("bring your own server"): off, staff or everyone.
+AI_USER_PROVIDERS = env("AI_USER_PROVIDERS", default="off")
+AI_USER_PROVIDERS_ALLOW_HTTP = env.bool("AI_USER_PROVIDERS_ALLOW_HTTP", default=False)
+# Extra ports for users' own servers (443 and 8443 always; 80 and 8080 with AI_USER_PROVIDERS_ALLOW_HTTP).
+AI_USER_PROVIDERS_ALLOWED_PORTS = env.list("AI_USER_PROVIDERS_ALLOWED_PORTS", cast=int, default=[])
+AI_MAX_PROVIDERS_PER_USER = env.int("AI_MAX_PROVIDERS_PER_USER", default=10)
+# Host names an operator provider may reach on a private network (e.g. a model server container). IP addresses
+# the operator types are allowed too; everything else must resolve to public addresses only.
+AI_ALLOWED_PRIVATE_HOSTS = env.list("AI_ALLOWED_PRIVATE_HOSTS", default=[])
+# Fernet key for stored provider secrets; empty: derived from DJANGO_SECRET_KEY (see apps.ai.secrets).
+AI_SECRETS_KEY = env("AI_SECRETS_KEY", default="")
+AI_SECRETS_KEY_FALLBACKS = env.list("AI_SECRETS_KEY_FALLBACKS", default=[])
+AI_DEFAULT_TIMEOUT_SECONDS = env.int("AI_DEFAULT_TIMEOUT_SECONDS", default=60)
+# Largest image sent to (and read back from) a provider, unless the provider sets its own limit.
+AI_MAX_IMAGE_BYTES = env.int("AI_MAX_IMAGE_BYTES", default=25 * 1024 * 1024)
+AI_CACHE_SECONDS = env.int("AI_CACHE_SECONDS", default=7 * 24 * 60 * 60)  # identical calls reuse the result
+# The option the editor starts with, per task: "device" (in the browser) or an id from /api/v1/ai/models/.
+AI_TASK_DEFAULTS = {"background-removal": env("BACKGROUND_REMOVAL_DEFAULT", default="device")}
+# The editor's one-line notice under options that send the image off this installation; empty: its own.
+AI_OFFSITE_NOTICE = env("AI_OFFSITE_NOTICE", default="")
+# Operator providers from the environment: AI_PROVIDER_1_URL … AI_PROVIDER_9_URL (see .env.example and
+# apps.ai.env). Kept as the raw strings here; apps.ai.env checks them.
+AI_ENV_PROVIDER_FIELDS = (
+    "URL",
+    "STYLE",
+    "TASKS",
+    "MODELS",
+    "AUTH_HEADER",
+    "AUTH_VALUE",
+    "STYLE_CONFIG",
+    "LABEL",
+    "SENDS_OFFSITE",
+    "TIMEOUT_SECONDS",
+    "MAX_IMAGE_BYTES",
+    "DAILY_QUOTA",
+)
+AI_ENV_PROVIDERS = [
+    {"index": n, **{field: env(f"AI_PROVIDER_{n}_{field}", default="") for field in AI_ENV_PROVIDER_FIELDS}}
+    for n in range(1, 10)
+    if env(f"AI_PROVIDER_{n}_URL", default="")
+]
 
 # ---- Element library (apps.elements) ----
 # Keep the brand logos (trademarks) the icon packs contain when `sync_element_packs` runs.
@@ -345,7 +474,9 @@ MCP_ENABLED = env.bool("MCP_ENABLED", default=False)  # opt-in; Docker also need
 MCP_PATH = "/mcp"
 MCP_CALLS_PER_MINUTE = env.int("MCP_CALLS_PER_MINUTE", default=120)  # per user; 0 = unlimited
 MCP_MAX_REQUEST_BYTES = env.int("MCP_MAX_REQUEST_BYTES", default=4 * 1024 * 1024)
-MCP_URL_UPLOADS = env.bool("MCP_URL_UPLOADS", default=True)  # upload_image_from_url (public https only)
+# Copy images from public https URLs: the upload_image_from_url tool, and image values of fill and bulk fill
+# (MCP and REST). MCP_URL_UPLOADS is the old name, still read.
+URL_IMAGE_UPLOADS = env.bool("URL_IMAGE_UPLOADS", default=env.bool("MCP_URL_UPLOADS", default=True))
 # export_design: larger images are sent as a download link instead of inline; links expire after the TTL.
 # Stored outside MEDIA_ROOT so `/media/` never serves them directly; `ImageDownloadView` is the only way in.
 MCP_EXPORT_INLINE_MAX_BYTES = env.int("MCP_EXPORT_INLINE_MAX_BYTES", default=1024 * 1024)

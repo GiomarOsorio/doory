@@ -34,6 +34,8 @@ export interface RunExportInput {
   pages: PageSelection
   options: ExportOptions
   onProgress?: (fraction: number, stage?: ExportStage) => void
+  /** Notes about the files (a server step that failed and was skipped); the person should see them. */
+  onNote?: (message: string) => void
   signal?: AbortSignal
   /** Pack several files into one ZIP (default). `false` returns the files one by one. */
   bundle?: boolean
@@ -63,6 +65,7 @@ export async function runExport(engine: EditorEngine, input: RunExportInput): Pr
       title: engine.state.title,
       naming,
       onProgress: input.onProgress ?? (() => undefined),
+      onNote: input.onNote,
       signal,
     })
     return input.bundle === false ? files : await bundleFiles(files, engine.state.title, naming)

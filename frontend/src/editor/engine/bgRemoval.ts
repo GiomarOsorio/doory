@@ -6,6 +6,11 @@
  */
 export type BgRemovalPhase = 'downloading' | 'processing'
 
+/** The task id of background removal on the server (`POST /api/v1/ai/background-removal/`). */
+export const BACKGROUND_REMOVAL_TASK = 'background-removal'
+/** The option id of the in-browser model. */
+export const DEVICE_OPTION = 'device'
+
 export type BgRemovalFailure = 'unavailable' | 'blocked' | 'no-subject'
 
 export class BackgroundRemovalError extends Error {

@@ -576,6 +576,52 @@ describe('EditorEngine', () => {
     engine.dispose()
   })
 
+  it('fit to page stretches a shape over the whole page and straightens it', async () => {
+    const { engine, view } = await setup()
+    await engine.insert.shape('rect')
+    engine.arrange.setAngle(30)
+    engine.arrange.fitToPage()
+    expect(engine.state.selection.bounds?.angle).toBe(0)
+    // The outer edge, border included, lines up with the page.
+    const r = view.canvas.getObjects()[0].getBoundingRect()
+    expect(r.left).toBeCloseTo(0)
+    expect(r.top).toBeCloseTo(0)
+    expect(r.width).toBeCloseTo(800)
+    expect(r.height).toBeCloseTo(600)
+    engine.dispose()
+  })
+
+  it('fit to page leaves text alone', async () => {
+    const { engine, view } = await setup()
+    await engine.insert.text('heading')
+    const text = view.canvas.getObjects()[0]
+    const before = { width: text.width, fontSize: text.get('fontSize') }
+    engine.arrange.fitToPage()
+    expect({ width: text.width, fontSize: text.get('fontSize') }).toEqual(before)
+    engine.dispose()
+  })
+
+  it('fit to page covers the page with a picture without distorting it', async () => {
+    const restore = installImageStub({ width: 200, height: 100 })
+    vi.spyOn(FabricImage.prototype, '_render').mockImplementation(() => undefined)
+    const { engine, view } = await setup()
+    URL.createObjectURL = vi.fn(() => 'blob:fake-1')
+    await engine.insert.imageFiles([new File([new Uint8Array([1])], 'wide.png', { type: 'image/png' })])
+    await vi.waitFor(() => expect(view.canvas.getObjects()).toHaveLength(1))
+    engine.arrange.fitToPage()
+    const img = view.canvas.getObjects()[0] as FabricImage
+    // 200x100 onto 800x600: scaled 6x on both axes, the sides cropped off.
+    expect(img.scaleX).toBeCloseTo(6)
+    expect(img.scaleY).toBeCloseTo(6)
+    expect(img.cropX).toBeCloseTo(100 / 3)
+    expect(img.getScaledWidth()).toBeCloseTo(800)
+    expect(img.getScaledHeight()).toBeCloseTo(600)
+    expect(img.getBoundingRect().left).toBeCloseTo(0)
+    expect(img.getBoundingRect().top).toBeCloseTo(0)
+    engine.dispose()
+    restore()
+  })
+
   it('rotates around the centre', async () => {
     const { engine } = await setup()
     await engine.insert.shape('rect')

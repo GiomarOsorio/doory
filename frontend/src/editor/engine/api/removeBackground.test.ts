@@ -109,4 +109,62 @@ describe('StyleApi.removeBackground', () => {
     expect(handle.uploads).toHaveLength(uploadsBefore)
     engine.dispose()
   })
+
+  describe('with a server option', () => {
+    const cutout = { id: 'cut', url: '/media/cut.png', thumbUrl: '/media/cut.webp', width: 200, height: 100, name: 'cat (no background)', kind: 'image' as const }
+
+    it('runs on the server with the image and its asset, swaps the result in as one undo step and keeps the original', async () => {
+      const { engine, handle } = await setup()
+      const run = vi.fn(async () => cutout)
+      handle.adapter.services.ai = { options: vi.fn(), run, remembered: () => null, remember: vi.fn() }
+      const before = engine.state.doc.pages[0].objects[0]
+      const uploadsBefore = handle.uploads.length
+      const controller = new AbortController()
+
+      expect(await engine.style.removeBackground(undefined, controller.signal, 'env-1:best')).toBe(true)
+
+      expect(removal.run).not.toHaveBeenCalled()
+      expect(run).toHaveBeenCalledWith('background-removal', { model: 'env-1:best', image: expect.any(Function), assetId: before.assetId, signal: controller.signal })
+      // The image is fetched only when the service asks for it (it may need just the asset).
+      const [, input] = run.mock.calls[0] as unknown as [string, { image: () => Promise<Blob> }]
+      expect((await input.image()).size).toBeGreaterThan(0)
+      expect(handle.uploads).toHaveLength(uploadsBefore) // the server made the asset
+      expect(engine.state.doc.pages[0].objects[0]).toMatchObject({ src: '/media/cut.png', assetId: 'cut' })
+      await engine.undo()
+      expect(engine.state.doc.pages[0].objects[0]).toMatchObject({ src: before.src, assetId: before.assetId })
+      engine.dispose()
+    })
+
+    it('leaves the design untouched when cancelled while the server works', async () => {
+      const { engine, handle } = await setup()
+      const controller = new AbortController()
+      handle.adapter.services.ai = {
+        options: vi.fn(),
+        run: vi.fn(async () => {
+          controller.abort()
+          throw new DOMException('Aborted', 'AbortError')
+        }),
+        remembered: () => null,
+        remember: vi.fn(),
+      }
+      const doc = engine.state.doc
+      expect(await engine.style.removeBackground(undefined, controller.signal, 'env-1:best')).toBe(false)
+      expect(engine.state.doc).toBe(doc)
+      engine.dispose()
+    })
+
+    it('reports the server failure as it is', async () => {
+      const { engine, handle } = await setup()
+      const failure = new Error('ai_timeout')
+      handle.adapter.services.ai = { options: vi.fn(), run: vi.fn(async () => Promise.reject(failure)), remembered: () => null, remember: vi.fn() }
+      await expect(engine.style.removeBackground(undefined, undefined, 'env-1:best')).rejects.toBe(failure)
+      engine.dispose()
+    })
+
+    it('refuses a server option where the adapter has no AI service', async () => {
+      const { engine } = await setup()
+      await expect(engine.style.removeBackground(undefined, undefined, 'env-1:best')).rejects.toThrow(/No server option/)
+      engine.dispose()
+    })
+  })
 })

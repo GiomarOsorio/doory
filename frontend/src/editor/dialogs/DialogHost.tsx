@@ -16,6 +16,7 @@ const BackgroundRemovalDialog = dialogChunk(() => import('./BackgroundRemovalDia
 const UpscaleDialog = dialogChunk(() => import('./UpscaleDialog').then((m) => m.UpscaleDialog))
 const ShareDialog = dialogChunk(() => import('./ShareDialog').then((m) => m.ShareDialog))
 const VersionsDialog = dialogChunk(() => import('./VersionsDialog').then((m) => m.VersionsDialog))
+const BulkCreateDialog = dialogChunk(() => import('./BulkCreateDialog').then((m) => m.BulkCreateDialog))
 const UploadFontDialog = dialogChunk(() => import('../fonts/UploadFontDialog').then((m) => m.UploadFontDialog))
 
 const lazyDialog = (id: string, component: DialogDefinition['component'] & { preload(): void }): DialogDefinition => ({ id, component, preload: component.preload })
@@ -27,6 +28,7 @@ registerDialog(lazyDialog('background-removal', BackgroundRemovalDialog))
 registerDialog(lazyDialog('upscale', UpscaleDialog))
 registerDialog(lazyDialog('share', ShareDialog))
 registerDialog(lazyDialog('versions', VersionsDialog))
+registerDialog(lazyDialog('bulk-create', BulkCreateDialog))
 registerDialog(lazyDialog('upload-font', UploadFontDialog))
 registerDialog({ id: 'presenter', component: PresenterDialog })
 

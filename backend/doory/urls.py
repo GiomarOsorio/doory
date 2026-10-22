@@ -21,6 +21,7 @@ urlpatterns = [
     path("api/v1/", include("apps.collab.urls")),
     path("api/v1/", include("apps.presets.urls")),
     path("api/v1/", include("apps.apitokens.urls")),
+    path("api/v1/ai/", include("apps.ai.urls")),
 ]
 
 if settings.DEBUG:

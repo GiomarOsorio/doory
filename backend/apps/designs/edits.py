@@ -25,6 +25,7 @@ from apps.collab import engine, schema, store
 from apps.collab.notify import notify_design
 
 from . import services
+from .doc.kinds import object_kind
 from .doc.ops import MAX_OPS, EditError, EditOutcome, Resolver, apply_ops
 from .exceptions import DesignTrashed, RevisionConflict
 from .models import Design
@@ -71,6 +72,66 @@ def _prefetch_urls(ops: list, resolver: Resolver) -> None:
                 raise EditError(index, str(exc)) from exc
 
 
+def _prefetch_cutouts(document: dict, ops: list, resolver: Resolver) -> None:
+    """Run the AI calls of `remove_background` operations before taking the design's row lock, against the
+    pictures as they are now. Their calls and cut-outs are kept even when the edit fails later: the provider
+    has done (and may have billed) the work, and the daily quota counts it."""
+    pages = [page for page in document.get("pages") or [] if isinstance(page, dict)]
+    objects = {
+        obj.get("id"): obj
+        for page in pages
+        for obj in page.get("objects") or []
+        if isinstance(obj, dict) and object_kind(obj) in ("image", "placeholder")
+    }
+    _refuse_changed_pictures(pages, ops)
+    for index, op in enumerate(ops):
+        if getattr(op, "op", None) == "remove_background" and op.object_id in objects:
+            try:
+                resolver.remove_background(obj=objects[op.object_id], model=op.model)
+            except LookupError as exc:
+                raise EditError(index, str(exc)) from exc
+
+
+def _refuse_changed_pictures(pages: list[dict], ops: list) -> None:
+    """Refuse, before any AI call, a `remove_background` of a picture an earlier operation of the same call
+    changes, groups, deletes or removes the background of: its cut-out would be made from the picture as it
+    was and then refused under the lock, after the provider has done (and billed) the work."""
+    page_of = {
+        obj.get("id"): page.get("id")
+        for page in pages
+        for obj in page.get("objects") or []
+        if isinstance(obj, dict)
+    }
+    page_ids = [page.get("id") for page in pages]
+    touched: set = set()
+    deleted_pages: set = set()
+    for index, op in enumerate(ops):
+        kind = getattr(op, "op", None)
+        if kind == "remove_background":
+            if op.object_id in touched or page_of.get(op.object_id) in deleted_pages:
+                raise EditError(
+                    index,
+                    "This picture is changed earlier in the same call: remove its background in a second "
+                    "edit_design call.",
+                )
+            touched.add(op.object_id)
+        elif kind == "delete_page":
+            page = op.page
+            if isinstance(page, int) and 0 <= page < len(page_ids):
+                page = page_ids[page]
+            deleted_pages.add(page)
+        else:
+            touched.update(getattr(op, "object_ids", None) or [])
+            if getattr(op, "object_id", None) is not None:
+                touched.add(op.object_id)
+
+
+def _seal(resolver: Resolver, sealed: bool = True) -> None:
+    seal = getattr(resolver, "seal", None)  # optional: resolvers that never do slow work need none
+    if seal is not None:
+        seal(sealed)
+
+
 def apply_edit(
     design_id: uuid.UUID,
     owner,
@@ -87,12 +148,20 @@ def apply_edit(
         # The stored revision lags the live state by up to a flush, so `base_revision` is not checked here:
         # the edit merges into the session like one more collaborator's.
         _prefetch_urls(ops, resolver)
-        result = _apply_live(design, owner, ops, resolver, label)
-        if result is not None:
-            return result
+        live = _live_document(design.pk)
+        if live is not None:
+            _prefetch_cutouts(live[1], ops, resolver)
+            _seal(resolver)
+            result = _apply_live(design, owner, ops, resolver, label)
+            if result is not None:
+                return result
     if base_revision is not None and base_revision != design.revision:
         raise RevisionConflict(design.revision, design.updated_at)
     _prefetch_urls(ops, resolver)
+    # Opened again when a live room fell through to here: the saved content is what gets edited now.
+    _seal(resolver, False)
+    _prefetch_cutouts(Design.objects.only("document").get(pk=design.pk).document, ops, resolver)
+    _seal(resolver)
     return _apply_saved(design.pk, owner, ops, resolver, base_revision, label)
 
 

@@ -30,6 +30,8 @@ services:
       context: ./backend
       args:
         INSTALL_CHROMIUM: ${INSTALL_CHROMIUM:-true}
+        INSTALL_FFMPEG: ${INSTALL_FFMPEG:-true}
+        INSTALL_IMAGE_OPTIMIZERS: ${INSTALL_IMAGE_OPTIMIZERS:-true}
     restart: unless-stopped
     init: true  # reaps the Chromium child processes of the PDF export
     depends_on:
@@ -75,6 +77,8 @@ services:
       context: ./backend
       args:
         INSTALL_CHROMIUM: ${INSTALL_CHROMIUM:-true}
+        INSTALL_FFMPEG: ${INSTALL_FFMPEG:-true}
+        INSTALL_IMAGE_OPTIMIZERS: ${INSTALL_IMAGE_OPTIMIZERS:-true}
     restart: unless-stopped
     init: true
     # A hostile update can make the CRDT engine allocate a lot of memory; the limit makes the kernel stop this
@@ -138,6 +142,8 @@ services:
       context: ./backend
       args:
         INSTALL_CHROMIUM: ${INSTALL_CHROMIUM:-true}
+        INSTALL_FFMPEG: ${INSTALL_FFMPEG:-true}
+        INSTALL_IMAGE_OPTIMIZERS: ${INSTALL_IMAGE_OPTIMIZERS:-true}
     restart: unless-stopped
     init: true
     # An edit to a design open in the editor replays its whole update log here, so a large or hostile log can
@@ -192,6 +198,33 @@ services:
       timeout: 5s
       start_period: 60s
       retries: 5
+
+  # Optional: the reference AI server for background removal (models with open licences, CPU only). Opt-in:
+  # add `ai` to COMPOSE_PROFILES, and set AI_SERVER_API_KEY: it doesn't start without one. Not published on
+  # the host; the api reaches it at http://ai-server:7000.
+  ai-server:
+    profiles: [ai]
+    build:
+      context: ./deploy/ai-server
+      args:
+        MODELS: ${AI_SERVER_MODELS:-isnet-general-use,u2netp}  # baked into the image at build time
+    restart: unless-stopped
+    init: true
+    # Each loaded model stays in memory; the limit stops this service (and `restart` brings it back) instead of
+    # starving the host.
+    mem_limit: ${AI_SERVER_MEM_LIMIT:-2g}
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      AVAILABLE_MODELS: ${AI_SERVER_MODELS:-isnet-general-use,u2netp}
+      DEFAULT_MODEL: ${AI_SERVER_DEFAULT_MODEL:-isnet-general-use}
+      API_KEY: ${AI_SERVER_API_KEY:-}
+      WORKERS: ${AI_SERVER_WORKERS:-1}
+      OMP_NUM_THREADS: ${AI_SERVER_THREADS:-4}
 
   # Optional: shares live rooms between several realtime workers or replicas. Nothing is stored in it.
   redis:

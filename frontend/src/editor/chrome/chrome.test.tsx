@@ -1,11 +1,17 @@
 import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { CONTRAST_KEY, setContrastPreference } from '@/lib/contrast'
 import '../builtins/commands'
 import '../builtins/panels'
 import '../presenter/commands'
 import '../engine/export/formats'
 import { setupEditor } from '../animation/testing'
+import { createBlankDocument } from '@/lib/document'
+import type { DoryDocument } from '@/types/document'
+import { downloadFiles, runExport } from '../engine/export/exporter'
+import { saveLastExport } from '../engine/export/choices'
+import { DEFAULT_EXPORT_OPTIONS } from '../engine/export/registry'
 import type { EditorEngine } from '../engine/editor'
 import { EditorProvider } from '../EditorProvider'
 import { SaveStatus } from '../SaveStatus'
@@ -15,8 +21,14 @@ import { ChromeProvider } from './ChromeContext'
 import { SidebarHost } from './ToolHost'
 import { ToolRail } from './ToolRail'
 
-async function mount(mode?: 'guest' | 'shared-view') {
-  const { engine } = await setupEditor({ mode })
+vi.mock('../engine/export/exporter', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../engine/export/exporter')>()),
+  downloadFiles: vi.fn(),
+  runExport: vi.fn(async () => [{ blob: new Blob(['x']), filename: 'Test.jpg' }]),
+}))
+
+async function mount(mode?: 'guest' | 'shared-view', doc?: DoryDocument) {
+  const { engine } = await setupEditor({ mode, doc })
   await act(async () => {
     render(
       <EditorProvider engine={engine} portalRoot={document.body}>
@@ -56,6 +68,7 @@ describe('editor chrome', () => {
     engine = null
     vi.restoreAllMocks()
     vi.unstubAllGlobals()
+    setContrastPreference('system')
     document.body.innerHTML = ''
   })
 
@@ -112,6 +125,27 @@ describe('editor chrome', () => {
     expect(within(view).getByRole('menuitem', { name: /Keyboard shortcuts/ })).toBeInTheDocument()
   })
 
+  it('switches high contrast from the View menu', async () => {
+    engine = await mount()
+    await userEvent.click(screen.getByRole('button', { name: t.topbar.view }))
+    const item = within(screen.getByRole('menu', { name: t.topbar.view })).getByRole('menuitemcheckbox', { name: t.cmd.viewHighContrast })
+    expect(item).toHaveAttribute('aria-checked', 'false')
+    await userEvent.click(item)
+    expect(document.documentElement.dataset.contrast).toBe('more')
+    expect(localStorage.getItem(CONTRAST_KEY)).toBe('more')
+    await userEvent.click(screen.getByRole('button', { name: t.topbar.view }))
+    expect(within(screen.getByRole('menu', { name: t.topbar.view })).getByRole('menuitemcheckbox', { name: t.cmd.viewHighContrast })).toHaveAttribute('aria-checked', 'true')
+  })
+
+  it('offers high contrast on a view-only link too', async () => {
+    engine = await mount('shared-view')
+    await userEvent.click(screen.getByRole('button', { name: t.topbar.view }))
+    const item = within(screen.getByRole('menu', { name: t.topbar.view })).getByRole('menuitemcheckbox', { name: t.cmd.viewHighContrast })
+    expect(item).toBeEnabled()
+    await userEvent.click(item)
+    expect(document.documentElement.dataset.contrast).toBe('more')
+  })
+
   it('gathers sharing, downloads and presenting in the one Share menu', async () => {
     engine = await mount()
     expect(screen.queryByTestId('ed-download')).not.toBeInTheDocument()
@@ -121,6 +155,51 @@ describe('editor chrome', () => {
     expect(within(menu).getByText(t.topbar.downloadHeading)).toBeInTheDocument()
     expect(within(menu).getByRole('menuitem', { name: /PNG/ })).toBeInTheDocument()
     expect(within(menu).getByRole('menuitem', { name: t.topbar.presentFull })).toBeInTheDocument()
+  })
+
+  it('downloads in one click from the format tiles, and opens the dialog for video and for every option', async () => {
+    localStorage.clear()
+    vi.mocked(runExport).mockClear()
+    engine = await mount()
+    await userEvent.click(screen.getByTestId('ed-share'))
+    const menu = screen.getByRole('menu')
+    expect(within(menu).queryByRole('menuitem', { name: new RegExp(t.topbar.lastUsed) })).toBeNull()
+    for (const name of [/^PNG/, /^JPG/, /^PDF/, /^SVG/, new RegExp(`^${t.topbar.videoDownload}`)]) expect(within(menu).getByRole('menuitem', { name })).toBeInTheDocument()
+    expect(within(menu).getByRole('menuitem', { name: new RegExp(t.topbar.copyImage) })).toBeInTheDocument()
+    await userEvent.click(within(menu).getByRole('menuitem', { name: /^JPG/ }))
+    await waitFor(() => expect(downloadFiles).toHaveBeenCalled())
+    expect(vi.mocked(runExport).mock.calls[0][1]).toMatchObject({ formatId: 'jpg', pages: { kind: 'all' } })
+    await userEvent.click(screen.getByTestId('ed-share'))
+    await userEvent.click(within(screen.getByRole('menu')).getByRole('menuitem', { name: new RegExp(`^${t.topbar.videoDownload}`) }))
+    expect(engine.state.ui.dialog).toEqual({ id: 'download', props: { format: 'mp4' } })
+    engine.closeDialog()
+    await userEvent.click(screen.getByTestId('ed-share'))
+    await userEvent.click(within(screen.getByRole('menu')).getByRole('menuitem', { name: new RegExp(t.topbar.moreDownloadOptions) }))
+    expect(engine.state.ui.dialog?.id).toBe('download')
+  })
+
+  it('suggests a download for the design\'s size preset, and offers the last download again', async () => {
+    localStorage.clear()
+    vi.mocked(runExport).mockClear()
+    saveLastExport({ formatId: 'png', options: { ...DEFAULT_EXPORT_OPTIONS, size: '2x', transparent: true } })
+    engine = await mount(undefined, { ...createBlankDocument(1080, 1920), meta: { presetId: 'instagram-story' } })
+    await userEvent.click(screen.getByTestId('ed-share'))
+    const menu = screen.getByRole('menu')
+    const suggested = within(menu).getByRole('menuitem', { name: new RegExp(t.topbar.suggestedFor('Instagram Story')) })
+    expect(suggested).toHaveTextContent('JPG · 1x · 1080 × 1920')
+    const last = within(menu).getByRole('menuitem', { name: new RegExp(t.topbar.lastUsed) })
+    expect(last).toHaveTextContent('PNG · 2x')
+    await userEvent.click(suggested)
+    await waitFor(() => expect(runExport).toHaveBeenCalledTimes(1))
+    expect(vi.mocked(runExport).mock.calls[0][1]).toMatchObject({ formatId: 'jpg', options: { size: '1x', qualityPreset: 'balanced' } })
+    // The suggestion is now the last download.
+    await waitFor(() => expect(JSON.parse(localStorage.getItem('doory-export-last') ?? '{}').formatId).toBe('jpg'))
+  })
+
+  it('has no suggestion once the page no longer has the preset\'s size', async () => {
+    engine = await mount(undefined, { ...createBlankDocument(1000, 1000), meta: { presetId: 'instagram-story' } })
+    await userEvent.click(screen.getByTestId('ed-share'))
+    expect(within(screen.getByRole('menu')).queryByRole('menuitem', { name: /Suggested for/ })).toBeNull()
   })
 
   it('offers downloads without sharing on a view-only link, and no tools that change the design', async () => {

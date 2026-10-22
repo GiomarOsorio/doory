@@ -3,15 +3,16 @@
  * image adjustments, masks, upscaling, recolouring, links and QR content. Continuous controls (sliders, colour
  * scrubbing) pass a `key` so their steps coalesce into one undo step.
  */
-import { type FabricImage, type FabricObject, IText, Polygon, Rect, Shadow } from 'fabric'
+import { type FabricImage, type FabricObject, IText, Point, Polygon, Rect, Shadow, util } from 'fabric'
 import type { ArrowHead, DocField, DocTextFit, ImageFilterSpec, MaskShape, ObjectEffects, ShadowSpec } from '@/types/document'
+import type { AssetRef } from '@/types/adapter'
 import type { EditorEngine } from '../editor'
-import { removeBackground as runRemoval, type BgRemovalPhase } from '../bgRemoval'
+import { BACKGROUND_REMOVAL_TASK, BackgroundRemovalError, DEVICE_OPTION, removeBackground as runRemoval, type BgRemovalPhase } from '../bgRemoval'
 import { targetSize, upscaleImage as runUpscale, type CropRect, type UpscaleMethod, type UpscaleProgress } from '../upscale'
 import { MAX_UPLOAD_BYTES } from '../assets'
 import { DoryLine } from '../objects/DoryLine'
 import { asDory } from '../objects/dory'
-import { applyColorMap } from '../objects/elements'
+import { SVG_EDIT_LIMITS, applyColorMap, elementColors, isSvgSource, parseSvgElement, shapeCount, svgEditProblem } from '../objects/elements'
 import { applyEffects } from '../objects/effects'
 import { readField } from '../fields'
 import { type FillSpec, buildFill } from '../objects/fills'
@@ -27,6 +28,7 @@ import { normalizeColor } from '../colors'
 import type { ImageFilterType } from '@/types/document'
 import { coverFrame } from './insert'
 import { t } from '../../strings'
+import { isLiveClip } from './videos'
 
 /** The normalised URL when `raw` is an absolute http(s) address, otherwise null. */
 export function safeLinkUrl(raw: string): string | null {
@@ -290,7 +292,13 @@ export class StyleApi {
 
   /* ----------------------------------------------------------------- images */
 
+  /** The selected pictures; video clips are left out (a cut-out or a new picture would only change their poster). */
   private images(): FabricImage[] {
+    return this.targets().filter((o): o is FabricImage => o.type === 'image' && !isLiveClip(o))
+  }
+
+  /** The selected pictures and video clips: what adjustments (filters, presets) apply to. */
+  private adjustable(): FabricImage[] {
     return this.targets().filter((o): o is FabricImage => o.type === 'image')
   }
 
@@ -315,7 +323,7 @@ export class StyleApi {
 
   setFilters(specs: readonly ImageFilterSpec[], key = 'filters'): void {
     const list = normalizeSpecs(specs)
-    const imgs = this.images()
+    const imgs = this.adjustable()
     if (imgs.length === 0) return
     for (const img of imgs) {
       asDory(img).filterSpecs = list
@@ -325,7 +333,7 @@ export class StyleApi {
   }
 
   setFilter(type: ImageFilterType, value: number): void {
-    const imgs = this.images()
+    const imgs = this.adjustable()
     const current = asDory(imgs[0] ?? ({} as FabricObject)).filterSpecs
     this.setFilters(withSpec(current, type, value), `filter:${type}`)
   }
@@ -354,7 +362,7 @@ export class StyleApi {
    * fills it with the placeholder's own shape as the frame) or clears the mark. Lines cannot be placeholders.
    */
   setPlaceholder(on: boolean): void {
-    const objs = this.targets().filter((o) => !(o instanceof DoryLine))
+    const objs = this.targets().filter((o) => !(o instanceof DoryLine) && !isLiveClip(o))
     if (objs.length === 0) return
     for (const o of objs) {
       asDory(o).isPlaceholder = on ? true : undefined
@@ -423,24 +431,30 @@ export class StyleApi {
   }
 
   /**
-   * Cuts the background out of the selected image and swaps the result in. Resolves `false` without
-   * touching the design when cancelled or when the selection moved to another object while it ran.
+   * Cuts the background out of the selected image and swaps the result in. `option` picks how: `device` (the
+   * default) runs the in-browser model, any other option id runs on a server through the adapter's AI service.
+   * Either way the cut-out is a new asset and the swap is one undo step. Resolves `false` without touching the
+   * design when cancelled or when the selection moved to another object while it ran.
    */
-  async removeBackground(onProgress?: (phase: BgRemovalPhase, percent: number) => void, signal?: AbortSignal): Promise<boolean> {
+  async removeBackground(onProgress?: (phase: BgRemovalPhase, percent: number) => void, signal?: AbortSignal, option: string = DEVICE_OPTION): Promise<boolean> {
     const img = this.images()[0]
     if (!img || signal?.aborted) return false
     const stale = (): boolean => signal?.aborted === true || this.images()[0] !== img
-    let result: Blob
+    const ai = option === DEVICE_OPTION ? null : this.engine.adapter.services.ai
+    if (option !== DEVICE_OPTION && !ai) throw new BackgroundRemovalError('No server option is available here.')
+    let result: Blob | AssetRef
     try {
-      const blob = await (await fetch(img.getSrc(), { signal })).blob()
-      result = await runRemoval(blob, onProgress, signal)
+      const getImage = async () => (await fetch(img.getSrc(), { signal })).blob()
+      result = ai
+        ? await ai.run(BACKGROUND_REMOVAL_TASK, { model: option, image: getImage, assetId: asDory(img).assetId, signal })
+        : await runRemoval(await getImage(), onProgress, signal)
     } catch (error) {
       // Cancel is not a failure: the engine has stopped its work and the design stays as it was.
       if (signal?.aborted) return false
       throw error
     }
     if (stale()) return false
-    const ref = await this.engine.assets.upload(result, 'cutout.png')
+    const ref = result instanceof Blob ? await this.engine.assets.upload(result, 'cutout.png') : result
     if (stale()) return false
     await this.engine.insert.replaceSelectedImage(ref)
     return true
@@ -477,6 +491,89 @@ export class StyleApi {
   }
 
   /* --------------------------------------------------------- elements, links, QR */
+
+  /** Whether the selected picture is an uploaded SVG that "Edit colors" can turn into shapes. */
+  canEditSvgColors(): boolean {
+    const img = this.images()[0]
+    return this.targets().length === 1 && img !== undefined && isSvgSource(asDory(img).docSrc ?? img.getSrc())
+  }
+
+  /**
+   * Turns the selected uploaded SVG picture into editable shapes in the same place (one undo step), so its
+   * colors can be changed like an element's. Refused, with a message, for a cropped, framed or filtered
+   * picture, for drawings too big to store in the design, and for parts the shape parser can't reproduce.
+   */
+  async editSvgColors(): Promise<boolean> {
+    const view = this.engine.activeView()
+    const img = this.images()[0]
+    if (!view || !img || !this.canEditSvgColors()) return false
+    const d = asDory(img)
+    const natW = img.getElement().width || img.width || 1
+    const natH = img.getElement().height || img.height || 1
+    const cropped = (img.cropX ?? 0) > 0 || (img.cropY ?? 0) > 0 || (img.width ?? natW) < natW - 0.5 || (img.height ?? natH) < natH - 0.5
+    if (cropped || img.clipPath || d.maskShape || (d.filterSpecs?.length ?? 0) > 0) {
+      this.engine.toast(t.errors.svgEditPlain, 'error')
+      return false
+    }
+    let parsed: Awaited<ReturnType<typeof parseSvgElement>>
+    try {
+      const text = await (await fetch(img.getSrc())).text()
+      const problem = svgEditProblem(text)
+      if (problem) {
+        this.engine.toast(problem === 'too_large' ? t.errors.svgEditTooLarge : t.errors.svgEditUnsupported, 'error')
+        return false
+      }
+      parsed = await parseSvgElement(text)
+    } catch {
+      this.engine.toast(t.errors.svgEditFailed, 'error')
+      return false
+    }
+    const { object: next, svgWidth, svgHeight } = parsed
+    if (shapeCount(next) > SVG_EDIT_LIMITS.shapes) {
+      this.engine.toast(t.errors.svgEditTooLarge, 'error')
+      return false
+    }
+    if (elementColors(next).length === 0) {
+      this.engine.toast(t.errors.svgEditNoColors, 'error')
+      return false
+    }
+    if (!this.images().includes(img)) return false // the selection moved on while the file loaded
+    // The picture shows the SVG's whole canvas (margins included) across its own width x height, and the shapes
+    // are in that canvas's coordinates: map them through the picture's transform so they land where they were.
+    const kx = (img.width || 1) / Math.max(svgWidth, 1)
+    const ky = (img.height || 1) / Math.max(svgHeight, 1)
+    const shapes = next.getCenterPoint()
+    const local = new Point(-(img.width || 1) / 2 + shapes.x * kx, -(img.height || 1) / 2 + shapes.y * ky)
+    const at = util.transformPoint(local, img.calcTransformMatrix())
+    next.set({
+      originX: 'center',
+      originY: 'center',
+      left: at.x,
+      top: at.y,
+      scaleX: (img.scaleX || 1) * kx,
+      scaleY: (img.scaleY || 1) * ky,
+      angle: img.angle,
+      flipX: img.flipX,
+      flipY: img.flipY,
+      opacity: img.opacity,
+      shadow: img.shadow,
+    })
+    const nd = asDory(next)
+    nd.id = d.id
+    nd.name = d.name
+    nd.locked = d.locked
+    nd.assetId = d.assetId
+    nd.elementId = `upload:${d.assetId ?? 'svg'}`
+    nd.effects = d.effects
+    const index = view.canvas.getObjects().indexOf(img)
+    view.canvas.remove(img)
+    view.configure(next)
+    view.canvas.insertAt(Math.max(0, index), next)
+    next.setCoords()
+    view.selectObjects([next])
+    this.finish(t.history.editColors)
+    return true
+  }
 
   recolor(from: string, to: string): void {
     this.each((o) => {

@@ -3,6 +3,7 @@ import { I } from '../../chrome/icons'
 import { useEditor, useSelection } from '../../context'
 import { isBackgroundRemovalAvailable } from '../../engine/bgRemoval'
 import { isUpscaleSupported } from '../../engine/upscale/support'
+import { useBackgroundRemovalOptions } from '../../hooks/useBackgroundRemovalOptions'
 import { FILTER_PRESETS, FILTER_RANGES, TOGGLE_FILTERS, specValue } from '../../engine/objects/filters'
 import { MASK_SHAPE_IDS, maskPath } from '../../engine/objects/shapeGeometry'
 import type { ImageFilterSpec, MaskShape } from '@/types/document'
@@ -96,6 +97,9 @@ export function ImageSection() {
   const editor = useEditor()
   const sel = useSelection()
   const fillsPlaceholder = sel.objects[0]?.slot !== undefined
+  // The in-browser model, or a server option for this user (the list arrives a moment later).
+  const removal = useBackgroundRemovalOptions()
+  const canRemoveBackground = isBackgroundRemovalAvailable() || removal?.options.some((option) => option.kind === 'server') === true
   return (
     <>
       {fillsPlaceholder ? (
@@ -116,10 +120,15 @@ export function ImageSection() {
       <ToolButton label={t.toolbar.replaceImage} testId="ed-replace-image" onClick={() => void editor.insert.pickAndReplaceImage()}>
         <Replace size={18} aria-hidden="true" />
       </ToolButton>
-      {isBackgroundRemovalAvailable() ? (
+      {canRemoveBackground ? (
         <ToolButton label={t.toolbar.removeBackground} featured testId="ed-remove-bg" onClick={() => editor.openDialog('background-removal')}>
           {I.removeBg}
           <span className={ed.toolText}>{t.ctx.removeBackground}</span>
+        </ToolButton>
+      ) : null}
+      {editor.style.canEditSvgColors() ? (
+        <ToolButton label={t.toolbar.editColors} testId="ed-edit-svg-colors" onClick={() => void editor.style.editSvgColors()}>
+          <span className={ed.textButton}>{t.toolbar.editColors}</span>
         </ToolButton>
       ) : null}
       <PopoverTool label={t.toolbar.filters} trigger={<SlidersIcon />} width={312} testId="ed-adjust">
@@ -131,7 +140,7 @@ export function ImageSection() {
   )
 }
 
-function SlidersIcon() {
+export function SlidersIcon() {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M2 14h4M10 8h4M18 16h4" />

@@ -155,9 +155,7 @@ async def test_a_room_with_clashing_field_keys_still_flushes(env, settings):
     settings.REALTIME_FLUSH_INTERVAL_SECONDS = 0.1
     one = await env.open(env.owner)
     two = await env.open(env.owner)
-    await one.edit(
-        lambda doc: first_object(one).__setitem__("field", Map({"key": "title", "type": "color"}))
-    )
+    await one.edit(lambda doc: first_object(one).__setitem__("field", Map({"key": "title", "type": "color"})))
     await two.edit(
         lambda doc: page_map(two)[KEY_OBJECTS][page_map(two)[KEY_OBJECT_ORDER][1]].__setitem__(
             "field", Map({"key": "title", "type": "text"})
