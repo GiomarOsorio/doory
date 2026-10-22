@@ -407,7 +407,6 @@ export const BUILTIN_PRESET_TREE: PresetTree = {
               icon: 'clapperboard',
               tags: ['9:16'],
               is_quick: true,
-              aliases: ['instagram-reel'],
               meta: {
                 safe_zone: {
                   top: 0.14,
@@ -416,6 +415,15 @@ export const BUILTIN_PRESET_TREE: PresetTree = {
                   right: 0.06,
                 },
               },
+            },
+            {
+              slug: 'instagram-reel',
+              label: 'Instagram Reel',
+              width: 1080,
+              height: 1920,
+              unit: 'px',
+              icon: 'clapperboard',
+              tags: ['9:16'],
             },
           ],
         },

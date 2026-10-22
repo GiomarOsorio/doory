@@ -107,6 +107,21 @@ def test_seed_update_restores_the_defaults():
     assert "1 updated" in out
 
 
+def test_seed_update_works_on_a_site_seeded_before_the_catalogue_grew():
+    # Such a site has each of the old slugs as a preset of its own, `instagram-reel` among them.
+    story = SizePreset.objects.get(slug="instagram-story")
+    if not SizePreset.objects.filter(slug="instagram-reel").exists():
+        reel = SizePreset.objects.get(pk=story.pk)
+        reel.pk, reel.slug, reel.label, reel.aliases = None, "instagram-reel", "Instagram Reel", []
+        reel.save()
+    SizePreset.objects.filter(pk=story.pk).update(aliases=[])
+
+    run("seed_size_presets", "--update")
+
+    assert SizePreset.objects.filter(slug="instagram-reel", is_active=True).count() == 1
+    assert "instagram-reel" not in SizePreset.objects.get(slug="instagram-story").aliases
+
+
 # ---- API ----
 
 

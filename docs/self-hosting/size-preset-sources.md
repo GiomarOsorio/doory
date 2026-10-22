@@ -229,7 +229,8 @@ Sources:
 | Feed | 1080 × 1440 | 3:4 | Organic | see sources below |
 | Feed | 1080 × 1080 | 1:1 | Organic | see sources below |
 | Feed | 1080 × 566 | 1.91:1 | Organic | see sources below |
-| Stories / Reels | 1080 × 1920 | 9:16 | Organic | see sources below |
+| Story | 1080 × 1920 | 9:16 | Organic | see sources below |
+| Reel | 1080 × 1920 | 9:16 | Organic | see sources below |
 | Profile | 320 × 320 | 1:1 | Organic | see sources below |
 
 Sources:
