@@ -335,10 +335,10 @@ test.describe('a browser without WebCodecs', () => {
 })
 
 test.describe('the dialog', () => {
-  test('Download > Video or GIF opens the dialog on MP4', async ({ page }) => {
+  test('Share > Video opens the dialog on MP4', async ({ page }) => {
     await openEditor(page, 'doc=animated')
-    await page.locator('[data-testid="ed-download"]').click()
-    await page.getByRole('menuitem', { name: 'Video or GIF…' }).click()
+    await page.locator('[data-testid="ed-share"]').click()
+    await page.getByRole('menuitem', { name: /^Video/ }).click()
     await expect(page.getByRole('radio', { name: /^MP4/ })).toBeChecked()
     await expect(page.getByTestId('video-section')).toHaveAttribute('data-format', 'mp4')
   })

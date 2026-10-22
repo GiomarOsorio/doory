@@ -141,3 +141,32 @@ class RenderSite:
     def close(self) -> None:
         self.server.shutdown()
         self.server.server_close()
+
+
+class FakeOptimizer:
+    """An optimizer for the tests: the same image, made smaller with Pillow (or `fail`s)."""
+
+    formats = ("png", "jpg", "webp", "avif")
+    sends_offsite = False
+
+    def __init__(self, id="builtin", name="Fake", fail=False):
+        self.id, self.name, self.fail = id, name, fail
+        self.jobs = []
+
+    def ready(self):
+        return True
+
+    def shrink(self, job, deadline):
+        self.jobs.append(job)
+        if self.fail:
+            from apps.exports.optimizers import OptimizerError
+
+            raise OptimizerError("the service answered 503")
+        image = Image.open(io.BytesIO(job.data))
+        out = io.BytesIO()
+        if job.format == "png":
+            image.convert("RGB").quantize(4).save(out, "PNG")
+        else:
+            kind = {"jpg": "JPEG", "webp": "WEBP", "avif": "AVIF"}[job.format]
+            image.convert("RGB").save(out, kind, quality=5)
+        return out.getvalue()

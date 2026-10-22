@@ -6,12 +6,16 @@ path prefixes (our own `/media/` and `/static/`); every other request is blocked
 
 The image export opens the frontend's headless render page instead of printing static HTML. Its policy adds
 that one page and the bundle it loads (`/assets/`), on the render page's own origin only.
+
+The video export needs the browser's encoders (WebCodecs), which exist only in a secure context: a render
+page at a plain `http://` address (Docker's `http://doory-web:8080`) is opened at `secure_alias` instead, and
+the worker serves every request to the alias from the real address (`unaliased`).
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from urllib.parse import unquote, urlsplit
+from urllib.parse import unquote, urlsplit, urlunsplit
 
 DEFAULT_PORTS = {"http": 80, "https": 443}
 RENDER_PAGE_PREFIXES = ("/assets/",)
@@ -27,6 +31,34 @@ def normalize_origin(value: str) -> str | None:
     if parts.scheme not in DEFAULT_PORTS or not parts.hostname:
         return None
     return f"{parts.scheme}://{parts.hostname.lower()}:{port or DEFAULT_PORTS[parts.scheme]}"
+
+
+def secure_alias(page_url: str) -> str | None:
+    """`http://<host>.localhost:<port>/...` for a render page at a plain `http://` address, or None when the
+    page is in a secure context already (https, localhost) or has no name to put in front of `.localhost`
+    (IPv6). Chromium treats every `*.localhost` origin as secure and never resolves the alias: the worker's
+    route serves it, so it reaches nothing of its own. A loopback IP gets one too, though it is secure as it
+    is: the alias costs nothing there."""
+    try:
+        parts = urlsplit(page_url)
+        port = parts.port or DEFAULT_PORTS["http"]
+    except ValueError:
+        return None
+    host = (parts.hostname or "").lower()
+    if parts.scheme != "http" or not host or ":" in host:
+        return None
+    if host == "localhost" or host.endswith(".localhost"):
+        return None
+    return urlunsplit(("http", f"{host}.localhost:{port}", parts.path, parts.query, ""))
+
+
+def unaliased(url: str, alias: str, page_url: str) -> str:
+    """`url` on the render page's real address when it is on the `alias` one (`secure_alias`), else as is."""
+    origin = normalize_origin(url)
+    if origin is None or origin != normalize_origin(alias):
+        return url
+    parts, real = urlsplit(url), urlsplit(page_url)
+    return urlunsplit((real.scheme, real.netloc, parts.path, parts.query, parts.fragment))
 
 
 @dataclass(frozen=True)

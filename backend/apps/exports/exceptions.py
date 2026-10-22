@@ -31,6 +31,12 @@ class ImageExportDisabled(APIException):
     default_code = "server_image_export_disabled"
 
 
+class VideoExportDisabled(APIException):
+    status_code = status.HTTP_404_NOT_FOUND
+    default_detail = "Server-side video export is not enabled on this server."
+    default_code = "server_video_export_disabled"
+
+
 class ExportBusy(APIException):
     status_code = status.HTTP_503_SERVICE_UNAVAILABLE
     default_detail = "The export service is busy. Try again in a few seconds."
