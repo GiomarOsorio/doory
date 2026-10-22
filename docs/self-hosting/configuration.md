@@ -40,6 +40,7 @@ add a row to the matching section (see [CONTRIBUTING.md](../../CONTRIBUTING.md#d
 | `WEB_PORT` | `8080` | Port the site is published on |
 | `WEB_BIND` | `0.0.0.0` | Interface the port is published on. Use `127.0.0.1` when a reverse proxy on the same host sits in front |
 | `INSTALL_CHROMIUM` | `true` | Build a headless Chromium into the image, needed for [server-side export](image-export.md) (adds about 400 MB) |
+| `INSTALL_IMAGE_OPTIMIZERS` | `true` | Build mozjpeg and oxipng into the image for the built-in [image optimizer](../integrations/image-optimization.md) (adds about 2 MB) |
 | `COMPOSE_PROFILES` | | Optional services to start: `mcp`, `redis`, or both (`mcp,redis`) |
 | `REALTIME_WORKERS` | `1` | Workers of the `realtime` service. Use more than 1 only together with Redis |
 | `REALTIME_MEM_LIMIT` | `2g` | Memory limit of the `realtime` service |
@@ -102,12 +103,18 @@ See [image-export.md](image-export.md).
 | Setting | Default | What it does |
 |---------|---------|--------------|
 | `SERVER_PDF_ENABLED` | `true` | Make print PDFs on the server. Needs Chromium; set to `false` if you don't have it |
-| `SERVER_IMAGE_EXPORT_ENABLED` | `false` | Make PNG, JPG and WebP images of a page on the server (used by the REST API and the MCP tool `export_design`) |
+| `SERVER_IMAGE_EXPORT_ENABLED` | `false` | Make PNG, JPG, WebP and AVIF images, SVG files and PDFs of saved designs on the server (used by the REST API and the MCP tool `export_design`; the PDFs also need `SERVER_PDF_ENABLED`) |
 | `EXPORT_RENDER_PAGE_URL` | `SITE_URL/render.html` | The built frontend's `render.html`, at an address the API and MCP services can reach. Docker: `http://doory-web:8080/render.html` |
 | `EXPORT_IMAGE_MAX_PIXELS` | `40000000` | Largest image, as width × height after scaling |
 | `EXPORT_IMAGE_MAX_DOCUMENT_BYTES` | `5242880` | Largest design document the export will draw |
+| `EXPORT_IMAGE_MAX_PAGES` | `10` | Most pages one image, SVG or PDF export draws (several images or SVGs come back as a ZIP). Each image page is a render of its own in the same request |
+| `SERVER_VIDEO_EXPORT_ENABLED` | `false` | Make MP4, WebM and GIF videos of saved designs on the server (REST API and `export_design`). Also needs `SERVER_IMAGE_EXPORT_ENABLED`. One video keeps a browser busy for up to `EXPORT_VIDEO_TIMEOUT_SECONDS` |
+| `EXPORT_VIDEO_TIMEOUT_SECONDS` | `300` | Time limit for making one video. Keep your proxy's read timeout for the export endpoint and `/mcp` above it (the bundled nginx waits 330 s) |
+| `EXPORT_VIDEO_MAX_SECONDS` | `120` | Longest video or GIF the server makes |
+| `EXPORT_VIDEO_MAX_RESOLUTION` | `1080` | Largest shorter side of a video frame, in px (the editor offers up to 2160) |
+| `EXPORT_VIDEO_MAX_BYTES` | `209715200` | Largest video file the server keeps (200 MB) |
 | `EXPORT_MAX_CONCURRENCY` | `2` | Exports running at the same time in each API process |
-| `EXPORT_TIMEOUT_SECONDS` | `30` | Time limit for one export |
+| `EXPORT_TIMEOUT_SECONDS` | `30` | Time limit for one export. SVG and PDF exports of a saved design get it once per page to draw them, and a PDF once more to print |
 | `EXPORT_CHROMIUM_PATH` | | Path to a Chromium binary. Empty: the one Playwright installed |
 | `EXPORT_CHROMIUM_NO_SANDBOX` | `false` | Run Chromium without its sandbox. The Docker image sets this |
 | `EXPORT_WORK_DIR` | system temp folder | Where each export gets its own temporary folder |
@@ -115,6 +122,23 @@ See [image-export.md](image-export.md).
 | `EXPORT_ALLOWED_ORIGINS` | `SITE_URL`, `http://127.0.0.1:8000` and `http://localhost:8000` | Origins Chromium may load `/media/` and `/static/` files from during an export |
 | `EXPORT_FILENAME_STYLE` | `simple` | Default file names: `simple` (`summer-sale-02.png`) or `structured` (`summer-sale_platform_preset_1080x1920_p02.png`). People can change this in the download dialog |
 | `EXPORT_FILENAME_TIMESTAMP` | `false` | End structured file names with the Unix time of the export |
+
+## Image optimization
+
+See [image-optimization.md](../integrations/image-optimization.md).
+
+| Setting | Default | What it does |
+|---------|---------|--------------|
+| `IMAGE_OPTIMIZERS` | `builtin` | Optimizers people may pick, in order, comma separated: `builtin`, `tinypng`, `kraken`, `custom`. One that isn't set up is left out. Empty: no optimizing |
+| `IMAGE_OPTIMIZER_DEFAULT` | `builtin` | The optimizer `optimize: true` uses |
+| `IMAGE_OPTIMIZER_TIMEOUT` | `30` | Time limit in seconds for optimizing one file. When it runs out, the file is kept unoptimized |
+| `IMAGE_OPTIMIZER_MAX_BYTES` | `26214400` (25 MB) | Largest file optimized, and the largest PNG `POST /api/v1/exports/optimize/` takes |
+| `TINYPNG_API_KEY` | | TinyPNG API key |
+| `KRAKEN_API_KEY` | | Kraken.io API key |
+| `KRAKEN_API_SECRET` | | Kraken.io API secret |
+| `IMAGE_OPTIMIZER_CUSTOM_NAME` | `Custom` | The name people see for the custom optimizer |
+| `IMAGE_OPTIMIZER_CUSTOM_URL` | | Address of an optimizer that follows the [custom contract](../integrations/image-optimization.md#custom-optimizer-contract) |
+| `IMAGE_OPTIMIZER_CUSTOM_KEY` | | Sent to the custom optimizer as `Authorization: Bearer …`. Empty: no header |
 
 ## Size presets
 
@@ -142,6 +166,17 @@ See [google-sign-in.md](../integrations/google-sign-in.md).
 | Setting | Default | What it does |
 |---------|---------|--------------|
 | `GOOGLE_CLIENT_ID` | | OAuth web client ID. Setting it adds a "Sign in with Google" button |
+
+## OpenID Connect sign-in
+
+| Setting | Default | What it does |
+|---------|---------|--------------|
+| `OIDC_ISSUER` | | Issuer URL of your identity provider, e.g. `https://auth.example.com/application/o/doory/`. Sign-in is on when this, `OIDC_CLIENT_ID` and `OIDC_CLIENT_SECRET` are all set |
+| `OIDC_CLIENT_ID` | | Client ID of a confidential client registered at the provider, with `SITE_URL/api/v1/auth/oidc/callback/` as its redirect URI |
+| `OIDC_CLIENT_SECRET` | | That client's secret |
+| `OIDC_BUTTON_LABEL` | `Sign in with SSO` | Text of the sign-in button, e.g. `Sign in with Authentik` |
+| `OIDC_SCOPES` | `openid email profile` | Scopes to ask for. Must include `openid` |
+| `OIDC_TRUST_EMAIL` | `false` | Let a first sign-in use an existing account with the same email address, when the provider says it has verified it. Never applies to staff accounts. Off, people connect their existing account from Settings |
 
 ## Stock media
 

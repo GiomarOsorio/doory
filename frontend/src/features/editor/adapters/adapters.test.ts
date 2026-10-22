@@ -218,6 +218,16 @@ describe('account adapter', () => {
     expect((calls[0].body as FormData).getAll('pages')).toHaveLength(1)
   })
 
+  it('converts and optimizes downloads on the server only when the server says it can', () => {
+    const features = { stock_photos: false, server_pdf: false, google_login: false, email_verification: false }
+    expect(createAccountAdapter('d1', () => 1, { config: { features } }).optimizeImage).toBeUndefined()
+    expect(createAccountAdapter('d1', () => 1, { config: { features: { ...features, image_optimize: null } } }).imageOptimize).toBeUndefined()
+    const image_optimize = { formats: ['png', 'jpg', 'webp', 'avif', 'tiff'], optimizers: [{ id: 'custom', name: 'Ours', formats: ['png', 'gif'], sends_offsite: true }], default: 'custom' }
+    const on = createAccountAdapter('d1', () => 1, { config: { features: { ...features, image_optimize } } })
+    expect(on.imageOptimize).toEqual({ formats: ['png', 'jpg', 'webp', 'avif'], optimizers: [{ id: 'custom', name: 'Ours', formats: ['png'], sendsOffsite: true }], default: 'custom' })
+    expect(typeof on.optimizeImage).toBe('function')
+  })
+
   it('hands the font files of the design to the server PDF export', async () => {
     const on = createAccountAdapter('d1', () => 1, { config: { features: { stock_photos: false, server_pdf: true, google_login: false, email_verification: false } } })
     const calls = captureFetch(() => new Response('%PDF', { headers: { 'content-type': 'application/pdf' } }))

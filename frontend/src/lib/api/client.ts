@@ -238,6 +238,11 @@ export const http = {
   delete: async <T = void>(path: string, options: RequestOptions = {}): Promise<T> => parse<T>(await send('DELETE', path, options)),
   /** POST that returns binary content (e.g. a PDF). */
   postForBlob: async (path: string, options: RequestOptions = {}): Promise<Blob> => (await send('POST', path, { ...options, accept: '*/*' })).blob(),
+  /** POST that returns binary content and the headers that describe it. */
+  postForFile: async (path: string, options: RequestOptions = {}): Promise<{ blob: Blob; headers: Headers }> => {
+    const response = await send('POST', path, { ...options, accept: '*/*' })
+    return { blob: await response.blob(), headers: response.headers }
+  },
 }
 
 /** Test helper: forget cached CSRF/handler state. */

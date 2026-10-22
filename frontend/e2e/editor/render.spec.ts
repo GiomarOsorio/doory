@@ -31,11 +31,12 @@ function contractDesign(): Record<string, unknown> {
 /** The editor's PNG download of its current page at 1×. */
 async function editorPng(page: Page): Promise<string> {
   await page.locator('[data-testid="ed-share"]').click()
-  await page.getByRole('menuitem', { name: 'More options…' }).click()
+  await page.getByRole('menuitem', { name: 'All formats and options…' }).click()
   const dialog = page.getByRole('dialog', { name: 'Download' })
   await dialog.getByRole('radio', { name: /^PNG/ }).check()
+  await dialog.getByRole('button', { name: '1x', exact: true }).click()
+  await dialog.getByRole('button', { name: /More settings/ }).click()
   await dialog.getByRole('radio', { name: 'Current page' }).check()
-  await dialog.getByRole('radio', { name: '1×' }).check()
   const pending = page.waitForEvent('download', { timeout: 30_000 })
   await dialog.getByRole('button', { name: 'Download', exact: true }).click()
   return (await readFile(await (await pending).path())).toString('base64')

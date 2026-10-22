@@ -147,3 +147,9 @@
     display: none;
   }
 }
+
+/* The Share menu holds a row of format tiles: wide enough for three across. */
+.shareMenu {
+  width: 320px;
+  max-width: calc(100vw - 16px);
+}

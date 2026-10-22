@@ -21,7 +21,7 @@ export default function SignupPage() {
         <h1 className={styles.title}>Create your free account</h1>
         <p className={styles.lead}>Save designs to the cloud, build brand kits and share with anyone.</p>
       </div>
-      <SignupForm onSuccess={() => navigate(next, { replace: true })} />
+      <SignupForm onSuccess={() => navigate(next, { replace: true })} ssoNext={next} />
       <p className={styles.footer}>
         Already have an account? <Link to={`/login${nextQuery}`}>Log in</Link>
       </p>

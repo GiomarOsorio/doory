@@ -10,6 +10,7 @@ export function makeUser(overrides: Partial<ApiUser> = {}): ApiUser {
     is_email_verified: true,
     has_password: true,
     google_linked: false,
+    oidc_linked: false,
     created_at: '2025-01-01T00:00:00Z',
     ...overrides,
   }

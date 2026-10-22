@@ -6,7 +6,7 @@ import { type FileNaming, SIMPLE_NAMING, structuredFilename } from './filenames'
 import { type ExportFile, sanitizeFilename } from './registry'
 
 /** Formats that are already compressed: stored as they are, deflating them again only costs time. */
-const STORED = /\.(png|jpe?g|webp|gif|pdf|zip)$/i
+const STORED = /\.(png|jpe?g|webp|avif|gif|pdf|zip)$/i
 
 // jsdom's Blob has no arrayBuffer(); the browsers all do.
 function readBytes(blob: Blob): Promise<Uint8Array> {

@@ -15,6 +15,23 @@ export function rateLimitMessage(retryAfter: number | null): string {
   return `Too many attempts. Please try again in ${minutes} minutes.`
 }
 
+const SSO_ERRORS: Record<string, string> = {
+  oidc_account_exists: 'An account with this email address already exists. Log in with your password, then connect single sign-on in Settings.',
+  oidc_email_unverified: 'Your sign-in provider hasn’t verified your email address, so it can’t be used with an existing account.',
+  oidc_no_email: 'Your sign-in provider didn’t share an email address. Ask your administrator to include it.',
+  oidc_identity_in_use: 'That account at your sign-in provider is already connected to another Doory account.',
+  oidc_account_mismatch: 'Your Doory account is connected to a different account at your sign-in provider.',
+  oidc_cancelled: 'Signing in was cancelled.',
+  oidc_expired: 'That sign-in expired or was already used. Please start again.',
+  oidc_unavailable: 'Couldn’t reach the sign-in provider. Please try again later.',
+  account_disabled: 'This account has been disabled.',
+}
+
+/** The message for the `?sso_error=` code the server sends back after single sign-on. */
+export function ssoErrorMessage(code: string): string {
+  return SSO_ERRORS[code] ?? 'Signing in didn’t go through. Please try again.'
+}
+
 /** Turns any thrown error into something a form can show. `known` lists the field names the form renders. */
 export function describeFormError(error: unknown, known: readonly string[]): FormFailure {
   if (!isApiError(error)) return { message: 'Something went wrong. Please try again.', fields: {} }
