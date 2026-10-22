@@ -203,23 +203,24 @@ file in the repository.
 
 ## Sign-in button logos
 
-The 182 SVG files in `frontend/src/assets/sso-icons/` are the logos an admin can put on the single sign-on button
+The 174 SVG files in `frontend/src/assets/sso-icons/` are the logos an admin can put on the single sign-on button
 (`OIDC_BUTTON_ICON`). Each is a separate lazy chunk: a page downloads only the one the server names. They were
 normalized (a `viewBox`, no fixed size) and minified with SVGO; `sources.json` next to them gives the source URL and
 licence of every file, and `ssoIcons.test.ts` checks that each file has a permissive entry there.
 
 | Files | Source | Licence |
 |-------|--------|---------|
-| 147, e.g. `okta`, `auth0`, `ory`, `openid`, `clerk` and most of the consumer and developer brands | Simple Icons 16.35.0 (https://simpleicons.org), filled with the brand colour Simple Icons records | CC0-1.0 |
-| 28, e.g. `authentik`, `zitadel`, `kanidm`, `nextcloud`, `forgejo`, `microsoft`, `google`, `github`, `aws` | homarr-labs dashboard-icons (https://github.com/homarr-labs/dashboard-icons) | Apache-2.0 |
+| 144, e.g. `okta`, `auth0`, `ory`, `openid`, `clerk` and most of the consumer and developer brands | Simple Icons 16.35.0 (https://simpleicons.org), filled with the brand colour Simple Icons records | CC0-1.0 |
+| 23, e.g. `authentik`, `microsoft`, `google`, `github`, `aws` | homarr-labs dashboard-icons (https://github.com/homarr-labs/dashboard-icons) | Apache-2.0 |
 | `keycloak`, `authelia`, `dex`, `rauthy` | The projects' own repositories (keycloak-web, authelia, dexidp/dex, sebadob/rauthy) | Apache-2.0 |
 | `gitea`, `gitlab` | The projects' own repositories (go-gitea/gitea, gitlab-org/gitlab-svgs) | MIT |
 | `apple` | Bootstrap Icons 1.13.2 | MIT |
 
 The logos are trademarks of their owners; a permissive licence on the file does not grant trademark rights. They are
-shown only to name the provider an admin has configured, unchanged apart from minification. Logos that were only
-found under a copyleft or attribution licence (the official Nextcloud, Zitadel, Kanidm and Forgejo files, selfh.st
-icons) or with no licence at all (Hanko, Kinde) were left out or replaced by a permissive copy.
+shown only to name the provider an admin has configured, unchanged apart from minification. Logos whose artwork is
+under a copyleft, attribution or custom licence (Nextcloud, Zitadel, Kanidm, Forgejo, Logto, HedgeDoc, Jenkins,
+Webex, the selfh.st icons) or under no licence at all (Hanko, Kinde) are left out; those providers get the key
+icon.
 
 ## Starter template photos
 

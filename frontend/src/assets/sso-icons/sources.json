@@ -229,11 +229,6 @@
     "license": "Apache-2.0",
     "url": "https://raw.githubusercontent.com/homarr-labs/dashboard-icons/main/svg/firebase.svg"
   },
-  "forgejo": {
-    "source": "dashboard-icons",
-    "license": "Apache-2.0",
-    "url": "https://raw.githubusercontent.com/homarr-labs/dashboard-icons/main/svg/forgejo.svg"
-  },
   "foursquare": {
     "source": "Simple Icons",
     "license": "CC0-1.0",
@@ -304,11 +299,6 @@
     "license": "CC0-1.0",
     "url": "https://cdn.jsdelivr.net/npm/simple-icons@16.35.0/icons/hatenabookmark.svg"
   },
-  "hedgedoc": {
-    "source": "Simple Icons",
-    "license": "CC0-1.0",
-    "url": "https://cdn.jsdelivr.net/npm/simple-icons@16.35.0/icons/hedgedoc.svg"
-  },
   "homeassistant": {
     "source": "Simple Icons",
     "license": "CC0-1.0",
@@ -349,11 +339,6 @@
     "license": "CC0-1.0",
     "url": "https://cdn.jsdelivr.net/npm/simple-icons@16.35.0/icons/jellyfin.svg"
   },
-  "jenkins": {
-    "source": "Simple Icons",
-    "license": "CC0-1.0",
-    "url": "https://cdn.jsdelivr.net/npm/simple-icons@16.35.0/icons/jenkins.svg"
-  },
   "joomla": {
     "source": "Simple Icons",
     "license": "CC0-1.0",
@@ -368,11 +353,6 @@
     "source": "Simple Icons",
     "license": "CC0-1.0",
     "url": "https://cdn.jsdelivr.net/npm/simple-icons@16.35.0/icons/kakaotalk.svg"
-  },
-  "kanidm": {
-    "source": "dashboard-icons",
-    "license": "Apache-2.0",
-    "url": "https://raw.githubusercontent.com/homarr-labs/dashboard-icons/main/svg/kanidm.svg"
   },
   "keycloak": {
     "source": "Keycloak website repo",
@@ -408,11 +388,6 @@
     "source": "dashboard-icons",
     "license": "Apache-2.0",
     "url": "https://raw.githubusercontent.com/homarr-labs/dashboard-icons/main/svg/linkedin.svg"
-  },
-  "logto": {
-    "source": "dashboard-icons",
-    "license": "Apache-2.0",
-    "url": "https://raw.githubusercontent.com/homarr-labs/dashboard-icons/main/svg/logto.svg"
   },
   "magic": {
     "source": "Simple Icons",
@@ -488,11 +463,6 @@
     "source": "Simple Icons",
     "license": "CC0-1.0",
     "url": "https://cdn.jsdelivr.net/npm/simple-icons@16.35.0/icons/netlify.svg"
-  },
-  "nextcloud": {
-    "source": "dashboard-icons",
-    "license": "Apache-2.0",
-    "url": "https://raw.githubusercontent.com/homarr-labs/dashboard-icons/main/svg/nextcloud.svg"
   },
   "niconico": {
     "source": "Simple Icons",
@@ -849,11 +819,6 @@
     "license": "CC0-1.0",
     "url": "https://cdn.jsdelivr.net/npm/simple-icons@16.35.0/icons/webauthn.svg"
   },
-  "webex": {
-    "source": "Simple Icons",
-    "license": "CC0-1.0",
-    "url": "https://cdn.jsdelivr.net/npm/simple-icons@16.35.0/icons/webex.svg"
-  },
   "whatsapp": {
     "source": "Simple Icons",
     "license": "CC0-1.0",
@@ -888,11 +853,6 @@
     "source": "Simple Icons",
     "license": "CC0-1.0",
     "url": "https://cdn.jsdelivr.net/npm/simple-icons@16.35.0/icons/zenn.svg"
-  },
-  "zitadel": {
-    "source": "dashboard-icons",
-    "license": "Apache-2.0",
-    "url": "https://raw.githubusercontent.com/homarr-labs/dashboard-icons/main/svg/zitadel.svg"
   },
   "zoom": {
     "source": "Simple Icons",
