@@ -123,14 +123,6 @@
   height: 18px;
 }
 
-.mark {
-  display: inline-block;
-  background: currentColor;
-  mask-position: center;
-  mask-repeat: no-repeat;
-  mask-size: contain;
-}
-
 .pane {
   display: flex;
   flex-direction: column;

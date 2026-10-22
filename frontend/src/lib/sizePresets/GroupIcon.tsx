@@ -30,8 +30,6 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { createElement } from 'react'
-import kea from '@/assets/third-party-icons/kea-page.svg'
-import keaMark from '@/assets/third-party-icons/kea-page-mono.svg'
 import type { PresetGroup } from './catalogue'
 import styles from './SizePicker.module.css'
 
@@ -79,21 +77,8 @@ const KINDS: [LucideIcon, string[]][] = [
 ]
 const BY_SLUG = new Map(KINDS.flatMap(([icon, slugs]) => slugs.map((slug) => [slug, icon] as const)))
 
-/** Groups with a mark of their own: the full-colour SVG and a one-colour version of it. */
-const MARKS: Readonly<Record<string, { color: string; mono: string }>> = {
-  'kea-page': { color: kea, mono: keaMark },
-}
-
-/** The icon of a picker entry. A group's own mark is drawn in the text colour, and in full colour while selected. */
-export function GroupIcon({ group, selected = false }: { group: PresetGroup; selected?: boolean }) {
-  const mark = MARKS[group.slug]
-  if (mark) {
-    return selected ? (
-      <img className={styles.groupIcon} src={mark.color} alt="" aria-hidden="true" />
-    ) : (
-      <span className={`${styles.groupIcon} ${styles.mark}`} style={{ maskImage: `url(${mark.mono})`, WebkitMaskImage: `url(${mark.mono})` }} aria-hidden="true" />
-    )
-  }
+/** The icon of a picker entry. */
+export function GroupIcon({ group }: { group: PresetGroup }) {
   // The icon components are module-level constants, so picking one per render is safe.
   return createElement(BY_SLUG.get(group.slug) ?? NAMED[group.icon] ?? Share2, { className: styles.groupIcon, size: 18, 'aria-hidden': true })
 }

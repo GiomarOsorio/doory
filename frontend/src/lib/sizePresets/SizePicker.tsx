@@ -143,7 +143,7 @@ export function SizePicker({ selectedId, onSelect, onConfirm, custom, startWithC
         <section className={styles.pane} aria-labelledby={headingId}>
           <div className={styles.toolbar}>
             <h3 id={headingId} className={styles.title}>
-              {!searching && group ? <GroupIcon group={group} selected /> : null}
+              {!searching && group ? <GroupIcon group={group} /> : null}
               {title}
             </h3>
             {entry === CUSTOM && !searching ? null : (
@@ -210,7 +210,7 @@ function moveBetweenCards(event: React.KeyboardEvent<HTMLElement>): void {
 function EntryButton({ group, count, current, onOpen }: { group: PresetGroup; count: number; current: boolean; onOpen(): void }) {
   return (
     <button type="button" className={styles.entry} aria-current={current ? 'true' : undefined} onClick={onOpen}>
-      <GroupIcon group={group} selected={current} />
+      <GroupIcon group={group} />
       <span className={styles.entryName}>{group.label}</span>
       <span className={styles.count}>{count}</span>
     </button>

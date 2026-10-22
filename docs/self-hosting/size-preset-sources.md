@@ -295,24 +295,6 @@ Sources:
 | Profile full view, background (image) | 720 × 1280 | 9:16 | Ad | [Kakao Business Guide — 프로필 풀뷰 제작 가이드 (Profile full view production guide)](https://kakaobusiness.gitbook.io/main/ad/moment/guarantee/profilefullview/content-guide) |
 | Profile full view, background (video) | 1440 × 2560 | 9:16 | Ad | [Kakao Business Guide — 프로필 풀뷰 제작 가이드 (Profile full view production guide)](https://kakaobusiness.gitbook.io/main/ad/moment/guarantee/profilefullview/content-guide) |
 
-### KEA.Page
-
-> [KEA.Page](https://www.kea.page) is a link-in-bio page that grows into a full site. You start with one link for
-> your social profiles, then add the pages your kind of work needs: services, portfolio, prices, opening hours,
-> booking and contact. There are 54 site types, grouped by goal (sell, services, booking, audience, showcase,
-> personal), and the address stays the same as the site grows. Free to start.
-
-| Size | W × H | Ratio | Type | Source |
-|---|---|---|---|---|
-| Profile avatar | 512 × 512 | 1:1 | Organic | [KEA.Page, link-in-bio pages and small sites](https://www.kea.page) |
-| Cover banner strip | 1728 × 741 | 21:9 | Organic | [KEA.Page, link-in-bio pages and small sites](https://www.kea.page) |
-| Link card thumbnail (row layout) | 366 × 366 | 1:1 | Organic | [KEA.Page, link-in-bio pages and small sites](https://www.kea.page) |
-| Link card image (image-on-top layout) | 1600 × 900 | 16:9 | Organic | [KEA.Page, link-in-bio pages and small sites](https://www.kea.page) |
-| Offering (product/service) card image | 1068 × 600 | 16:9 | Organic | [KEA.Page, link-in-bio pages and small sites](https://www.kea.page) |
-| Gallery photo | 2048 × 2048 |  | Organic | [KEA.Page, link-in-bio pages and small sites](https://www.kea.page) |
-| Portfolio photo | 2048 × 2048 |  | Organic | [KEA.Page, link-in-bio pages and small sites](https://www.kea.page) |
-| Team member photo | 192 × 192 | 1:1 | Organic | [KEA.Page, link-in-bio pages and small sites](https://www.kea.page) |
-
 ### Kick
 
 | Size | W × H | Ratio | Type | Source |
