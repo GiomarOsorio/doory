@@ -1,9 +1,11 @@
 import json
 import math
 
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
-from .filenames import STYLES
+from .filenames import FILE_NAMES, STYLES
+from .services import QUALITY_PRESETS
 
 MAX_PAGES = 100
 MAX_PAGE_BYTES = 5 * 1024 * 1024
@@ -15,6 +17,7 @@ MAX_TITLE_LENGTH = 200
 MAX_SIZES_BYTES = 16 * 1024
 FONT_FAMILY_PATTERN = r"^[\w .\-]{1,100}$"
 LANGUAGE_PATTERN = r"^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8}){0,3}$"
+SIZE_PATTERN = r"^\d+(?:\.\d+)?[xXwWhH]$"
 
 
 class FiniteFloatField(serializers.FloatField):
@@ -133,11 +136,100 @@ class PageRefField(serializers.Field):
         return value
 
 
+@extend_schema_field(
+    {
+        "oneOf": [
+            {"type": "integer", "minimum": 1, "maximum": 100},
+            {"type": "string", "enum": list(QUALITY_PRESETS)},
+        ]
+    }
+)
+class QualityField(serializers.Field):
+    """1 to 100, or a preset name (small, balanced, best, original)."""
+
+    default_error_messages = {
+        "invalid": "Give a whole number from 1 to 100, or one of " + ", ".join(QUALITY_PRESETS) + "."
+    }
+
+    def to_internal_value(self, data):
+        if isinstance(data, str) and data.strip().lower() in QUALITY_PRESETS:
+            return data.strip().lower()
+        if isinstance(data, bool) or not isinstance(data, int | str):
+            self.fail("invalid")
+        try:
+            value = int(data)
+        except ValueError:
+            self.fail("invalid")
+        if not 1 <= value <= 100:
+            self.fail("invalid")
+        return value
+
+    def to_representation(self, value):
+        return value
+
+
+@extend_schema_field(
+    {"oneOf": [{"type": "string", "enum": ["full"]}, {"type": "integer", "minimum": 2, "maximum": 256}]}
+)
+class PngColorsField(serializers.Field):
+    """`full` (None) or a palette of 2 to 256 colours."""
+
+    default_error_messages = {"invalid": 'Give "full" or a whole number of colours from 2 to 256.'}
+
+    def to_internal_value(self, data):
+        if data == "full":
+            return None
+        if isinstance(data, bool) or not isinstance(data, int) or not 2 <= data <= 256:
+            self.fail("invalid")
+        return data
+
+    def to_representation(self, value):
+        return "full" if value is None else value
+
+
+@extend_schema_field(
+    {
+        "oneOf": [
+            {"type": "string", "enum": ["all"]},
+            {
+                "type": "array",
+                "items": {"oneOf": [{"type": "integer", "minimum": 1}, {"type": "string"}]},
+                "minItems": 1,
+                "maxItems": MAX_PAGES,
+            },
+        ]
+    }
+)
+class PagesField(serializers.Field):
+    """`all`, or a list of pages by id or by number counting from 1."""
+
+    default_error_messages = {"invalid": 'Give "all" or a list of page ids and page numbers counting from 1.'}
+
+    def to_internal_value(self, data):
+        if data == "all":
+            return data
+        if not isinstance(data, list) or not 0 < len(data) <= MAX_PAGES:
+            self.fail("invalid")
+        page = PageRefField()
+        return [page.to_internal_value(item) for item in data]
+
+    def to_representation(self, value):
+        return value
+
+
 class ImageExportSerializer(serializers.Serializer):
     page = PageRefField(required=False, default=None, allow_null=True)
-    format = serializers.ChoiceField(choices=["png", "jpg", "jpeg", "webp"], default="png")
-    quality = serializers.IntegerField(min_value=1, max_value=100, default=90)
+    pages = PagesField(required=False, default=None, allow_null=True)
+    format = serializers.ChoiceField(choices=["png", "jpg", "jpeg", "webp", "avif", "auto"], default="png")
+    quality = QualityField(default=90)
+    max_bytes = serializers.IntegerField(min_value=1, required=False, default=None, allow_null=True)
     scale = FiniteFloatField(min_value=0.1, max_value=4, default=1)
+    size = serializers.RegexField(SIZE_PATTERN, max_length=20, required=False, default=None, allow_null=True)
     transparent = serializers.BooleanField(default=False)
+    png_colors = PngColorsField(default=None, allow_null=True)
+    strip_metadata = serializers.BooleanField(default=True)
+    srgb = serializers.BooleanField(default=True)
+    progressive = serializers.BooleanField(default=False)
+    file_names = serializers.ChoiceField(choices=list(FILE_NAMES), required=False)
     filename_style = serializers.ChoiceField(choices=list(STYLES), required=False)
     filename_timestamp = serializers.BooleanField(required=False)

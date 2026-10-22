@@ -29,6 +29,7 @@ def export_filename(title: str | None, extension: str) -> str:
 # `engine/export/filenames.ts`; both are checked against `engine/fixtures/export-filenames.json` there.
 
 STYLES = ("simple", "structured")
+FILE_NAMES = {"simple": "simple", "detailed": "structured"}  # the styles as the API's `file_names` says them
 MAX_SLUG_LENGTH = 80
 _NOT_SLUG = re.compile(r"[^a-z0-9]+")
 

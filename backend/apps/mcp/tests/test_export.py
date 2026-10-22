@@ -1,10 +1,12 @@
-"""`export_design`: the tool around `apps.exports.services.export_image` (the browser is stubbed out)."""
+"""`export_design`: the tool around `apps.exports.services.export_images` (the browser is stubbed out)."""
 
 from __future__ import annotations
 
 import base64
+import io
 import json
 import time
+import zipfile
 
 import pytest
 from mcp.server.mcpserver.exceptions import ToolError
@@ -12,9 +14,9 @@ from mcp_types import ImageContent, TextContent
 from rest_framework.test import APIClient
 
 from apps.designs.tests.helpers import make_design, make_doc
-from apps.exports import delivery
+from apps.exports import delivery, services
 from apps.exports.exceptions import ExportBusy, InvalidExport
-from apps.exports.services import ImageResult
+from apps.exports.services import IMAGE_FORMATS, ImageResult
 from apps.exports.throttling import ExportRateThrottle
 from apps.mcp.tools import export
 
@@ -23,6 +25,15 @@ from .test_http import call
 pytestmark = pytest.mark.django_db
 
 IMAGE = b"\x89PNG\r\n\x1a\n" + b"pixels" * 10
+# What the tool passes on besides the page, format, quality, scale and transparency.
+DEFAULTS = {
+    "size": None,
+    "max_bytes": None,
+    "png_colors": None,
+    "strip_metadata": True,
+    "srgb": True,
+    "progressive": False,
+}
 
 
 @pytest.fixture
@@ -31,19 +42,21 @@ def renders(monkeypatch) -> list[dict]:
 
     def fake_export_image(design, **options):
         calls.append({"design": design.pk, **options})
-        page = options["page"]
-        index = page if isinstance(page, int) else (0 if page is None else 1)
+        index = options["page"]
+        fmt = "webp" if options["format"] == "auto" else options["format"]
         return ImageResult(
             data=IMAGE,
-            format=options["format"],
-            mime={"png": "image/png", "jpg": "image/jpeg", "webp": "image/webp"}[options["format"]],
+            format=fmt,
+            mime=IMAGE_FORMATS[fmt],
             width=400,
             height=200,
             page_id=design.document["pages"][index]["id"],
             page_index=index,
+            page_count=len(design.document["pages"]),
+            options_used={"format": fmt, "quality": 90},
         )
 
-    monkeypatch.setattr(export, "export_image", fake_export_image)
+    monkeypatch.setattr(services, "export_image", fake_export_image)
     return calls
 
 
@@ -72,17 +85,19 @@ def test_the_image_comes_back_inline_with_what_it_shows(as_caller, design, rende
         "width": 400,
         "height": 200,
         "bytes": len(IMAGE),
-        "filename": "Poster.png",
+        "filename": "Poster - page 1.png",
+        "options": {"format": "png", "quality": 90},
         "editor_url": None,
     }
     assert renders == [
         {
             "design": design.pk,
-            "page": None,
+            "page": 0,
             "format": "png",
             "quality": 90,
             "scale": 1.0,
             "transparent": False,
+            **DEFAULTS,
         }
     ]
 
@@ -91,22 +106,98 @@ def test_pages_are_numbered_from_one_or_named_by_id(as_caller, design, renders):
     second = design.document["pages"][1]["id"]
     assert info_of(export.export_design(str(design.pk), page=2))["page"] == 2
     export.export_design(str(design.pk), page=second, format="webp", quality=50, scale=0.5, transparent=True)
-    assert [r["page"] for r in renders] == [1, second]
+    assert [r["page"] for r in renders] == [1, 1]
     assert renders[1] | {"design": None} == {
         "design": None,
-        "page": second,
+        "page": 1,
         "format": "webp",
         "quality": 50,
         "scale": 0.5,
         "transparent": True,
+        **DEFAULTS,
     }
     with pytest.raises(ToolError, match="numbered from 1"):
         export.export_design(str(design.pk), page=0)
 
 
+def test_the_new_options_are_passed_on(as_caller, design, renders):
+    export.export_design(
+        str(design.pk),
+        format="auto",
+        quality="balanced",
+        size="1080w",
+        max_bytes=100_000,
+        png_colors=256,
+        strip_metadata=False,
+        srgb=False,
+        progressive=True,
+    )
+    assert renders[-1] | {"design": None} == {
+        "design": None,
+        "page": 0,
+        "format": "auto",
+        "quality": "balanced",
+        "scale": 1.0,
+        "transparent": False,
+        "size": "1080w",
+        "max_bytes": 100_000,
+        "png_colors": 256,
+        "strip_metadata": False,
+        "srgb": False,
+        "progressive": True,
+    }
+
+
+def test_avif_is_always_a_link(as_caller, design, renders):
+    content = export.export_design(str(design.pk), format="avif")
+    assert [type(block) for block in content] == [TextContent]
+    info = info_of(content)
+    assert info["format"] == "avif" and "always sent as a link" in info["note"]
+    response = APIClient().get(info["url"].removeprefix("http://localhost:5173"))
+    assert response["Content-Type"] == "image/avif"
+    assert b"".join(response.streaming_content) == IMAGE
+
+
+def test_several_pages_come_back_as_a_zip_link(as_caller, user, renders):
+    design = make_design(user, title="Deck", document=make_doc(pages=3))
+    content = export.export_design(str(design.pk), pages=[3, 1], format="jpg", file_names="detailed")
+    assert [type(block) for block in content] == [TextContent]
+    info = info_of(content)
+    assert (info["format"], info["filename"]) == ("zip", "Deck.zip")
+    assert [(p["page"], p["format"], p["filename"]) for p in info["pages"]] == [
+        (3, "jpg", "deck_p03.jpg"),
+        (1, "jpg", "deck_p01.jpg"),
+    ]
+    assert [r["page"] for r in renders] == [2, 0]
+    response = APIClient().get(info["url"].removeprefix("http://localhost:5173"))
+    assert response["Content-Type"] == "application/zip"
+    assert response["Content-Disposition"].startswith("attachment;")
+    data = b"".join(response.streaming_content)
+    assert len(data) == info["bytes"]
+    assert zipfile.ZipFile(io.BytesIO(data)).namelist() == ["deck_p03.jpg", "deck_p01.jpg"]
+
+
+def test_each_extra_page_is_one_more_call(as_caller, user, renders, settings):
+    settings.MCP_CALLS_PER_MINUTE = 3
+    design = make_design(user, document=make_doc(pages=3))
+    export.export_design(str(design.pk), pages="all")
+    assert len(renders) == 3
+    with pytest.raises(ToolError, match="Too many calls"):
+        export.export_design(str(design.pk), pages="all")
+    assert len(renders) == 3
+
+
+def test_each_extra_page_uses_the_export_rate(as_caller, user, renders, monkeypatch):
+    monkeypatch.setattr(ExportRateThrottle, "THROTTLE_RATES", {"export": "2/min"})
+    design = make_design(user, document=make_doc(pages=3))
+    with pytest.raises(ToolError, match="Too many requests"):
+        export.export_design(str(design.pk), pages="all")
+    assert renders == []
+
+
 def test_warnings_are_passed_on(as_caller, design, monkeypatch):
     monkeypatch.setattr(
-        export,
+        services,
         "export_image",
         lambda d, **o: ImageResult(
             IMAGE, "png", "image/png", 1, 1, "p", 0, placeholders=1, warnings=("grey",)
@@ -207,7 +298,7 @@ def test_export_errors_reach_the_agent_as_messages(as_caller, design, monkeypatc
     def refuse(design, **options):
         raise error
 
-    monkeypatch.setattr(export, "export_image", refuse)
+    monkeypatch.setattr(services, "export_image", refuse)
     with pytest.raises(ToolError, match=message):
         export.export_design(str(design.pk))
 

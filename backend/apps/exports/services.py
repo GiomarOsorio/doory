@@ -1,8 +1,8 @@
 """The export pipelines.
 
 * PDF: sanitise every page SVG the browser sent, build one HTML document, print it.
-* Image: draw one page of a saved design on the server with the editor's own engine (the frontend's headless
-  render page), then convert the PNG to the requested format.
+* Image: draw pages of a saved design on the server with the editor's own engine (the frontend's headless
+  render page), one at a time, then convert each PNG to the requested format; several pages go into a ZIP.
 """
 
 from __future__ import annotations
@@ -10,13 +10,16 @@ from __future__ import annotations
 import io
 import json
 import logging
-from collections.abc import Sequence
-from dataclasses import dataclass, replace
+import re
+import zipfile
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass, field, replace
+from datetime import datetime
 from typing import Any
 
 from django.conf import settings
 from django.db.models.functions import Lower
-from PIL import Image
+from PIL import Image, features
 
 from apps.core.svg import SvgError, sanitize_svg
 from apps.designs.edits import current_document
@@ -25,6 +28,7 @@ from apps.fonts.serializers import FontFamilySerializer, with_variants
 from apps.fonts.usage import font_names_in_document, uploaded_fonts_used_by
 
 from .exceptions import ExportFailed, ExportUnavailable, ImageExportDisabled, InvalidExport, PayloadTooLarge
+from .filenames import export_filename, page_filename
 from .fonts import load_fonts
 from .layout import PageGeometry, build_document_html, prepare_page_svg
 from .pdfmeta import finalize_pdf
@@ -95,15 +99,24 @@ def export_pdf(request: ExportRequest) -> RenderResult:
 
 # ---- image export ------------------------------------------------------------------------------
 
-IMAGE_FORMATS = {"png": "image/png", "jpg": "image/jpeg", "webp": "image/webp"}
+IMAGE_FORMATS = {"png": "image/png", "jpg": "image/jpeg", "webp": "image/webp", "avif": "image/avif"}
 FORMAT_ALIASES = {"jpeg": "jpg"}
+AUTO = "auto"  # every format this server makes; the smallest file wins
+ZIP_MIME = "application/zip"
 MIN_SCALE, MAX_SCALE = 0.1, 4.0
+QUALITY_PRESETS = {"small": 65, "balanced": 82, "best": 95, "original": 100}
+# AVIF is slow to encode: above this many pixels it uses speed 6 instead of 4 (much faster, a little bigger).
+AVIF_FAST_PIXELS = 8_000_000
+_SIZE = re.compile(r"^\s*(?P<value>\d+(?:\.\d+)?)\s*(?P<unit>[xwh])\s*$", re.IGNORECASE)
+_PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+_PNG_METADATA = frozenset({b"tEXt", b"zTXt", b"iTXt", b"tIME", b"eXIf"})  # left out by `strip_metadata`
+_PNG_PROFILE = frozenset({b"iCCP"})  # left out by `srgb`
 
 
 @dataclass(frozen=True)
 class ImageResult:
     data: bytes
-    format: str  # png, jpg or webp
+    format: str  # png, jpg, webp or avif
     mime: str
     width: int
     height: int
@@ -119,6 +132,104 @@ class ImageResult:
     page_height: float = 0
     page_count: int = 1
     preset: str = ""
+    bytes_before: int = 0  # the PNG as drawn, before it was converted
+    # How the file was made: format, quality (after a `max_bytes` search), scale and the other options, and
+    # for `auto` the size of every format it compared.
+    options_used: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class ImageBundle:
+    """What `export_images` made: the file of one page, or a ZIP of several."""
+
+    data: bytes
+    format: str  # the image format, or "zip"
+    mime: str
+    filename: str
+    images: tuple[ImageResult, ...]  # one per page, in order
+    filenames: tuple[str, ...]  # the name of each page's file (inside the ZIP)
+
+    @property
+    def placeholders(self) -> int:
+        return sum(image.placeholders for image in self.images)
+
+    @property
+    def warnings(self) -> tuple[str, ...]:
+        if len(self.images) == 1:
+            return self.images[0].warnings
+        return tuple(
+            f"Page {image.page_index + 1}: {text}" for image in self.images for text in image.warnings
+        )
+
+
+@dataclass(frozen=True)
+class Encoding:
+    """How the drawn PNG becomes the file (`export_image`'s options, checked)."""
+
+    format: str  # one of IMAGE_FORMATS, or AUTO
+    quality: int = 90
+    transparent: bool = False
+    max_bytes: int | None = None
+    png_colors: int | None = None
+    strip_metadata: bool = True
+    srgb: bool = True
+    progressive: bool = False
+
+
+@dataclass(frozen=True)
+class Converted:
+    data: bytes
+    format: str
+    options: dict[str, Any]
+    warnings: tuple[str, ...] = ()
+
+
+def image_formats() -> tuple[str, ...]:
+    """The formats this server makes: AVIF needs a Pillow built with libavif."""
+    return tuple(fmt for fmt in IMAGE_FORMATS if fmt != "avif" or features.check("avif"))
+
+
+def avif_speed(width: int, height: int) -> int:
+    return 6 if width * height > AVIF_FAST_PIXELS else 4
+
+
+def parse_size(size: str, width: float, height: float) -> float:
+    """The scale a `size` means for a page of `width` x `height`: "2x" (a scale), "1080w" (that many pixels
+    wide) or "1350h" (that many pixels high)."""
+    match = _SIZE.match(size) if isinstance(size, str) else None
+    if match is None or (match["unit"].lower() != "x" and not float(match["value"]).is_integer()):
+        raise InvalidExport("invalid_size", 'The size must look like "2x", "1080w" or "1350h".')
+    value, unit = float(match["value"]), match["unit"].lower()
+    scale = value if unit == "x" else value / (width if unit == "w" else height)
+    if not MIN_SCALE <= scale <= MAX_SCALE:
+        side = height if unit == "h" else width
+        raise InvalidExport(
+            "invalid_size",
+            f"{size.strip()} is {scale:.2f}x this page; the size must be between {MIN_SCALE:g}x and "
+            f"{MAX_SCALE:g}x ({round(side * MIN_SCALE)} to {round(side * MAX_SCALE)} px "
+            f"{'high' if unit == 'h' else 'wide'}).",
+        )
+    return scale
+
+
+def _quality(quality: int | str) -> int:
+    if isinstance(quality, str) and quality.strip().lower() in QUALITY_PRESETS:
+        return QUALITY_PRESETS[quality.strip().lower()]
+    if isinstance(quality, bool) or not isinstance(quality, int) or not 1 <= quality <= 100:
+        raise InvalidExport(
+            "invalid_quality",
+            "The quality must be a whole number from 1 to 100, or one of " + ", ".join(QUALITY_PRESETS) + ".",
+        )
+    return quality
+
+
+def _whole(value, low: int, high: int | None = None) -> bool:
+    return (
+        not isinstance(value, bool)
+        and isinstance(value, int)
+        and value >= low
+        and (high is None or value <= high)
+    )
 
 
 def page_index(page: int | str | None) -> int | str | None:
@@ -187,22 +298,128 @@ def font_manifest(page: dict, owner) -> list[dict[str, Any]]:
     return json.loads(json.dumps(FontFamilySerializer([*uploaded, *catalogue], many=True).data))
 
 
-def _convert(png: bytes, fmt: str, quality: int, transparent: bool) -> bytes:
-    """PNG as drawn; JPG flattened on white (no alpha); WebP with alpha only for a transparent export."""
+def _convert(png: bytes, encoding: Encoding) -> Converted:
+    """PNG as drawn (or with fewer colours); JPG flattened on white (no alpha); WebP and AVIF with alpha only
+    for a transparent export. `auto` makes every format that fits and keeps the smallest file."""
+    image, info = None, {}
+    if encoding.format != "png" or encoding.png_colors:  # a PNG as drawn is not decoded at all
+        with Image.open(io.BytesIO(png)) as source:
+            image, info = source.convert("RGBA"), dict(source.info)
+        image.info = {}  # metadata goes in only on request (`_metadata`)
+    if encoding.format != AUTO:
+        return _convert_to(png, image, info, encoding)
+    formats = [fmt for fmt in image_formats() if not (fmt == "jpg" and encoding.transparent)]
+    tried = [_convert_to(png, image, info, replace(encoding, format=fmt)) for fmt in formats]
+    best = min(tried, key=lambda converted: len(converted.data))
+    return replace(best, options=best.options | {"compared": {c.format: len(c.data) for c in tried}})
+
+
+def _convert_to(png: bytes, image: Image.Image | None, info: dict, encoding: Encoding) -> Converted:
+    fmt = encoding.format
     if fmt == "png":
-        return png
-    with Image.open(io.BytesIO(png)) as source:
-        image = source.convert("RGBA")
-    if fmt == "jpg" or not transparent:
+        return _to_png(png, image, info, encoding)
+    if fmt == "jpg" or not encoding.transparent:
         flat = Image.new("RGBA", image.size, (255, 255, 255, 255))
         flat.alpha_composite(image)
         image = flat.convert("RGB")
-    out = io.BytesIO()
+    extra = _metadata(info, encoding)
+    options: dict[str, Any] = {"format": fmt}
     if fmt == "jpg":
-        image.save(out, "JPEG", quality=quality, optimize=True)
+        options["progressive"] = encoding.progressive
+        extra |= {"optimize": True, "progressive": encoding.progressive}
+    elif fmt == "webp":
+        extra["method"] = 4
     else:
-        image.save(out, "WEBP", quality=quality, method=4)
-    return out.getvalue()
+        options["speed"] = extra["speed"] = avif_speed(*image.size)
+    kind = {"jpg": "JPEG", "webp": "WEBP", "avif": "AVIF"}[fmt]
+
+    def encode(quality: int) -> bytes:
+        out = io.BytesIO()
+        image.save(out, kind, quality=quality, **extra)
+        return out.getvalue()
+
+    data, quality = encode(encoding.quality), encoding.quality
+    warnings: tuple[str, ...] = ()
+    if encoding.max_bytes is not None and len(data) > encoding.max_bytes:
+        data, quality = _fit(encode, encoding.quality, encoding.max_bytes, data)
+        if len(data) > encoding.max_bytes:
+            warnings = (
+                f"Even at quality {quality} the {fmt.upper()} is {len(data)} bytes, more than max_bytes "
+                f"({encoding.max_bytes}); use a smaller size.",
+            )
+    return Converted(data, fmt, options | {"quality": quality}, warnings)
+
+
+def _fit(encode, quality: int, max_bytes: int, first: bytes) -> tuple[bytes, int]:
+    """The highest quality below `quality` whose file is at most `max_bytes` (a binary search, at most seven
+    encodes), else the smallest file tried."""
+    fitting, smallest = None, (first, quality)
+    low, high = 1, quality - 1
+    while low <= high:
+        middle = (low + high) // 2
+        data = encode(middle)
+        if len(data) <= max_bytes:
+            fitting, low = (data, middle), middle + 1
+        else:
+            high = middle - 1
+            if len(data) < len(smallest[0]):
+                smallest = (data, middle)
+    return fitting or smallest
+
+
+def _to_png(png: bytes, image: Image.Image | None, info: dict, encoding: Encoding) -> Converted:
+    """The PNG as drawn, without the chunks `strip_metadata` and `srgb` leave out; with `png_colors`, a
+    palette PNG instead when that is smaller (never bigger than the PNG as drawn)."""
+    data = _strip_png(png, encoding)
+    options: dict[str, Any] = {"format": "png", "png_colors": None}
+    if encoding.png_colors:
+        method = (
+            Image.Quantize.LIBIMAGEQUANT
+            if features.check_feature("libimagequant")
+            else Image.Quantize.FASTOCTREE
+        )
+        source = image if encoding.transparent else image.convert("RGB")
+        out = io.BytesIO()
+        source.quantize(colors=encoding.png_colors, method=method).save(
+            out, "PNG", optimize=True, **_metadata(info, encoding)
+        )
+        if len(out.getvalue()) < len(data):
+            data, options["png_colors"] = out.getvalue(), encoding.png_colors
+    warnings: tuple[str, ...] = ()
+    if encoding.max_bytes is not None and len(data) > encoding.max_bytes:
+        warnings = (
+            f"The PNG is {len(data)} bytes, more than max_bytes ({encoding.max_bytes}); a PNG has no quality "
+            "to lower. Use png_colors, a smaller size or another format.",
+        )
+    return Converted(data, "png", options, warnings)
+
+
+def _metadata(info: dict, encoding: Encoding) -> dict[str, Any]:
+    """What the drawn PNG carried and the export keeps: its colour profile without `srgb`, its Exif data
+    without `strip_metadata`."""
+    extra = {}
+    if not encoding.srgb and info.get("icc_profile"):
+        extra["icc_profile"] = info["icc_profile"]
+    if not encoding.strip_metadata and info.get("exif"):
+        extra["exif"] = info["exif"]
+    return extra
+
+
+def _strip_png(png: bytes, encoding: Encoding) -> bytes:
+    """`png` without its text, time and Exif chunks (`strip_metadata`) and its ICC profile (`srgb`); the same
+    bytes when it has none, or when it can't be read chunk by chunk."""
+    drop = (_PNG_METADATA if encoding.strip_metadata else frozenset()) | (
+        _PNG_PROFILE if encoding.srgb else frozenset()
+    )
+    if not drop or not png.startswith(_PNG_SIGNATURE):
+        return png
+    kept, at = [_PNG_SIGNATURE], len(_PNG_SIGNATURE)
+    while at + 12 <= len(png):
+        end = at + 12 + int.from_bytes(png[at : at + 4], "big")
+        if png[at + 4 : at + 8] not in drop:
+            kept.append(png[at:end])
+        at = end
+    return b"".join(kept) if at == len(png) else png
 
 
 def export_image(
@@ -210,28 +427,48 @@ def export_image(
     *,
     page: int | str | None = None,
     format: str = "png",
-    quality: int = 90,
+    quality: int | str = 90,
     scale: float = 1,
     transparent: bool = False,
+    size: str | None = None,
+    max_bytes: int | None = None,
+    png_colors: int | None = None,
+    strip_metadata: bool = True,
+    srgb: bool = True,
+    progressive: bool = False,
 ) -> ImageResult:
-    """Draw one page of `design` (its live editor state when it is open, else the saved document) as PNG, JPG
-    or WebP. `page` is an index or a page id (default: the first page); `transparent` leaves the page
-    background out (not for JPG). Raises `InvalidExport`, `PayloadTooLarge` and the `Export*` exceptions."""
+    """Draw one page of `design` (its live editor state when it is open, else the saved document) as PNG, JPG,
+    WebP or AVIF, or `auto`: the smallest of those. `page` is an index or a page id (default: the first page);
+    `transparent` leaves the page background out (not for JPG).
+
+    `size` ("2x", "1080w", "1350h") replaces `scale`. `quality` is 1-100 or a preset (small, balanced, best,
+    original); with `max_bytes`, JPG, WebP and AVIF are made at the highest quality up to `quality` that fits.
+    `png_colors` (2-256) makes a palette PNG when that is smaller. `strip_metadata` and `srgb` leave the drawn
+    PNG's metadata and colour profile out; `progressive` is for JPG. Raises `InvalidExport`, `PayloadTooLarge`
+    and the `Export*` exceptions."""
     if not settings.SERVER_IMAGE_EXPORT_ENABLED:
         raise ImageExportDisabled
     if not settings.EXPORT_RENDER_PAGE_URL:
         raise ExportUnavailable
     fmt = FORMAT_ALIASES.get(str(format).lower(), str(format).lower())
-    if fmt not in IMAGE_FORMATS:
-        raise InvalidExport("invalid_format", "The format must be png, jpg or webp.")
-    if isinstance(quality, bool) or not isinstance(quality, int) or not 1 <= quality <= 100:
-        raise InvalidExport("invalid_quality", "The quality must be a whole number from 1 to 100.")
-    try:
-        scale = float(scale)
-    except (TypeError, ValueError):
-        scale = 0.0
-    if not MIN_SCALE <= scale <= MAX_SCALE:
-        raise InvalidExport("invalid_scale", f"The scale must be between {MIN_SCALE:g} and {MAX_SCALE:g}.")
+    if fmt not in (*IMAGE_FORMATS, AUTO):
+        raise InvalidExport("invalid_format", "The format must be png, jpg, webp, avif or auto.")
+    if fmt != AUTO and fmt not in image_formats():
+        raise InvalidExport("format_unavailable", f"This server can't make {fmt.upper()} images.")
+    quality = _quality(quality)
+    if max_bytes is not None and not _whole(max_bytes, 1):
+        raise InvalidExport("invalid_max_bytes", "max_bytes must be a whole number of bytes, 1 or more.")
+    if png_colors is not None and not _whole(png_colors, 2, 256):
+        raise InvalidExport("invalid_png_colors", "png_colors must be a whole number from 2 to 256.")
+    if size is None:
+        try:
+            scale = float(scale)
+        except (TypeError, ValueError):
+            scale = 0.0
+        if not MIN_SCALE <= scale <= MAX_SCALE:
+            raise InvalidExport(
+                "invalid_scale", f"The scale must be between {MIN_SCALE:g} and {MAX_SCALE:g}."
+            )
     transparent = bool(transparent) and fmt != "jpg"
 
     document = current_document(design)
@@ -239,6 +476,8 @@ def export_image(
         raise PayloadTooLarge("The design is too large to export as an image on the server.")
     page_obj, index = _pick_page(document, page)
     width, height = _page_size(document, page_obj)
+    if size is not None:
+        scale = parse_size(size, width, height)
     if round(width * scale) * round(height * scale) > settings.EXPORT_IMAGE_MAX_PIXELS:
         raise InvalidExport(
             "too_large",
@@ -254,8 +493,18 @@ def export_image(
     }
     with render_slot(design.owner_id):
         result = render_image(payload, render_url=settings.EXPORT_RENDER_PAGE_URL)
+    encoding = Encoding(
+        format=fmt,
+        quality=quality,
+        transparent=transparent,
+        max_bytes=max_bytes,
+        png_colors=png_colors,
+        strip_metadata=bool(strip_metadata),
+        srgb=bool(srgb),
+        progressive=bool(progressive),
+    )
     try:
-        data = _convert(result.data, fmt, quality, transparent)
+        converted = _convert(result.data, encoding)
     except (OSError, ValueError) as exc:
         logger.error("Image export: the render page sent an unreadable PNG (%s)", exc)
         raise ExportFailed from exc
@@ -267,21 +516,25 @@ def export_image(
         )
     if result.missing_fonts:
         warnings.append("Drawn in a fallback font: " + ", ".join(result.missing_fonts) + ".")
+    warnings.extend(converted.warnings)
+    data = converted.data
     logger.info(
-        "Image export: design=%s page=%d %s %dx%d, %d byte(s), %d placeholder(s), %d blocked request(s)",
+        "Image export: design=%s page=%d %s %dx%d, %d byte(s) (drawn: %d), %d placeholder(s), "
+        "%d blocked request(s)",
         design.pk,
         result.page_index,
-        fmt,
+        converted.format,
         result.width,
         result.height,
         len(data),
+        len(result.data),
         result.placeholders,
         result.blocked_total,
     )
     return ImageResult(
         data=data,
-        format=fmt,
-        mime=IMAGE_FORMATS[fmt],
+        format=converted.format,
+        mime=IMAGE_FORMATS[converted.format],
         width=result.width,
         height=result.height,
         page_id=result.page_id,
@@ -294,4 +547,69 @@ def export_image(
         page_height=height,
         page_count=len(document["pages"]),
         preset=_preset_id(document) or design.preset,
+        bytes_before=len(result.data),
+        options_used={
+            **converted.options,
+            "scale": scale,
+            "transparent": transparent,
+            "strip_metadata": encoding.strip_metadata,
+            "srgb": encoding.srgb,
+            **({"max_bytes": max_bytes} if max_bytes is not None else {}),
+        },
     )
+
+
+def pick_pages(design, pages: str | Sequence[int | str | None] | None) -> list[int]:
+    """The 0-based indexes of `pages` in the design as it is now: "all", or indexes and page ids as
+    `export_image` takes them (None: the first page). Repeats are dropped; more than `EXPORT_IMAGE_MAX_PAGES`
+    pages are refused."""
+    document = current_document(design)
+    if pages is None:
+        pages = [None]
+    if isinstance(pages, str) and pages.strip().lower() == "all":
+        _pick_page(document, None)  # refuses a design without pages
+        indexes = list(range(len(document["pages"])))
+    elif isinstance(pages, list | tuple) and pages:
+        indexes = list(dict.fromkeys(_pick_page(document, page)[1] for page in pages))
+    else:
+        raise InvalidExport("invalid_pages", 'Give "all" or a list of pages.')
+    if len(indexes) > settings.EXPORT_IMAGE_MAX_PAGES:
+        raise InvalidExport(
+            "too_many_pages",
+            f"This server exports at most {settings.EXPORT_IMAGE_MAX_PAGES} pages at once, "
+            f"not {len(indexes)}.",
+        )
+    return indexes
+
+
+def export_images(
+    design,
+    *,
+    pages: str | Sequence[int | str | None] | None = None,
+    filename_style: str | None = None,
+    unix: int | None = None,
+    charge: Callable[[int], None] | None = None,
+    **options: Any,
+) -> ImageBundle:
+    """Draw `pages` (see `pick_pages`) of `design` with `export_image` and its `options`, one render at a
+    time, and pack them into a ZIP; a single page comes back as its own file. Before anything is drawn,
+    `charge` is called with the number of pages after the first (to count them against a rate limit). The
+    files are named by `filenames.page_filename` in `filename_style` (default `EXPORT_FILENAME_STYLE`), the
+    ZIP after the design's title."""
+    indexes = pick_pages(design, pages)
+    if charge is not None and len(indexes) > 1:
+        charge(len(indexes) - 1)
+    style = filename_style or settings.EXPORT_FILENAME_STYLE
+    images = tuple(export_image(design, page=index, **options) for index in indexes)
+    names = tuple(page_filename(design.title, image, style=style, unix=unix) for image in images)
+    if len(images) == 1:
+        return ImageBundle(images[0].data, images[0].format, images[0].mime, names[0], images, names)
+    out = io.BytesIO()
+    made = datetime.now().timetuple()[:6]
+    with zipfile.ZipFile(out, "w") as archive:
+        for name, image in zip(names, images, strict=True):
+            entry = zipfile.ZipInfo(name, date_time=made)
+            entry.compress_type = zipfile.ZIP_STORED  # PNG, JPG, WebP and AVIF are compressed already
+            entry.external_attr = 0o644 << 16
+            archive.writestr(entry, image.data)
+    return ImageBundle(out.getvalue(), "zip", ZIP_MIME, export_filename(design.title, "zip"), images, names)

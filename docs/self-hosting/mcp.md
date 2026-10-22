@@ -36,7 +36,8 @@ workers.
 ## Settings
 
 See [MCP server in configuration.md](configuration.md#mcp-server): call rate per user, request size, copying
-images from URLs, and how `export_design` returns large images. The number of tokens per user is
+images from URLs, and how `export_design` returns large images. AVIF images and ZIPs always come back as a
+download link, and each page after the first counts as one more call. The number of tokens per user is
 `MAX_API_TOKENS_PER_USER`.
 
 ## Connect a client
@@ -64,8 +65,9 @@ Assistants can work with designs and their contents:
   backgrounds and speaker notes.
 - **Search:** templates, elements, fonts and stock photos.
 
-They can also handle comments, brand kits, share links and earlier versions, and export a page as an image
-(`export_design`). Designs are also available as MCP resources (`doory://designs/{id}`), and the server offers
+They can also handle comments, brand kits, share links and earlier versions, and export pages as PNG, JPG,
+WebP or AVIF images, or several pages as a ZIP (`export_design`, with the options in
+[image-export.md](image-export.md#image-options)). Designs are also available as MCP resources (`doory://designs/{id}`), and the server offers
 two prompts.
 
 Some actions are protected:
