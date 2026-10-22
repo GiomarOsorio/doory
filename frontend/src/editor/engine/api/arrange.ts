@@ -37,13 +37,17 @@ export function canFitKind(kind: string): boolean {
 export const DUPLICATE_OFFSET = 20
 
 /**
- * Re-assigns ids to an object and every object nested in it. A copy also loses its template field tag: the same
- * key twice on one page would clash, and the user tags the copy when it is meant to be a field too.
+ * Re-assigns ids to an object and every object nested in it (noting each old id's new one in `renamed`, when given).
+ * A copy also loses its template field tag: the same key twice on one page would clash, and the user tags the copy
+ * when it is meant to be a field too.
  */
-export function reidTree(obj: FabricObject): void {
-  asDory(obj).id = newId()
+export function reidTree(obj: FabricObject, renamed?: Map<string, string>): void {
+  const before = asDory(obj).id
+  const id = newId()
+  asDory(obj).id = id
+  if (before && renamed) renamed.set(before, id)
   asDory(obj).field = undefined
-  if (obj instanceof Group) for (const child of obj.getObjects()) reidTree(child)
+  if (obj instanceof Group) for (const child of obj.getObjects()) reidTree(child, renamed)
 }
 
 export function findLive(objects: readonly FabricObject[], id: string): FabricObject | undefined {
@@ -100,8 +104,14 @@ export class ArrangeApi {
     if (!view) return
     const objs = view.selectedObjects().filter((o) => !isLocked(o))
     if (objs.length === 0) return
+    // A clip's blurred background goes with it: it is locked in place and means nothing without its clip.
+    const gone = new Set(objs.map((o) => asDory(o).id))
+    const backdrops = view.canvas.getObjects().filter((o) => {
+      const of = (o as unknown as Record<string, unknown>).videoBackdropOf
+      return typeof of === 'string' && gone.has(of) && !objs.includes(o)
+    })
     view.canvas.discardActiveObject()
-    view.canvas.remove(...objs)
+    view.canvas.remove(...objs, ...backdrops)
     view.canvas.requestRenderAll()
     this.done(objs.length === 1 ? t.history.deleteLayer : t.history.deleteLayers)
     this.engine.announce(t.announce.deleted(objs.length))
