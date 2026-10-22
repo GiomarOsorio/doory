@@ -266,6 +266,7 @@ REST_FRAMEWORK = {
         "bulk_fill_images": "300/min",  # image URLs fetched by bulk-fill (REST and MCP)
         "export": "30/min",  # server-side image renders (REST and MCP)
         "optimize": "60/min",  # images the browser drew, converted and optimized (POST /exports/optimize/)
+        "optimize_offsite": "10/min",  # images sent to an optimizer off this server (REST and MCP)
         "ai": "30/min",  # calls to AI image providers (REST and MCP)
     },
     "DEFAULT_RENDERER_CLASSES": ["rest_framework.renderers.JSONRenderer"],
@@ -356,8 +357,11 @@ EXPORT_RENDER_PAGE_URL = env(
 EXPORT_IMAGE_MAX_PIXELS = env.int("EXPORT_IMAGE_MAX_PIXELS", default=40_000_000)  # output width x height
 EXPORT_IMAGE_MAX_DOCUMENT_BYTES = env.int("EXPORT_IMAGE_MAX_DOCUMENT_BYTES", default=5 * 1024 * 1024)
 # Pages one export may draw (`pages`, sent back as a ZIP). Each page is a render of its own, and the whole
-# export is one request: keep pages x EXPORT_TIMEOUT_SECONDS under the web server's worker timeout.
+# export is one request.
 EXPORT_IMAGE_MAX_PAGES = env.int("EXPORT_IMAGE_MAX_PAGES", default=10)
+# Time limit for a whole image export: drawing, converting and optimizing all its pages (and for converting
+# one PNG at /exports/optimize/). Keep it under the web server's worker timeout (120 s in the Docker image).
+EXPORT_IMAGE_TIMEOUT_SECONDS = env.int("EXPORT_IMAGE_TIMEOUT_SECONDS", default=100)
 # Server-side MP4, WebM and GIF of saved designs (apps.exports.services.export_video), on the same render page
 # with the editor's video pipeline. Off by default: one video keeps a browser busy for minutes. It also needs
 # SERVER_IMAGE_EXPORT_ENABLED. The deadline covers the whole file; the bundled nginx waits 330 s for it.
