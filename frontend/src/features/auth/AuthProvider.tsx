@@ -10,6 +10,10 @@ export type AuthStatus = 'loading' | 'authenticated' | 'anonymous'
 export interface LostSession {
   id: string
   email: string
+  /** Whether the account has a password to sign in again with. */
+  hasPassword: boolean
+  /** Whether it is connected to single sign-on. */
+  ssoLinked: boolean
 }
 
 /** Constraint for a sign-in that must restore a session that ended (the editor keeps saving to this account only). */
@@ -101,7 +105,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const previous = userRef.current
     if (!previous) return
     userRef.current = null
-    setLostSession({ id: previous.id, email: previous.email })
+    setLostSession({ id: previous.id, email: previous.email, hasPassword: previous.has_password, ssoLinked: previous.oidc_linked })
     setUserState(null)
     setStatus('anonymous')
   }, [])
