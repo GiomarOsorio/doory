@@ -5,6 +5,7 @@
  */
 import { type FabricImage, type FabricObject, IText, Point } from 'fabric'
 import type { AssetRef } from '@/types/adapter'
+import type { CropRect } from '../upscale/types'
 import type { ElementItem } from '@/types/api'
 import type { DocObject, MaskShape } from '@/types/document'
 import type { EditorEngine } from '../editor'
@@ -432,7 +433,7 @@ export class InsertApi {
   }
 
   /** Replaces the selected image's source keeping its frame (size, position, mask, filters). */
-  async replaceSelectedImage(ref: AssetRef): Promise<void> {
+  async replaceSelectedImage(ref: AssetRef, label: string = t.history.replaceImage, crop?: CropRect): Promise<void> {
     const view = this.engine.activeView()
     const obj = view?.selectedObjects()[0]
     if (!view || !obj) return
@@ -455,6 +456,15 @@ export class InsertApi {
     if (d.slot) {
       const cover = coverSlotTransform(d.slot, natW, natH)
       img.set({ left: cover.cx, top: cover.cy, scaleX: cover.scale, scaleY: cover.scale, angle: d.slot.angle })
+    } else if (crop) {
+      // The new source is the whole photo at a higher resolution: keep exactly the same visible crop
+      // and shrink the displayed scale by the same factor, so the picture does not move or grow.
+      const x = Math.min(natW - 1, Math.max(0, Math.round(crop.x)))
+      const y = Math.min(natH - 1, Math.max(0, Math.round(crop.y)))
+      const width = Math.min(natW - x, Math.max(1, Math.round(crop.width)))
+      const height = Math.min(natH - y, Math.max(1, Math.round(crop.height)))
+      const scale = Math.min(frameW / width, frameH / height)
+      img.set({ cropX: x, cropY: y, width, height, scaleX: scale, scaleY: scale })
     } else {
       coverFrame(img, frameW, frameH)
     }
@@ -462,7 +472,7 @@ export class InsertApi {
     applyMask(img)
     img.setCoords()
     view.canvas.requestRenderAll()
-    this.engine.commit(this.engine.state.activePageId, { label: t.history.replaceImage })
+    this.engine.commit(this.engine.state.activePageId, { label })
   }
 
   async pickAndReplaceImage(): Promise<void> {
