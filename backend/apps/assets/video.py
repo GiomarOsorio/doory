@@ -5,10 +5,10 @@ environment, a private work directory and a hard deadline. They're installed wit
 (`INSTALL_FFMPEG`) or by the operator; without them the server takes no video (`available()`).
 
 Every clip ends up the same way, whatever came in: H.264 (yuv420p) with AAC sound in an MP4 whose index sits
-at the front (`+faststart`), at most 1920 by 1080, with a key frame at least every two seconds. Then every
-browser can play it, the editor can seek it quickly, and the export can decode it with WebCodecs. A file that
-already looks like that is only rewrapped (`remux`, a second or two). Anything else is converted
-(`transcode`), which can take minutes and so runs off the request (`video_jobs`).
+at the front (`+faststart`), at most 1920 by 1080. Then every browser can play it, the editor can seek it
+quickly, and the export can decode it with WebCodecs. A file that already looks like that is only rewrapped
+(`remux`, a second or two) and keeps the key frames it came with. Anything else is converted (`transcode`),
+with a key frame every two seconds, which can take minutes and so runs off the request (`video_jobs`).
 
 Each clip also gets a poster (the frame every still surface shows: thumbnails, PNG/PDF export, the server's
 image export), a filmstrip for the timeline, and its sound as an .m4a of its own for the audio mix.
@@ -26,6 +26,7 @@ import signal
 import subprocess
 import tempfile
 import threading
+import time
 from collections.abc import Iterator
 from dataclasses import dataclass, replace
 from fractions import Fraction
@@ -44,6 +45,8 @@ PROBE_TIMEOUT_SECONDS = 20
 REMUX_TIMEOUT_SECONDS = 60
 STILLS_TIMEOUT_SECONDS = 60
 MAX_PROBE_OUTPUT = 256 * 1024
+STDERR_TAIL = 2000  # the end of a failed command's messages, for the log
+PIPE_CHUNK = 64 * 1024
 MAX_DIMENSION = 8192
 MAX_WIDTH, MAX_HEIGHT = 1920, 1080  # landscape; a portrait clip may be 1080 by 1920
 MAX_FPS = 60
@@ -55,8 +58,11 @@ STRIP_HEIGHT = 90
 STRIP_MAX_FRAMES = 60
 STRIP_MIN_INTERVAL_MS = 500
 SLOT_WAIT_SECONDS = 20.0
+WORK_PREFIX = "doory-video-"
 # The containers ffprobe may name for an upload (format_name is a comma list; any of these will do).
 CONTAINERS = frozenset({"mov", "mp4", "m4a", "3gp", "3g2", "mj2", "matroska", "webm", "avi"})
+# Containers a browser recording (MediaRecorder) comes in, which may not say how long it is.
+RECORDING_CONTAINERS = frozenset({"matroska", "webm"})
 # Still-image "videos" (a GIF, a PNG sequence) are pictures, not clips.
 STILL_CODECS = frozenset({"gif", "png", "mjpeg", "apng", "webp", "bmp", "tiff"})
 _ENV_ALLOWLIST = ("PATH", "HOME", "LANG", "LC_ALL")
@@ -81,7 +87,7 @@ class VideoBusy(VideoError):
 
 @dataclass(frozen=True)
 class VideoInfo:
-    duration_ms: int
+    duration_ms: int  # 0: not known before converting (a browser recording)
     width: int  # as shown, after any rotation
     height: int
     fps: float
@@ -99,7 +105,8 @@ class VideoInfo:
         """True when rewrapping is enough: everything a browser and WebCodecs need is already there."""
         long_side, short_side = max(self.width, self.height), min(self.width, self.height)
         return (
-            self.codec == "h264"
+            self.duration_ms > 0  # a clip of unknown length is converted, which caps it
+            and self.codec == "h264"
             and self.pix_fmt in ("yuv420p", "yuvj420p")
             and long_side <= MAX_WIDTH
             and short_side <= MAX_HEIGHT
@@ -168,7 +175,7 @@ def slot(wait: float | None = SLOT_WAIT_SECONDS) -> Iterator[None]:
 # ---- running the commands ----------------------------------------------------------------------
 
 
-def work_dir(prefix: str = "doory-video-") -> Path:
+def work_dir(prefix: str = WORK_PREFIX) -> Path:
     """A private directory for one clip, under `VIDEO_WORK_DIR` (default: the system temp directory)."""
     root = settings.VIDEO_WORK_DIR or None
     if root:
@@ -176,11 +183,64 @@ def work_dir(prefix: str = "doory-video-") -> Path:
     return Path(tempfile.mkdtemp(prefix=prefix, dir=root))
 
 
+def _last_change(path: Path) -> float:
+    newest = path.lstat().st_mtime
+    with os.scandir(path) as entries:
+        for entry in entries:
+            newest = max(newest, entry.stat(follow_symlinks=False).st_mtime)
+    return newest
+
+
+def remove_old_work_dirs(max_age_seconds: float) -> int:
+    """Remove the clip directories that nothing has written to for `max_age_seconds`: left behind by a process
+    that was killed while it worked on a clip. Returns how many were removed."""
+    root = Path(settings.VIDEO_WORK_DIR or tempfile.gettempdir())
+    cutoff = time.time() - max_age_seconds
+    removed = 0
+    try:
+        entries = list(os.scandir(root))
+    except OSError:
+        return 0
+    for entry in entries:
+        if not entry.name.startswith(WORK_PREFIX) or not entry.is_dir(follow_symlinks=False):
+            continue
+        try:
+            if _last_change(Path(entry.path)) >= cutoff:
+                continue
+        except OSError:
+            continue
+        shutil.rmtree(entry.path, ignore_errors=True)
+        removed += 1
+    return removed
+
+
 def _env(workdir: Path | None) -> dict[str, str]:
     env = {key: os.environ[key] for key in _ENV_ALLOWLIST if key in os.environ}
     if workdir is not None:
         env["TMPDIR"] = str(workdir)
     return env
+
+
+class _Drain(threading.Thread):
+    """Read a pipe to its end in chunks, keeping at most `limit` bytes: the first ones, or with `tail` the
+    last ones. However much a command writes, no more than that is ever held in memory."""
+
+    def __init__(self, pipe, limit: int, *, tail: bool = False):
+        super().__init__(daemon=True)
+        self.pipe, self.limit, self.tail = pipe, limit, tail
+        self.data = bytearray()
+        self.overflow = False
+
+    def run(self) -> None:
+        with contextlib.suppress(OSError, ValueError), self.pipe:
+            while chunk := self.pipe.read1(PIPE_CHUNK):
+                if self.tail:
+                    self.data += chunk
+                    del self.data[: -self.limit]
+                elif len(self.data) + len(chunk) > self.limit:
+                    self.overflow = True  # keep reading, so the command doesn't block on a full pipe
+                else:
+                    self.data += chunk
 
 
 def _run(args: list[str], *, timeout: float, workdir: Path | None = None, capture: bool = False) -> bytes:
@@ -194,21 +254,31 @@ def _run(args: list[str], *, timeout: float, workdir: Path | None = None, captur
         cwd=str(workdir) if workdir else None,
         start_new_session=True,
     )
+    err = _Drain(process.stderr, STDERR_TAIL, tail=True)
+    out = _Drain(process.stdout, MAX_PROBE_OUTPUT) if capture else None
+    readers = [err] if out is None else [err, out]
+    for reader in readers:
+        reader.start()
     try:
-        out, err = process.communicate(timeout=timeout)
+        process.wait(timeout=timeout)
     except subprocess.TimeoutExpired:
         with contextlib.suppress(ProcessLookupError, PermissionError):
             os.killpg(process.pid, signal.SIGKILL)
-        process.communicate()
+        process.wait()
         raise VideoError("Converting the video took too long.") from None
+    finally:
+        for reader in readers:
+            reader.join()
     if process.returncode != 0:
         logger.info(
-            "%s failed (%s): %s", Path(args[0]).name, process.returncode, err[-2000:].decode(errors="replace")
+            "%s failed (%s): %s", Path(args[0]).name, process.returncode, err.data.decode(errors="replace")
         )
         raise Unreadable("The video could not be read.")
-    if capture and len(out) > MAX_PROBE_OUTPUT:
+    if out is None:
+        return b""
+    if out.overflow:
         raise Unreadable("The video could not be read.")
-    return out or b""
+    return bytes(out.data)
 
 
 def _ffmpeg(*args: str) -> list[str]:
@@ -251,7 +321,8 @@ def read_probe(data: dict, size: int) -> VideoInfo:
     """Describe a clip from ffprobe's JSON, or raise `VideoError` when it isn't one we take."""
     fmt = data.get("format") if isinstance(data.get("format"), dict) else {}
     streams = [s for s in data.get("streams") or [] if isinstance(s, dict)]
-    if not CONTAINERS & set(str(fmt.get("format_name", "")).split(",")):
+    formats = set(str(fmt.get("format_name", "")).split(","))
+    if not CONTAINERS & formats:
         raise VideoError("This video format is not supported.")
     videos = [
         s
@@ -267,8 +338,10 @@ def read_probe(data: dict, size: int) -> VideoInfo:
     width, height = int(video.get("width") or 0), int(video.get("height") or 0)
     if not (0 < width <= MAX_DIMENSION and 0 < height <= MAX_DIMENSION):
         raise VideoError("The video's size is not supported.")
-    duration = _rate(fmt.get("duration")) or _rate(video.get("duration"))
-    if duration <= 0:
+    # A container that doesn't say how long it is: its longest stream. A browser recording (MediaRecorder
+    # WebM) often names no length at all: converting it caps it at the longest clip and tells its length.
+    duration = _rate(fmt.get("duration")) or max((_rate(s.get("duration")) for s in streams), default=0.0)
+    if duration <= 0 and not RECORDING_CONTAINERS & formats:
         raise VideoError("The video has no length.")
     if duration > settings.MAX_VIDEO_DURATION_SECONDS:
         minutes = settings.MAX_VIDEO_DURATION_SECONDS / 60
@@ -294,7 +367,7 @@ def read_probe(data: dict, size: int) -> VideoInfo:
         constant_rate=bool(sane and real and average and abs(real - average) / real < 0.01),
         has_audio=bool(audios),
         audio_codec=str(audios[0].get("codec_name", "")) if audios else "",
-        hdr=transfer in ("smpte2084", "arib-std-b67") or str(video.get("color_primaries", "")) == "bt2020",
+        hdr=transfer in ("smpte2084", "arib-std-b67"),  # PQ or HLG: BT.2020 colours alone are not HDR
         size=size,
     )
 
@@ -376,8 +449,29 @@ def transcode_args(source: Path, target: Path, info: VideoInfo) -> list[str]:
         *audio,
         "-map_metadata", "-1",
         "-movflags", "+faststart",
+        *_bounds(),
         str(target),
     )  # fmt: skip
+
+
+def max_output_bytes() -> int:
+    """The largest converted clip, twice the largest upload: a conversion seldom outgrows its source."""
+    return 2 * settings.MAX_VIDEO_UPLOAD_BYTES
+
+
+def _bounds() -> list[str]:
+    """Options that bound one conversion whatever the source claims: its length, its size, the threads its
+    encoder and filters use (`VIDEO_FFMPEG_THREADS`) and its CPU time."""
+    threads = str(max(1, int(settings.VIDEO_FFMPEG_THREADS)))
+    # A backstop for an ffmpeg whose worker was killed (nothing enforces the deadline any more): it stops
+    # itself after the deadline's worth of CPU time on every core, which no conversion within it can reach.
+    cpu_seconds = settings.VIDEO_TRANSCODE_TIMEOUT_SECONDS * (os.cpu_count() or 1)
+    return [
+        "-t", str(settings.MAX_VIDEO_DURATION_SECONDS),
+        "-fs", str(max_output_bytes()),
+        "-threads", threads, "-filter_threads", threads,
+        "-timelimit", str(cpu_seconds),
+    ]  # fmt: skip
 
 
 def has_zscale() -> bool:
@@ -400,6 +494,8 @@ def normalize(source: Path, target: Path, info: VideoInfo) -> VideoInfo:
             timeout=settings.VIDEO_TRANSCODE_TIMEOUT_SECONDS,
             workdir=target.parent,
         )
+        if target.stat().st_size >= max_output_bytes():  # ffmpeg stopped at `-fs`: the clip was cut short
+            raise VideoError("The converted video is too large.")
     result = probe(target)
     if result.codec != "h264":
         raise VideoError("The video could not be converted.")

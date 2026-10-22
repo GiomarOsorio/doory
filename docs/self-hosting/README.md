@@ -12,7 +12,7 @@
 | Cache | Shared cache for rate limits and stock search results | the database (`dbcache`) | the database (`dbcache`) | Yes in production |
 | Redis | Channel layer for running realtime on more than one worker | `redis` (profile `redis`) | your Redis | No, see [realtime.md](realtime.md) |
 | Chromium | Headless browser for server-side PDF and image export | inside the `api` and `mcp` images | Playwright's Chromium | No, see [image-export.md](image-export.md) |
-| ffmpeg | Checks and converts video clips | inside the `api` image | the `ffmpeg` package | No, see [video.md](video.md) |
+| ffmpeg | Checks and converts video clips | inside the `api`, `realtime` and `mcp` images | the `ffmpeg` package | No, see [video.md](video.md) |
 | Media storage | Uploads, fonts, element packs, audio, models | `media` volume | `MEDIA_ROOT` | Yes (local folder or [S3-compatible](../integrations/object-storage.md)) |
 
 ```
@@ -59,6 +59,7 @@ Nothing runs these for you. Add them to cron (or a systemd timer) on the host:
 | `manage.py purge_trash` | Permanently deletes designs that have been in the trash for more than 30 days (`--days N` to change) | daily |
 | `manage.py collab_maintenance` | Saves live edits left behind after a crash, compacts update logs, removes stale presence entries | daily |
 | `manage.py purge_exports` | Deletes server-side exports whose download link has expired | hourly, optional |
+| `manage.py sweep_video_jobs` | Marks video conversions whose process was stopped as failed and removes the temporary folders they left | hourly, optional |
 
 Docker example (crontab on the host, run from the checkout):
 

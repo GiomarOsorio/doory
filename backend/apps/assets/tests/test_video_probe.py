@@ -1,5 +1,9 @@
 """What a clip is and what has to happen to it, from ffprobe's description (no ffmpeg needed here)."""
 
+import logging
+import os
+import sys
+
 import pytest
 
 from apps.assets import video
@@ -52,6 +56,14 @@ class TestReadProbe:
     )
     def test_anything_else_is_converted(self, change):
         assert not info(**change).web_ready
+
+    @pytest.mark.parametrize(
+        ("transfer", "hdr"), [("smpte2084", True), ("arib-std-b67", True), ("bt2020-10", False)]
+    )
+    def test_hdr_needs_an_hdr_transfer_not_only_bt2020_colours(self, transfer, hdr):
+        clip = info(codec_name="hevc", color_primaries="bt2020", color_transfer=transfer)
+        args = video.transcode_args(video.Path("in"), video.Path("out.mp4"), clip)
+        assert clip.hdr is hdr and ("tonemap" in args[args.index("-vf") + 1]) is hdr
 
     def test_audio_that_is_not_aac_is_converted(self):
         data = described()
@@ -122,6 +134,32 @@ class TestReadProbe:
         with pytest.raises(video.VideoError, match="no length"):
             video.read_probe(data, 1)
 
+    def test_without_a_container_length_the_longest_stream_counts(self):
+        data = described(duration="9.5")
+        data["format"]["duration"] = "N/A"
+        data["streams"][1]["duration"] = "10.25"
+        assert video.read_probe(data, 1).duration_ms == 10250
+
+    def test_a_browser_recording_of_unknown_length_is_converted_and_capped(self, settings):
+        settings.MAX_VIDEO_DURATION_SECONDS = 600
+        data = {  # what ffprobe says about a MediaRecorder WebM: "Duration: N/A", no stream lengths either
+            "format": {"format_name": "matroska,webm", "duration": "N/A"},
+            "streams": [
+                {"codec_type": "video", "codec_name": "vp8", "width": 1280, "height": 720,
+                 "r_frame_rate": "1000/1", "avg_frame_rate": "0/0"},
+                {"codec_type": "audio", "codec_name": "opus"},
+            ],
+        }  # fmt: skip
+        clip = video.read_probe(data, 1)
+        assert (clip.duration_ms, clip.web_ready) == (0, False)
+        args = video.transcode_args(video.Path("in"), video.Path("out.mp4"), clip)
+        assert args[args.index("-t") + 1] == "600"
+
+    def test_h264_of_unknown_length_is_converted_too(self):
+        data = described()
+        data["format"] = {"format_name": "matroska,webm", "duration": "N/A"}
+        assert not video.read_probe(data, 1).web_ready
+
 
 class TestPlans:
     @pytest.mark.parametrize(
@@ -148,6 +186,23 @@ class TestPlans:
         clip = info(codec_name="hevc")
         args = video.transcode_args(video.Path("in"), video.Path("out.mp4"), clip)
         assert args[args.index("-g") + 1] == "60" and "+faststart" in args and "libx264" in args
+
+    def test_a_conversion_is_bounded_in_length_size_threads_and_cpu_time(self, settings, monkeypatch):
+        settings.MAX_VIDEO_DURATION_SECONDS, settings.MAX_VIDEO_UPLOAD_BYTES = 300, 1000
+        settings.VIDEO_FFMPEG_THREADS, settings.VIDEO_TRANSCODE_TIMEOUT_SECONDS = 3, 100
+        monkeypatch.setattr(video.os, "cpu_count", lambda: 8)
+        args = video.transcode_args(video.Path("in"), video.Path("out.mp4"), info(codec_name="hevc"))
+        bounds = " ".join(args[args.index("+faststart") + 1 : -1])
+        assert bounds == "-t 300 -fs 2000 -threads 3 -filter_threads 3 -timelimit 800"
+        assert args[-1] == "out.mp4"
+
+    def test_a_conversion_cut_short_by_the_size_cap_is_refused(self, settings, tmp_path, monkeypatch):
+        settings.MAX_VIDEO_UPLOAD_BYTES = 10
+        target = tmp_path / "clip.mp4"
+        monkeypatch.setattr(video, "_run", lambda args, **kwargs: target.write_bytes(b"x" * 20))
+        monkeypatch.setattr(video, "probe", lambda path: pytest.fail("probed a clip that was cut short"))
+        with pytest.raises(video.VideoError, match="too large"):
+            video.normalize(tmp_path / "source", target, info(codec_name="hevc"))
 
     def test_the_slot_raises_busy_when_every_one_is_taken(self, settings):
         settings.VIDEO_MAX_CONCURRENCY = 1
@@ -186,3 +241,31 @@ class TestInputs:
                 call()
         assert video.extract_audio(clip, tmp_path / "sound.m4a") is False
         assert len(commands) == 3 and all(self.guarded(args) for args in commands)
+
+
+class TestRun:
+    """Running a command (Python stands in for ffprobe)."""
+
+    @pytest.fixture(autouse=True)
+    def _python_env(self, monkeypatch):
+        monkeypatch.setattr(video, "_env", lambda workdir: dict(os.environ))  # Python on Windows needs more
+
+    @staticmethod
+    def python(code: str) -> list[str]:
+        return [sys.executable, "-c", code]
+
+    def test_returns_the_output(self):
+        assert video._run(self.python("print('{}', end='')"), timeout=30, capture=True) == b"{}"
+
+    def test_refuses_too_much_output(self, monkeypatch):
+        monkeypatch.setattr(video, "MAX_PROBE_OUTPUT", 1000)
+        code = "import sys; [sys.stdout.write('x' * 1000) for _ in range(1000)]"  # 1 MB, read 64 KB at a time
+        with pytest.raises(video.Unreadable):
+            video._run(self.python(code), timeout=30, capture=True)
+
+    def test_logs_the_end_of_a_failed_command_s_messages(self, caplog):
+        code = "import sys; sys.stderr.write('a' * 100_000 + 'the end'); sys.exit(1)"
+        with caplog.at_level(logging.INFO, logger=video.__name__), pytest.raises(video.Unreadable):
+            video._run(self.python(code), timeout=30)
+        (record,) = caplog.records
+        assert record.getMessage().endswith("the end") and len(record.getMessage()) < 2100

@@ -2,12 +2,14 @@
 
 A web-ready clip (see `video.VideoInfo.web_ready`) is rewrapped, given its stills and stored within the
 request: a second or two. Anything else is registered at once with `status=processing`, holding its source
-size against the owner's quota, and converted by a small pool of threads in this process
-(`VIDEO_MAX_CONCURRENCY`). The editor polls the asset until it turns `ready` or `failed`.
+size against the owner's quota (a clip that fails stops counting), and converted by a small pool of threads
+in this process (`VIDEO_MAX_CONCURRENCY`, less one kept for rewrapping). One person has at most
+`VIDEO_MAX_PROCESSING_PER_USER` clips converting at once. The editor polls the asset until it turns `ready` or
+`failed`.
 
 There is no job queue to survive a restart: a conversion that dies with its process is noticed by its age
 (`fail_stale`, called when the owner lists or opens their uploads, and by `manage.py sweep_video_jobs`) and
-marked failed, so the upload never spins forever.
+marked failed, so the upload never spins forever. Its work directory is removed then too, or by the sweep.
 """
 
 from __future__ import annotations
@@ -29,7 +31,7 @@ from django.db.models import Sum
 from django.utils import timezone
 
 from . import video
-from .exceptions import InvalidFile, QuotaExceeded, ServerBusy
+from .exceptions import InvalidFile, QuotaExceeded, ServerBusy, TooManyConversions
 from .models import Asset
 from .storage import delete_files
 
@@ -57,6 +59,26 @@ def convert(source: Path, info: video.VideoInfo) -> Converted:
     audio = source.parent / "audio.m4a"
     has_audio = result.has_audio and video.extract_audio(target, audio)
     return Converted(target, result, stills, audio if has_audio else None)
+
+
+class Duplicate(Exception):
+    """The owner already has a clip from the same source (another request made it first)."""
+
+    def __init__(self, asset: Asset):
+        super().__init__()
+        self.asset = asset
+
+
+def _claim(asset: Asset, same: dict | None) -> None:
+    """Under the owner's lock: refuse a clip the owner already has from the same source (`same`: filters on
+    the asset, say its stock provider and id), and remove their failed attempts at it, which this replaces."""
+    if not same:
+        return
+    rows = Asset.objects.filter(owner=asset.owner_id, kind=Asset.Kind.VIDEO, **same).exclude(pk=asset.pk)
+    existing = rows.exclude(status=Asset.Status.FAILED).first()
+    if existing is not None:
+        raise Duplicate(existing)
+    rows.delete()
 
 
 def _used_by_others(owner, asset_id) -> int:
@@ -106,18 +128,22 @@ def _stored_size(converted: Converted) -> int:
     return size + (converted.audio.stat().st_size if converted.audio else 0)
 
 
-def store(asset: Asset, converted: Converted, *, new: bool) -> Asset:
+def store(asset: Asset, converted: Converted, *, new: bool, same: dict | None = None) -> Asset:
     """Store the files, then (under the owner's lock) check the quota and save the row.
 
     The files go up first so the owner's row is never locked while hundreds of megabytes travel to storage.
-    A background job (`new=False`) only updates a row that still exists: a clip deleted while it was being
-    converted must not come back, and its files are removed again.
+    A new clip made from a source the owner already has (`same`, see `_claim`) raises `Duplicate` instead.
+    A background job (`new=False`) only updates a row that is still `processing`: a clip deleted, or given up
+    on as interrupted (`fail_stale`), while it was being converted must not come back, and its files are
+    removed again.
     """
     stored = _save_files(asset, converted)
     _describe(asset, converted, _stored_size(converted))
     try:
         with transaction.atomic():
             get_user_model().objects.select_for_update().get(pk=asset.owner_id)
+            if new:
+                _claim(asset, same)
             if _used_by_others(asset.owner_id, asset.pk) + asset.size > settings.USER_STORAGE_QUOTA_BYTES:
                 raise QuotaExceeded()
             if new:
@@ -126,7 +152,8 @@ def store(asset: Asset, converted: Converted, *, new: bool) -> Asset:
                 fields = ("file", "poster", "thumbnail", "filmstrip", "audio", "width", "height", "size")
                 values = {name: getattr(asset, name) for name in fields}
                 values.update(mime=asset.mime, meta=asset.meta, status=asset.status, error="")
-                if not Asset.objects.filter(pk=asset.pk).update(**values, updated_at=timezone.now()):
+                rows = Asset.objects.filter(pk=asset.pk, status=Asset.Status.PROCESSING)
+                if not rows.update(**values, updated_at=timezone.now()):
                     delete_files(asset.file.storage, stored)
     except Exception:
         delete_files(asset.file.storage, stored)
@@ -134,10 +161,18 @@ def store(asset: Asset, converted: Converted, *, new: bool) -> Asset:
     return asset
 
 
-def reserve(asset: Asset) -> Asset:
-    """Register a clip that still has to be converted, holding its source size against the quota."""
+def reserve(asset: Asset, same: dict | None = None) -> Asset:
+    """Register a clip that still has to be converted, holding its source size against the quota. An owner
+    has at most `VIDEO_MAX_PROCESSING_PER_USER` clips converting at once (0: no limit)."""
     with transaction.atomic():
         get_user_model().objects.select_for_update().get(pk=asset.owner_id)
+        _claim(asset, same)
+        limit = settings.VIDEO_MAX_PROCESSING_PER_USER
+        if limit > 0:
+            converting = Asset.objects.filter(owner=asset.owner_id, status=Asset.Status.PROCESSING)
+            fail_stale(converting)  # a conversion whose process died doesn't hold a place
+            if converting.count() >= limit:
+                raise TooManyConversions()
         used = Asset.objects.filter(owner=asset.owner_id).aggregate(total=Sum("size"))["total"] or 0
         if used + asset.size > settings.USER_STORAGE_QUOTA_BYTES:
             raise QuotaExceeded()
@@ -147,12 +182,20 @@ def reserve(asset: Asset) -> Asset:
 
 
 def create_video_asset(
-    owner, source: Path, info: video.VideoInfo, *, name: str, tags: list[str] | None = None, meta=None
+    owner,
+    source: Path,
+    info: video.VideoInfo,
+    *,
+    name: str,
+    tags: list[str] | None = None,
+    meta=None,
+    same: dict | None = None,
 ) -> Asset:
     """Register the clip at `source` (inside its own work directory, which this takes over) for `owner`.
 
     Returns a `ready` asset when the clip only needed rewrapping, else a `processing` one whose conversion
-    starts once the surrounding transaction commits.
+    starts once the surrounding transaction commits. With `same`, raises `Duplicate` when the owner already
+    has a clip from that source and replaces their failed attempts at it.
     """
     asset = Asset(
         owner=owner,
@@ -168,7 +211,7 @@ def create_video_asset(
     workdir = source.parent
     if not info.web_ready:
         try:
-            reserve(asset)
+            reserve(asset, same)
         except Exception:
             shutil.rmtree(workdir, ignore_errors=True)
             raise
@@ -179,10 +222,10 @@ def create_video_asset(
             with video.slot():
                 converted = convert(source, info)
         except video.VideoBusy as exc:
-            raise ServerBusy() from exc
+            raise ServerBusy(str(exc)) from exc
         except video.VideoError as exc:
             raise InvalidFile(str(exc)) from exc
-        return store(asset, converted, new=True)
+        return store(asset, converted, new=True, same=same)
     finally:
         shutil.rmtree(workdir, ignore_errors=True)
 
@@ -194,10 +237,12 @@ _pool: ThreadPoolExecutor | None = None
 
 
 def _executor() -> ThreadPoolExecutor:
+    """The background conversions' threads: one fewer than the ffmpeg slots (but at least one), so a clip that
+    only needs rewrapping, within its request, never waits behind conversions that take minutes."""
     global _pool
     with _pool_lock:
         if _pool is None:
-            workers = max(1, int(settings.VIDEO_MAX_CONCURRENCY))
+            workers = max(1, int(settings.VIDEO_MAX_CONCURRENCY) - 1)
             _pool = ThreadPoolExecutor(max_workers=workers, thread_name_prefix="video-convert")
         return _pool
 
@@ -207,17 +252,27 @@ def submit(asset_id, source: Path, info: video.VideoInfo) -> None:
 
 
 def _fail(asset_id, message: str) -> None:
+    # A failed clip keeps no files, so it no longer counts against the quota.
     Asset.objects.filter(pk=asset_id, status=Asset.Status.PROCESSING).update(
-        status=Asset.Status.FAILED, error=message[:255], updated_at=timezone.now()
+        status=Asset.Status.FAILED, error=message[:255], size=0, updated_at=timezone.now()
     )
+
+
+def _start(asset_id) -> bool:
+    """Mark a conversion as started, so `fail_stale` counts its age from now rather than from the upload (it
+    may have waited behind others). False when the clip was deleted or given up on while it waited."""
+    rows = Asset.objects.filter(pk=asset_id, status=Asset.Status.PROCESSING)
+    return bool(rows.update(updated_at=timezone.now()))
 
 
 def run(asset_id, source: Path, info: video.VideoInfo) -> None:
     """Convert and store one clip; on any failure the asset says why instead of staying `processing`."""
     try:
         with video.slot(wait=None):
+            if not _start(asset_id):
+                return
             converted = convert(source, info)
-        asset = Asset.objects.filter(pk=asset_id).first()
+        asset = Asset.objects.filter(pk=asset_id, status=Asset.Status.PROCESSING).first()
         if asset is not None:
             store(asset, converted, new=False)
     except QuotaExceeded:
@@ -232,11 +287,19 @@ def run(asset_id, source: Path, info: video.VideoInfo) -> None:
         connections.close_all()  # this thread's own connections
 
 
+def stale_after_seconds() -> int:
+    """How long a conversion can possibly run: after that its process has died."""
+    return settings.VIDEO_TRANSCODE_TIMEOUT_SECONDS + video.STILLS_TIMEOUT_SECONDS * 2 + STALE_GRACE_SECONDS
+
+
 def fail_stale(queryset=None) -> int:
-    """Mark conversions that outlived any possible run (their process died) as failed."""
-    limit = settings.VIDEO_TRANSCODE_TIMEOUT_SECONDS + video.STILLS_TIMEOUT_SECONDS * 2 + STALE_GRACE_SECONDS
+    """Mark conversions that outlived any possible run (their process died) as failed. When there were any,
+    also remove the work directories that such processes left behind."""
     rows = Asset.objects.all() if queryset is None else queryset
-    cutoff = timezone.now() - timedelta(seconds=limit)
-    return rows.filter(status=Asset.Status.PROCESSING, updated_at__lt=cutoff).update(
-        status=Asset.Status.FAILED, error=INTERRUPTED, updated_at=timezone.now()
+    cutoff = timezone.now() - timedelta(seconds=stale_after_seconds())
+    count = rows.filter(status=Asset.Status.PROCESSING, updated_at__lt=cutoff).update(
+        status=Asset.Status.FAILED, error=INTERRUPTED, size=0, updated_at=timezone.now()
     )
+    if count:
+        video.remove_old_work_dirs(stale_after_seconds())
+    return count

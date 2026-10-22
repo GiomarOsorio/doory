@@ -1,6 +1,8 @@
 """Uploading clips: the real ffprobe and ffmpeg (skipped without them), the conversion in the background."""
 
 import io
+import os
+import time
 from datetime import timedelta
 from pathlib import Path
 
@@ -14,6 +16,7 @@ from apps.assets.models import Asset
 from apps.assets.services import looks_like_media
 
 from .audio_helpers import webm_bytes
+from .test_video_probe import info as described_clip
 from .video_helpers import clip, needs_ffmpeg
 
 URL = "/api/v1/assets/"
@@ -159,13 +162,141 @@ class TestConvertedClips:
         assert not Asset.objects.exists()
 
 
+def processing(owner, **fields) -> Asset:
+    return Asset.objects.create(owner=owner, kind="video", mime="video/mp4", status="processing", **fields)
+
+
+@pytest.mark.django_db
+class TestFailed:
+    def test_a_failed_conversion_stops_counting_against_the_quota(self, api, user, job, monkeypatch):
+        asset = processing(user, size=5000)
+
+        def broken(source, info):
+            raise video.VideoError("The video could not be converted.")
+
+        monkeypatch.setattr(video_jobs, "convert", broken)
+        video_jobs.run(asset.pk, job / "source", described_clip(codec_name="hevc"))
+        asset.refresh_from_db()
+        assert (asset.status, asset.size, asset.error) == ("failed", 0, "The video could not be converted.")
+        assert api.get(f"{URL}usage/").json()["used_bytes"] == 0
+        assert not job.exists()
+
+
+@pytest.fixture
+def job(tmp_path, monkeypatch):
+    """A background conversion's work directory, run in the test's thread."""
+    monkeypatch.setattr(video_jobs.connections, "close_all", lambda: None)
+    workdir = tmp_path / "doory-video-job"
+    workdir.mkdir()
+    (workdir / "source").write_bytes(b"source")
+    return workdir
+
+
+def converted(workdir: Path) -> video_jobs.Converted:
+    (workdir / "clip.mp4").write_bytes(b"clip")
+    stills = video.Stills(poster=b"poster", thumbnail=b"thumb", filmstrip=None, strip=None)
+    return video_jobs.Converted(workdir / "clip.mp4", described_clip(), stills, None)
+
+
+@pytest.mark.django_db
+class TestQueued:
+    def test_the_age_counts_from_when_the_conversion_starts(self, user, job, monkeypatch):
+        asset = processing(user, size=10)
+        queued_at = timezone.now() - timedelta(minutes=30)  # waited behind other conversions
+        Asset.objects.filter(pk=asset.pk).update(updated_at=queued_at)
+        started = []
+
+        def convert(source, info):
+            started.append(Asset.objects.get(pk=asset.pk).updated_at)
+            return converted(source.parent)
+
+        monkeypatch.setattr(video_jobs, "convert", convert)
+        video_jobs.run(asset.pk, job / "source", described_clip(codec_name="hevc"))
+        assert started[0] > queued_at + timedelta(minutes=29)
+        assert Asset.objects.get(pk=asset.pk).status == "ready"
+
+    def test_a_clip_given_up_on_while_it_waited_is_not_converted(self, user, job, monkeypatch):
+        asset = processing(user)
+        Asset.objects.filter(pk=asset.pk).update(status="failed", error=video_jobs.INTERRUPTED)
+        monkeypatch.setattr(video_jobs, "convert", lambda *args: pytest.fail("converted a failed clip"))
+        video_jobs.run(asset.pk, job / "source", described_clip(codec_name="hevc"))
+        assert Asset.objects.get(pk=asset.pk).status == "failed" and not job.exists()
+
+    def test_a_clip_given_up_on_while_converting_stays_failed(self, user, job, monkeypatch):
+        asset = processing(user, size=10)
+
+        def convert(source, info):
+            # fail_stale, from another process, while this one converts
+            Asset.objects.filter(pk=asset.pk).update(status="failed", error=video_jobs.INTERRUPTED, size=0)
+            return converted(source.parent)
+
+        monkeypatch.setattr(video_jobs, "convert", convert)
+        video_jobs.run(asset.pk, job / "source", described_clip(codec_name="hevc"))
+        asset.refresh_from_db()
+        assert (asset.status, asset.error, asset.file.name) == ("failed", video_jobs.INTERRUPTED, "")
+        names = [f"assets/{user.pk}/{asset.pk}.mp4", f"assets/{user.pk}/posters/{asset.pk}.webp"]
+        assert not any(asset.file.storage.exists(name) for name in names)
+
+
+@pytest.mark.django_db
+class TestPerPersonLimit:
+    @pytest.fixture(autouse=True)
+    def _converting(self, settings, tmp_path, monkeypatch):
+        """Uploads that need converting: ffprobe and the background conversion are faked."""
+        settings.VIDEO_WORK_DIR = str(tmp_path)
+        settings.VIDEO_MAX_PROCESSING_PER_USER = 2
+        monkeypatch.setattr(video, "available", lambda: True)
+        monkeypatch.setattr(video, "probe", lambda path: described_clip(codec_name="hevc"))
+        monkeypatch.setattr(video_jobs, "submit", lambda *args: None)
+
+    def upload(self, api):
+        return post(api, b"\x1a\x45\xdf\xa3" + b"\x00" * 100, "phone.webm")
+
+    def test_one_more_than_the_limit_is_refused(self, api, user, tmp_path):
+        assert [self.upload(api).status_code for _ in range(2)] == [202, 202]
+        res = self.upload(api)
+        assert res.status_code == 429 and res.json()["error"]["code"] == "too_many_conversions"
+        assert Asset.objects.count() == 2
+        assert len(list(tmp_path.iterdir())) == 2  # the refused upload's work folder is gone
+
+    def test_others_are_not_held_up(self, api, user, other_api):
+        for _ in range(2):
+            self.upload(api)
+        assert self.upload(other_api).status_code == 202
+
+    def test_a_conversion_whose_process_died_does_not_count(self, api, user):
+        dead = processing(user)
+        Asset.objects.filter(pk=dead.pk).update(updated_at=timezone.now() - timedelta(hours=2))
+        processing(user)
+        assert self.upload(api).status_code == 202
+        assert Asset.objects.get(pk=dead.pk).status == "failed"
+
+    def test_no_limit(self, api, settings):
+        settings.VIDEO_MAX_PROCESSING_PER_USER = 0
+        assert {self.upload(api).status_code for _ in range(3)} == {202}
+
+    def test_one_ffmpeg_place_is_kept_for_rewrapping(self, settings, monkeypatch):
+        monkeypatch.setattr(video_jobs, "_pool", None)
+        settings.VIDEO_MAX_CONCURRENCY = 3
+        assert video_jobs._executor()._max_workers == 2
+        monkeypatch.setattr(video_jobs, "_pool", None)
+        settings.VIDEO_MAX_CONCURRENCY = 1
+        assert video_jobs._executor()._max_workers == 1
+
+
 @pytest.mark.django_db
 class TestStale:
-    def test_an_interrupted_conversion_turns_failed_when_looked_at(self, api, user):
-        asset = Asset.objects.create(owner=user, kind="video", mime="video/mp4", status="processing")
+    def test_an_interrupted_conversion_turns_failed_when_looked_at(self, api, user, settings, tmp_path):
+        settings.VIDEO_WORK_DIR = str(tmp_path)
+        asset = processing(user, size=5000)
         Asset.objects.filter(pk=asset.pk).update(updated_at=timezone.now() - timedelta(hours=2))
+        left = tmp_path / "doory-video-left"
+        left.mkdir()
+        os.utime(left, (time.time() - 7200, time.time() - 7200))
         body = api.get(f"{URL}{asset.pk}/").json()
         assert body["status"] == "failed" and body["error"] == video_jobs.INTERRUPTED
+        assert Asset.objects.get(pk=asset.pk).size == 0  # no longer held against the quota
+        assert not left.exists()  # its process left its work folder behind
 
     def test_a_recent_one_keeps_processing(self, api, user):
         asset = Asset.objects.create(owner=user, kind="video", mime="video/mp4", status="processing")
@@ -178,6 +309,32 @@ class TestStale:
         Asset.objects.filter(pk=asset.pk).update(updated_at=timezone.now() - timedelta(hours=2))
         call_command("sweep_video_jobs")
         assert Asset.objects.get(pk=asset.pk).status == "failed"
+
+    def test_the_sweep_removes_the_work_folders_a_killed_process_left(self, settings, tmp_path):
+        from django.core.management import call_command
+
+        settings.VIDEO_WORK_DIR = str(tmp_path)
+        old = time.time() - video_jobs.stale_after_seconds() - 60
+
+        def made(name: str, *, folder_age: float, file_age: float | None = None) -> Path:
+            path = tmp_path / name
+            if file_age is None:
+                path.write_bytes(b"x")
+            else:
+                path.mkdir()
+                (path / "source").write_bytes(b"x")
+                os.utime(path / "source", (file_age, file_age))
+            os.utime(path, (folder_age, folder_age))
+            return path
+
+        left = made("doory-video-left", folder_age=old, file_age=old)
+        working = made("doory-video-working", folder_age=old, file_age=time.time())  # ffmpeg still writes
+        new = made("doory-video-new", folder_age=time.time(), file_age=time.time())
+        other = made("someone-else", folder_age=old, file_age=old)
+        a_file = made("doory-video-file", folder_age=old)
+        call_command("sweep_video_jobs", stdout=io.StringIO())
+        assert not left.exists()
+        assert all(path.exists() for path in (working, new, other, a_file))
 
 
 @pytest.mark.django_db
