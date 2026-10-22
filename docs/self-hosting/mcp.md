@@ -66,8 +66,8 @@ Assistants can work with designs and their contents:
 - **Search:** templates, elements, fonts and stock photos.
 
 They can also handle comments, brand kits, share links and earlier versions, and export pages as PNG, JPG,
-WebP or AVIF images, or several pages as a ZIP (`export_design`, with the options in
-[image-export.md](image-export.md#image-options)). Designs are also available as MCP resources (`doory://designs/{id}`), and the server offers
+WebP or AVIF images, or several pages as a ZIP, optionally [optimized](../integrations/image-optimization.md)
+(`export_design`, with the options in [image-export.md](image-export.md#image-options)). Designs are also available as MCP resources (`doory://designs/{id}`), and the server offers
 two prompts.
 
 Some actions are protected:

@@ -52,6 +52,7 @@ The REST endpoint (a JSON body) and the MCP tool `export_design` take the same o
 | `strip_metadata` | `true` | Leave text, time and Exif metadata out |
 | `srgb` | `true` | Leave any colour profile out (the page is drawn in sRGB) |
 | `progressive` | `false` | JPG only: a progressive JPG |
+| `optimize` | `false` | Make the file smaller afterwards: `true` (the default optimizer) or an optimizer's id. It never makes a file bigger; see [image optimization](../integrations/image-optimization.md) |
 | `file_names` | `EXPORT_FILENAME_STYLE` | `simple` or `detailed` (with platform, preset and size) names. The REST endpoint also takes `filename_style` and `filename_timestamp` |
 
 Each page is drawn on its own, one after another, so a ZIP of many pages takes as long as that many exports.

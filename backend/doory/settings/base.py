@@ -236,6 +236,7 @@ REST_FRAMEWORK = {
         "bulk_fill": "120/min",  # rows created via bulk-fill (REST)
         "bulk_fill_images": "300/min",  # image URLs fetched by bulk-fill (REST and MCP)
         "export": "30/min",  # server-side image renders (REST and MCP)
+        "optimize": "60/min",  # images the browser drew, converted and optimized (POST /exports/optimize/)
         "ai": "30/min",  # calls to AI image providers (REST and MCP)
     },
     "DEFAULT_RENDERER_CLASSES": ["rest_framework.renderers.JSONRenderer"],
@@ -328,6 +329,24 @@ EXPORT_IMAGE_MAX_DOCUMENT_BYTES = env.int("EXPORT_IMAGE_MAX_DOCUMENT_BYTES", def
 # Pages one export may draw (`pages`, sent back as a ZIP). Each page is a render of its own, and the whole
 # export is one request: keep pages x EXPORT_TIMEOUT_SECONDS under the web server's worker timeout.
 EXPORT_IMAGE_MAX_PAGES = env.int("EXPORT_IMAGE_MAX_PAGES", default=10)
+
+# Image optimizers (apps.exports.optimizers): make exported and downloaded images smaller after drawing them.
+# IMAGE_OPTIMIZERS lists the ones people may pick, in order (empty: none). `builtin` runs mozjpeg and oxipng
+# on this server (the Docker image has them; it is left out where they are missing). `tinypng`, `kraken` and
+# `custom` send the image to that service and are left out until their key (or URL) is set. An optimizer
+# that fails or times out leaves the file as it was, and no file is ever made bigger.
+IMAGE_OPTIMIZERS = env.list("IMAGE_OPTIMIZERS", default=["builtin"])
+IMAGE_OPTIMIZER_DEFAULT = env("IMAGE_OPTIMIZER_DEFAULT", default="builtin")  # what `optimize: true` uses
+IMAGE_OPTIMIZER_TIMEOUT = env.int("IMAGE_OPTIMIZER_TIMEOUT", default=30)  # seconds per file
+# Largest file optimized, and the largest image POST /api/v1/exports/optimize/ takes.
+IMAGE_OPTIMIZER_MAX_BYTES = env.int("IMAGE_OPTIMIZER_MAX_BYTES", default=25 * 1024 * 1024)
+TINYPNG_API_KEY = env("TINYPNG_API_KEY", default="")
+KRAKEN_API_KEY = env("KRAKEN_API_KEY", default="")
+KRAKEN_API_SECRET = env("KRAKEN_API_SECRET", default="")
+# Any other optimizer that follows the small HTTP contract in docs/integrations/image-optimization.md.
+IMAGE_OPTIMIZER_CUSTOM_NAME = env("IMAGE_OPTIMIZER_CUSTOM_NAME", default="Custom")
+IMAGE_OPTIMIZER_CUSTOM_URL = env("IMAGE_OPTIMIZER_CUSTOM_URL", default="")
+IMAGE_OPTIMIZER_CUSTOM_KEY = env("IMAGE_OPTIMIZER_CUSTOM_KEY", default="")
 
 # ---- In-browser background removal (apps.core.mlmodels; `manage.py sync_models` installs the model) ----
 BACKGROUND_REMOVAL_ENABLED = env.bool("BACKGROUND_REMOVAL_ENABLED", default=True)

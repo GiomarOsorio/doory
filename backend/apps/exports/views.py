@@ -1,3 +1,5 @@
+import json
+
 from django.conf import settings
 from django.core.exceptions import SuspiciousOperation, TooManyFilesSent
 from django.http import FileResponse, Http404, HttpResponse
@@ -23,11 +25,13 @@ from .serializers import (
     MAX_PAGES,
     MAX_TOTAL_BYTES,
     ImageExportSerializer,
+    ImageOptimizeDocumentation,
+    ImageOptimizeSerializer,
     PdfExportDocumentation,
     PdfExportSerializer,
     validate_page_files,
 )
-from .services import ZIP_MIME, ExportRequest, export_images, export_pdf, page_index
+from .services import ZIP_MIME, ExportRequest, export_images, export_pdf, optimize_image, page_index
 from .throttling import ExportRateThrottle
 
 MULTIPART_OVERHEAD_BYTES = 2 * 1024 * 1024
@@ -151,10 +155,71 @@ class ImageExportView(APIView):
             strip_metadata=data["strip_metadata"],
             srgb=data["srgb"],
             progressive=data["progressive"],
+            optimize=data["optimize"],
         )
         response = HttpResponse(result.data, content_type=result.mime)
         response["X-Doory-Placeholders"] = str(result.placeholders)
         return _file_headers(response, result.filename, attachment=True)
+
+
+OPTIMIZE_OVERHEAD_BYTES = 64 * 1024  # the multipart framing and the option fields
+
+
+class ImageOptimizeView(APIView):
+    """Convert a page the browser drew (PNG) to the format asked for and optimize it, for downloads from the
+    editor: AVIF, WebP where the browser can't make it, and the optimizers (`apps.exports.optimizers`).
+
+    The answer is the file, with `X-Doory-Format`, `X-Doory-Width`, `X-Doory-Height`, `X-Doory-Quality`
+    (lossy formats, after a `max_bytes` search), `X-Doory-Bytes-Before` (the converted file before
+    optimizing), `X-Doory-Optimizer` (the optimizer asked, empty for none), `X-Doory-Optimized` (whether its
+    smaller file was kept) and `X-Doory-Warnings` (a JSON list)."""
+
+    parser_classes = [MultiPartParser]
+    permission_classes = [IsAuthenticated]
+    content_negotiation_class = AnyAcceptNegotiation
+    throttle_classes = [*api_settings.DEFAULT_THROTTLE_CLASSES, ScopedRateThrottle]
+    throttle_scope = "optimize"
+
+    @extend_schema(
+        request={"multipart/form-data": ImageOptimizeDocumentation},
+        responses={
+            (200, "image/png"): OpenApiTypes.BINARY,
+            (200, "image/jpeg"): OpenApiTypes.BINARY,
+            (200, "image/webp"): OpenApiTypes.BINARY,
+            (200, "image/avif"): OpenApiTypes.BINARY,
+        },
+        tags=["exports"],
+    )
+    def post(self, request):
+        limit = settings.IMAGE_OPTIMIZER_MAX_BYTES
+        if int(request.META.get("CONTENT_LENGTH") or 0) > limit + OPTIMIZE_OVERHEAD_BYTES:
+            raise PayloadTooLarge(f"The image must be at most {limit} bytes.")
+        try:
+            file = request.FILES.get("file")
+            fields = request.data
+        except SuspiciousOperation:  # request data limits of the Django settings
+            raise PayloadTooLarge()
+        if file is None or file.size == 0:
+            raise ValidationError({"file": ["Send the image (a PNG) in the file field."]})
+        if file.size > limit:
+            raise PayloadTooLarge(f"The image must be at most {limit} bytes.")
+        body = ImageOptimizeSerializer(data=fields)
+        body.is_valid(raise_exception=True)
+        data = body.validated_data
+        result = optimize_image(file.read(), owner=request.user.pk, **data)
+        response = HttpResponse(result.data, content_type=result.mime)
+        response["X-Doory-Format"] = result.format
+        response["X-Doory-Width"] = str(result.width)
+        response["X-Doory-Height"] = str(result.height)
+        if "quality" in result.options_used:
+            response["X-Doory-Quality"] = str(result.options_used["quality"])
+        response["X-Doory-Bytes-Before"] = str(result.bytes_before_optimizing)
+        response["X-Doory-Optimizer"] = result.optimizer
+        response["X-Doory-Optimized"] = "true" if result.optimized else "false"
+        response["X-Doory-Warnings"] = json.dumps(list(result.warnings))
+        response["Cache-Control"] = "no-store"
+        response["X-Content-Type-Options"] = "nosniff"
+        return response
 
 
 class ImageDownloadView(APIView):
