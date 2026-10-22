@@ -35,6 +35,7 @@ export function ContextMenuHost() {
     if (selection.kinds.includes('group') && selection.ids.length === 1) list.push(...pick('edit.ungroup'))
     const lock = itemFor(editor, 'edit.lock', lockLabel)
     if (lock) list.push(lock)
+    if (selection.ids.length === 1 && selection.kinds[0] !== 'text') list.push(...pick('arrange.fitToPage'))
     if (selection.ids.length === 1 && selection.kinds[0] === 'image') list.push(sep('s3'), ...pick('image.replace', 'image.crop'))
     else if (selection.ids.length === 1 && selection.kinds[0] === 'placeholder') list.push(sep('s3'), ...pick('image.replace'))
     return list
